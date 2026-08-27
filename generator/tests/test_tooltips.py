@@ -5,9 +5,14 @@ import pytest
 
 from mcsr_data.tooltips import (
     OverrideValidationError,
+    UnsupportedTooltipDataError,
+    UnsupportedTooltipItemError,
     build_search_item,
     load_overrides,
+    load_tooltip_classifications,
 )
+from mcsr_data.recipes import load_crafting_recipes
+from mcsr_data.translations import TranslationCatalog
 
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "expected_tooltips.json"
@@ -18,7 +23,7 @@ def expected_tooltips() -> dict[str, list[str]]:
 
 
 @pytest.mark.parametrize("item_id", sorted(expected_tooltips()))
-def test_source_reproduced_equipment_lines_match_literal_fixture(item_id):
+def test_source_reproduced_lines_match_literal_fixture(item_id):
     expected = expected_tooltips()[item_id]
 
     item = build_search_item(item_id, expected[0], None)
@@ -34,6 +39,20 @@ def test_generated_lines_preserve_their_sources():
         "name", "attribute_header", "attribute", "attribute",
     ]
     assert item.generation_method == "derived_attribute_logic"
+
+
+@pytest.mark.parametrize("item_id", [
+    "minecraft:creeper_banner_pattern",
+    "minecraft:flower_banner_pattern",
+    "minecraft:mojang_banner_pattern",
+    "minecraft:skull_banner_pattern",
+])
+def test_banner_pattern_description_has_source_provenance(item_id):
+    item = build_search_item(item_id, "Banner Pattern", None)
+
+    assert [line.source for line in item.search_lines] == ["name", "item_description"]
+    assert item.generation_method == "derived_item_tooltip"
+    assert item.confidence == "source_reproduced"
 
 
 def test_all_sword_fixtures_retain_the_symbolic_four():
@@ -69,6 +88,28 @@ def test_hide_attributes_flag_removes_the_attribute_section():
     assert [line.text for line in item.search_lines] == ["Iron Sword"]
 
 
+@pytest.mark.parametrize("output_nbt, key", [
+    ({"AttributeModifiers": []}, "AttributeModifiers"),
+    ({"display": {"Lore": ['{"text":"Audited lore"}']}}, "display"),
+])
+def test_tooltip_affecting_nbt_is_rejected_instead_of_ignored(output_nbt, key):
+    with pytest.raises(
+        UnsupportedTooltipDataError,
+        match=rf"minecraft:iron_sword.*{key}",
+    ):
+        build_search_item("minecraft:iron_sword", "Iron Sword", output_nbt)
+
+
+@pytest.mark.parametrize("hide_flags", [True, "2", 2.0])
+def test_hide_flags_requires_the_audited_integer_form(hide_flags):
+    with pytest.raises(UnsupportedTooltipDataError, match="HideFlags.*integer"):
+        build_search_item(
+            "minecraft:iron_sword",
+            "Iron Sword",
+            {"HideFlags": hide_flags},
+        )
+
+
 def test_non_equipment_item_uses_only_its_name():
     item = build_search_item("minecraft:crafting_table", "Crafting Table", None)
 
@@ -79,11 +120,39 @@ def test_non_equipment_item_uses_only_its_name():
     assert item.confidence == "source_reproduced"
 
 
-def test_nonexistent_turtle_armor_is_not_fabricated():
-    item = build_search_item("minecraft:turtle_boots", "Turtle Boots", None)
+def test_unknown_item_is_not_silently_marked_source_reproduced():
+    with pytest.raises(UnsupportedTooltipItemError, match="minecraft:turtle_boots"):
+        build_search_item("minecraft:turtle_boots", "Turtle Boots", None)
 
-    assert [line.text for line in item.search_lines] == ["Turtle Boots"]
-    assert item.generation_method == "name_only"
+
+def test_all_scoped_recipe_outputs_have_an_explicit_tooltip_classification():
+    recipes = load_crafting_recipes(Path("minecraft-data/recipes"))
+    catalog = TranslationCatalog.load(Path("minecraft-data/lang/en_us.json"))
+
+    assert len(recipes) == 634
+    for recipe in recipes:
+        item = build_search_item(
+            recipe.output_item,
+            catalog.item_name(recipe.output_item),
+            None,
+        )
+        assert item.confidence in {"source_reproduced", "explicit_override"}
+
+
+def test_classification_catalog_exactly_covers_distinct_scoped_outputs():
+    outputs = {
+        recipe.output_item
+        for recipe in load_crafting_recipes(Path("minecraft-data/recipes"))
+    }
+    classifications = load_tooltip_classifications()
+
+    assert classifications.all_item_ids == outputs
+    assert set(classifications.banner_pattern_descriptions) == {
+        "minecraft:creeper_banner_pattern",
+        "minecraft:flower_banner_pattern",
+        "minecraft:mojang_banner_pattern",
+        "minecraft:skull_banner_pattern",
+    }
 
 
 def test_valid_override_replaces_exact_lines_and_records_reason(tmp_path):

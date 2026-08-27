@@ -1,4 +1,8 @@
 {
+  "minecraft:creeper_banner_pattern": [
+    "Banner Pattern",
+    "Creeper Charge"
+  ],
   "minecraft:diamond_chestplate": [
     "Diamond Chestplate",
     "When on body:",
@@ -10,6 +14,10 @@
     "When in main hand:",
     "+6 Attack Damage",
     "-2.4 Attack Speed"
+  ],
+  "minecraft:flower_banner_pattern": [
+    "Banner Pattern",
+    "Flower Charge"
   ],
   "minecraft:golden_leggings": [
     "Golden Leggings",
@@ -54,6 +62,14 @@
   "minecraft:netherite_hoe": [
     "Netherite Hoe",
     "When in main hand:"
+  ],
+  "minecraft:mojang_banner_pattern": [
+    "Banner Pattern",
+    "Thing"
+  ],
+  "minecraft:skull_banner_pattern": [
+    "Banner Pattern",
+    "Skull Charge"
   ],
   "minecraft:stone_pickaxe": [
     "Stone Pickaxe",

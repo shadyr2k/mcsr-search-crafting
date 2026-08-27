@@ -1,4 +1,5 @@
 .worktrees/
+.source-audit-focus/
 .venv/
 __pycache__/
 .pytest_cache/

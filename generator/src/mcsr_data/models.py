@@ -29,7 +29,7 @@ class NormalizedRecipe:
 
 @dataclass(frozen=True)
 class SearchLine:
-    source: Literal["name", "attribute_header", "attribute", "override"]
+    source: Literal["name", "item_description", "attribute_header", "attribute", "override"]
     text: str
 
 
@@ -38,6 +38,8 @@ class SearchItem:
     item_id: str
     name: str
     search_lines: tuple[SearchLine, ...]
-    generation_method: Literal["name_only", "derived_attribute_logic", "explicit_override"]
+    generation_method: Literal[
+        "name_only", "derived_item_tooltip", "derived_attribute_logic", "explicit_override"
+    ]
     confidence: Literal["source_reproduced", "explicit_override"]
     override_reason: str | None = None

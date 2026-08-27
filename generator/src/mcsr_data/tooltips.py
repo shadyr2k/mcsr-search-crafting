@@ -32,8 +32,27 @@ class TooltipOverride:
     reason: str
 
 
+@dataclass(frozen=True)
+class TooltipClassifications:
+    name_only: frozenset[str]
+    banner_pattern_descriptions: Mapping[str, str]
+    equipment: frozenset[str]
+
+    @property
+    def all_item_ids(self) -> set[str]:
+        return set(self.name_only) | set(self.banner_pattern_descriptions) | set(self.equipment)
+
+
 class OverrideValidationError(ValueError):
     """Raised when an auditable tooltip override is malformed."""
+
+
+class UnsupportedTooltipDataError(ValueError):
+    """Raised when output NBT can change tooltip lines but is not reproduced."""
+
+
+class UnsupportedTooltipItemError(ValueError):
+    """Raised when an item lacks an explicit source-audited classification."""
 
 
 _MATERIALS = ("wooden", "stone", "iron", "diamond", "golden", "netherite")
@@ -149,7 +168,12 @@ _ARMOR_SLOTS_BY_MATERIAL = {
 _ARMOR_SLOTS_BY_MATERIAL["turtle"] = frozenset({"helmet"})
 _MAIN_HAND_HEADER = "When in main hand:"
 _OVERRIDES_PATH = Path(__file__).with_name("overrides.json")
+_CLASSIFICATIONS_PATH = Path(__file__).with_name("tooltip_classifications.json")
 _OVERRIDE_FIELDS = frozenset({"item_id", "lines", "reason"})
+_CLASSIFICATION_FIELDS = frozenset({
+    "schema_version", "minecraft_version", "name_only",
+    "banner_pattern_descriptions", "equipment",
+})
 
 
 def load_overrides(path: Path | None = None) -> dict[str, TooltipOverride]:
@@ -196,6 +220,55 @@ def load_overrides(path: Path | None = None) -> dict[str, TooltipOverride]:
     return overrides
 
 
+def load_tooltip_classifications(path: Path | None = None) -> TooltipClassifications:
+    classification_path = path or _CLASSIFICATIONS_PATH
+    try:
+        raw = json.loads(classification_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise UnsupportedTooltipItemError(
+            f"{classification_path}: cannot load tooltip classifications: {error}"
+        ) from error
+    if not isinstance(raw, dict):
+        raise UnsupportedTooltipItemError(
+            f"{classification_path}: tooltip classifications must be an object"
+        )
+    unknown_fields = set(raw) - _CLASSIFICATION_FIELDS
+    missing_fields = _CLASSIFICATION_FIELDS - set(raw)
+    if unknown_fields or missing_fields:
+        raise UnsupportedTooltipItemError(
+            f"{classification_path}: invalid classification fields; "
+            f"unknown={sorted(unknown_fields)}, missing={sorted(missing_fields)}"
+        )
+    if raw["schema_version"] != 1 or raw["minecraft_version"] != "1.16.1":
+        raise UnsupportedTooltipItemError(
+            f"{classification_path}: expected schema 1 for Minecraft 1.16.1"
+        )
+
+    name_only = _load_classification_list(classification_path, "name_only", raw["name_only"])
+    equipment = _load_classification_list(classification_path, "equipment", raw["equipment"])
+    raw_descriptions = raw["banner_pattern_descriptions"]
+    if (
+        not isinstance(raw_descriptions, dict)
+        or not all(
+            isinstance(item_id, str)
+            and item_id
+            and isinstance(description, str)
+            and description
+            for item_id, description in raw_descriptions.items()
+        )
+    ):
+        raise UnsupportedTooltipItemError(
+            f"{classification_path}: banner_pattern_descriptions must map item IDs to text"
+        )
+    descriptions = dict(raw_descriptions)
+    categories = (name_only, frozenset(descriptions), equipment)
+    if any(left & right for index, left in enumerate(categories) for right in categories[index + 1:]):
+        raise UnsupportedTooltipItemError(
+            f"{classification_path}: tooltip classification categories overlap"
+        )
+    return TooltipClassifications(name_only, descriptions, equipment)
+
+
 def build_search_item(
     item_id: str,
     name: str,
@@ -203,6 +276,7 @@ def build_search_item(
     *,
     overrides: Mapping[str, TooltipOverride] | None = None,
 ) -> SearchItem:
+    hide_flags = _validated_hide_flags(item_id, output_nbt)
     override = (load_overrides() if overrides is None else overrides).get(item_id)
     if override is not None:
         lines = tuple(
@@ -218,9 +292,32 @@ def build_search_item(
             override_reason=override.reason,
         )
 
+    classifications = load_tooltip_classifications()
+    description = classifications.banner_pattern_descriptions.get(item_id)
+    if description is not None:
+        return SearchItem(
+            item_id=item_id,
+            name=name,
+            search_lines=(
+                SearchLine("name", name),
+                SearchLine("item_description", description),
+            ),
+            generation_method="derived_item_tooltip",
+            confidence="source_reproduced",
+        )
+
     equipment = _equipment_attributes(item_id)
+    if item_id in classifications.equipment and equipment is None:
+        raise UnsupportedTooltipItemError(
+            f"{item_id}: classified as equipment but has no source-backed equipment rule"
+        )
+    if equipment is None and item_id not in classifications.name_only:
+        raise UnsupportedTooltipItemError(
+            f"{item_id}: no source-audited tooltip classification; audit the Minecraft "
+            "1.16.1 item tooltip and add an explicit classification or override"
+        )
     search_lines = [SearchLine("name", name)]
-    if equipment is not None and not _attributes_hidden(output_nbt):
+    if equipment is not None and not _attributes_hidden(hide_flags):
         header, modifiers = equipment
         search_lines.append(SearchLine("attribute_header", header))
         search_lines.extend(
@@ -281,11 +378,49 @@ def _equipment_attributes(
     return header, tuple(modifiers)
 
 
-def _attributes_hidden(output_nbt: dict[str, object] | None) -> bool:
-    if output_nbt is None:
-        return False
-    hide_flags = output_nbt.get("HideFlags", 0)
-    return isinstance(hide_flags, int) and not isinstance(hide_flags, bool) and bool(hide_flags & 2)
+def _validated_hide_flags(
+    item_id: str,
+    output_nbt: dict[str, object] | None,
+) -> int:
+    if output_nbt is None or output_nbt == {}:
+        return 0
+    if not isinstance(output_nbt, dict):
+        raise UnsupportedTooltipDataError(
+            f"{item_id}: output NBT must be an object or null"
+        )
+    unsupported_keys = set(output_nbt) - {"HideFlags"}
+    if unsupported_keys:
+        raise UnsupportedTooltipDataError(
+            f"{item_id}: unsupported tooltip-affecting output NBT keys: "
+            f"{', '.join(sorted(unsupported_keys))}; add source-backed handling "
+            "before generating searchable lines"
+        )
+    hide_flags = output_nbt.get("HideFlags")
+    if not isinstance(hide_flags, int) or isinstance(hide_flags, bool):
+        raise UnsupportedTooltipDataError(
+            f"{item_id}: HideFlags must be an integer in the audited Minecraft 1.16.1 form"
+        )
+    return hide_flags
+
+
+def _attributes_hidden(hide_flags: int) -> bool:
+    return bool(hide_flags & 2)
+
+
+def _load_classification_list(
+    path: Path,
+    field: str,
+    raw: object,
+) -> frozenset[str]:
+    if (
+        not isinstance(raw, list)
+        or not all(isinstance(item_id, str) and item_id for item_id in raw)
+        or raw != sorted(set(raw))
+    ):
+        raise UnsupportedTooltipItemError(
+            f"{path}: {field} must be a sorted list of unique non-empty item IDs"
+        )
+    return frozenset(raw)
 
 
 def _format_modifier(value: Decimal, label: str, scale: Decimal) -> str | None:

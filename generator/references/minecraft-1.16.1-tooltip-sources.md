@@ -81,6 +81,56 @@ add player base attack damage or attack speed and does not use the
 attribute section. This is the only recipe-output NBT behavior reproduced by
 the equipment implementation.
 
+## Banner-pattern item descriptions
+
+The focused follow-up audit uses the same pinned official client and mapping
+artifacts listed above. Fabric intermediary `1.16.1:v2` maps official class
+`bik` to `net/minecraft/class_1745`; Yarn `1.16.1+build.21:v2` maps that class
+to `net.minecraft.item.BannerPatternItem`. Yarn also maps inherited
+`Item.method_7851` to `appendTooltip`, `class_1745.method_7703` to
+`getDescription`, and `class_1745.method_7704` to `getPattern`.
+
+CFR 0.152 decompilation of the official `bik.class` shows that
+`BannerPatternItem.appendTooltip` unconditionally appends the result of
+`getDescription()` formatted gray. `getDescription()` constructs a
+translatable text from `getTranslationKey() + ".desc"`. Unlike the
+attribute-section blank line, these non-empty lines reach
+`TextSearchableContainer` after formatting is stripped.
+
+The official 1.16.1 client language asset contains these exact keys and
+values for the four scoped recipe outputs registered as banner-pattern items:
+
+| Output item | Description key | Searchable line |
+| --- | --- | --- |
+| `minecraft:creeper_banner_pattern` | `item.minecraft.creeper_banner_pattern.desc` | `Creeper Charge` |
+| `minecraft:flower_banner_pattern` | `item.minecraft.flower_banner_pattern.desc` | `Flower Charge` |
+| `minecraft:skull_banner_pattern` | `item.minecraft.skull_banner_pattern.desc` | `Skull Charge` |
+| `minecraft:mojang_banner_pattern` | `item.minecraft.mojang_banner_pattern.desc` | `Thing` |
+
+## Scoped output classification and NBT boundary
+
+The shaped/shapeless corpus contains 634 recipes and 562 distinct outputs.
+The pinned `Items` registrations and item-class tooltip paths were compared
+with those outputs. Default recipe-output stacks divide into 42 equipment
+items with source-backed attribute rules, the four `BannerPatternItem`
+outputs above, and 516 items whose null-player normal tooltip contributes
+only the translated name. Item tooltip overrides that can add lines only when
+stack NBT is present do not add lines to these default output stacks. These
+three disjoint sets are recorded explicitly in
+`tooltip_classifications.json`; generation fails for an item absent from the
+catalog instead of assigning `source_reproduced` by default.
+
+The raw recipe audit found 300 result objects with only `item`, 334 with
+`item` and `count`, and no other result keys. Thus no scoped recipe output
+contains NBT. The strict input boundary nevertheless retains the already
+audited integer `HideFlags` form so bit `2` can hide an equipment attribute
+section. `ItemStack.getTooltip` also has tooltip-affecting paths for stack
+data such as `AttributeModifiers` and `display` content (including `Lore`).
+Because the scoped corpus needs none of those forms, the generator rejects
+every other non-empty output-NBT key and rejects non-integer `HideFlags`
+values with an actionable error. A new NBT form must be source-audited before
+it can produce searchable lines.
+
 ## Copied numeric constants
 
 Every value below comes from the named `1.16.1+build.21` decompilation.
