@@ -89,7 +89,7 @@ Example:
     "name": "Iron Sword",
     "search_lines": [
       { "source": "name", "text": "Iron Sword" },
-      { "source": "attribute_header", "text": "When in Main Hand:" },
+      { "source": "attribute_header", "text": "When in main hand:" },
       { "source": "attribute", "text": "+5 Attack Damage" },
       { "source": "attribute", "text": "-2.4 Attack Speed" }
     ],

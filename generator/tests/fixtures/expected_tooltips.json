@@ -1,0 +1,75 @@
+{
+  "minecraft:diamond_chestplate": [
+    "Diamond Chestplate",
+    "When on body:",
+    "+8 Armor",
+    "+2 Armor Toughness"
+  ],
+  "minecraft:diamond_sword": [
+    "Diamond Sword",
+    "When in main hand:",
+    "+6 Attack Damage",
+    "-2.4 Attack Speed"
+  ],
+  "minecraft:golden_leggings": [
+    "Golden Leggings",
+    "When on legs:",
+    "+3 Armor"
+  ],
+  "minecraft:golden_shovel": [
+    "Golden Shovel",
+    "When in main hand:",
+    "+1.5 Attack Damage",
+    "-3 Attack Speed"
+  ],
+  "minecraft:iron_axe": [
+    "Iron Axe",
+    "When in main hand:",
+    "+8 Attack Damage",
+    "-3.1 Attack Speed"
+  ],
+  "minecraft:iron_helmet": [
+    "Iron Helmet",
+    "When on head:",
+    "+2 Armor"
+  ],
+  "minecraft:iron_sword": [
+    "Iron Sword",
+    "When in main hand:",
+    "+5 Attack Damage",
+    "-2.4 Attack Speed"
+  ],
+  "minecraft:leather_boots": [
+    "Leather Boots",
+    "When on feet:",
+    "+1 Armor"
+  ],
+  "minecraft:netherite_boots": [
+    "Netherite Boots",
+    "When on feet:",
+    "+3 Armor",
+    "+3 Armor Toughness",
+    "+1 Knockback Resistance"
+  ],
+  "minecraft:netherite_hoe": [
+    "Netherite Hoe",
+    "When in main hand:"
+  ],
+  "minecraft:stone_pickaxe": [
+    "Stone Pickaxe",
+    "When in main hand:",
+    "+2 Attack Damage",
+    "-2.8 Attack Speed"
+  ],
+  "minecraft:wooden_hoe": [
+    "Wooden Hoe",
+    "When in main hand:",
+    "-3 Attack Speed"
+  ],
+  "minecraft:wooden_sword": [
+    "Wooden Sword",
+    "When in main hand:",
+    "+3 Attack Damage",
+    "-2.4 Attack Speed"
+  ]
+}

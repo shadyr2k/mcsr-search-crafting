@@ -270,13 +270,13 @@ git commit -m "feat: validate English crafting output names"
 {
   "minecraft:iron_sword": [
     "Iron Sword",
-    "When in Main Hand:",
+    "When in main hand:",
     "+5 Attack Damage",
     "-2.4 Attack Speed"
   ],
   "minecraft:diamond_sword": [
     "Diamond Sword",
-    "When in Main Hand:",
+    "When in main hand:",
     "+6 Attack Damage",
     "-2.4 Attack Speed"
   ]
