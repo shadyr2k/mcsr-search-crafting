@@ -33,7 +33,7 @@ Version 1 excludes:
 
 ## Source Data
 
-The checked-in source-data layout is:
+The local extracted source-data layout is:
 
 ```text
 minecraft-data/
