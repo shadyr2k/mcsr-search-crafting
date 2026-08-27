@@ -8,6 +8,11 @@ import type {
 
 type JsonRecord = Record<string, unknown>
 
+interface IndexedRecipe {
+  recipe: CraftingRecipe
+  sourceIndex: number
+}
+
 export class GeneratedDataError extends Error {
   readonly errors: readonly string[]
 
@@ -135,7 +140,7 @@ function parseIngredientSlots(value: unknown, path: string, errors: string[]): I
   return slots.length === value.length ? slots : undefined
 }
 
-function parseRecipes(value: unknown, errors: string[]): CraftingRecipe[] {
+function parseRecipes(value: unknown, errors: string[]): IndexedRecipe[] {
   const root = getRecord(value, 'recipes', errors)
   if (!root) return []
 
@@ -147,7 +152,7 @@ function parseRecipes(value: unknown, errors: string[]): CraftingRecipe[] {
     return []
   }
 
-  const recipes: CraftingRecipe[] = []
+  const recipes: IndexedRecipe[] = []
   const recipeIds = new Set<string>()
   root.recipes.forEach((rawRecipe, index) => {
     const recipePath = `recipes[${index}]`
@@ -180,16 +185,19 @@ function parseRecipes(value: unknown, errors: string[]): CraftingRecipe[] {
       fits2x2 !== undefined &&
       fits3x3 !== undefined
     ) {
-      recipes.push({ id, outputItemId, outputCount, ingredientSlots, fits2x2, fits3x3 })
+      recipes.push({
+        recipe: { id, outputItemId, outputCount, ingredientSlots, fits2x2, fits3x3 },
+        sourceIndex: index,
+      })
     }
   })
 
   return recipes
 }
 
-function validateRecipeReferences(recipes: CraftingRecipe[], items: Map<string, SearchItem>, errors: string[]) {
-  recipes.forEach((recipe, recipeIndex) => {
-    const recipePath = `recipes[${recipeIndex}]`
+function validateRecipeReferences(recipes: IndexedRecipe[], items: Map<string, SearchItem>, errors: string[]) {
+  recipes.forEach(({ recipe, sourceIndex }) => {
+    const recipePath = `recipes[${sourceIndex}]`
     // Search-item records are generated for recipe outputs. Ingredient IDs can be
     // valid Minecraft items without an independently searchable output record.
     if (!items.has(recipe.outputItemId)) {
@@ -201,14 +209,14 @@ function validateRecipeReferences(recipes: CraftingRecipe[], items: Map<string, 
 export function parseGeneratedData(itemsPayload: unknown, recipesPayload: unknown): GeneratedData {
   const errors: string[] = []
   const items = parseItems(itemsPayload, errors)
-  const recipes = parseRecipes(recipesPayload, errors)
-  validateRecipeReferences(recipes, items, errors)
+  const indexedRecipes = parseRecipes(recipesPayload, errors)
+  validateRecipeReferences(indexedRecipes, items, errors)
 
   if (errors.length > 0) {
     throw new GeneratedDataError(errors)
   }
 
-  return { schemaVersion: 1, items, recipes }
+  return { schemaVersion: 1, items, recipes: indexedRecipes.map(({ recipe }) => recipe) }
 }
 
 async function fetchJson(url: string): Promise<unknown> {
