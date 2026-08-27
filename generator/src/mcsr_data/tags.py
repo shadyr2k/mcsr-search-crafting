@@ -42,11 +42,9 @@ class TagResolver:
         for value, required in values:
             if value.startswith("#"):
                 nested_tag = _normalize_id(value[1:])
-                try:
-                    items.update(self._resolve(nested_tag, (*chain, tag_id)))
-                except TagResolutionError:
-                    if required:
-                        raise
+                if nested_tag not in self._definitions and not required:
+                    continue
+                items.update(self._resolve(nested_tag, (*chain, tag_id)))
             else:
                 items.add(_normalize_id(value))
         resolved = frozenset(items)
