@@ -11,6 +11,7 @@ class IngredientRef:
 @dataclass(frozen=True)
 class IngredientSlot:
     options: tuple[IngredientRef, ...]
+    accepted_items: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

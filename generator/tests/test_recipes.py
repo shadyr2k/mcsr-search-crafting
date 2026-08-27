@@ -1,6 +1,9 @@
 import pytest
 
-from mcsr_data.recipes import RecipeParseError, parse_recipe
+from pathlib import Path
+
+from mcsr_data.recipes import RecipeParseError, parse_recipe, resolve_recipe_ingredients
+from mcsr_data.tags import TagResolver
 
 
 def test_shaped_recipe_is_trimmed_and_grid_compatible():
@@ -51,3 +54,25 @@ def test_shaped_recipe_with_unknown_pattern_symbol_is_rejected():
             "key": {},
             "result": {"item": "minecraft:test_item"},
         })
+
+
+def test_resolve_recipe_ingredients_replaces_each_slot_with_concrete_alternatives():
+    recipe = parse_recipe("minecraft:test", {
+        "type": "minecraft:crafting_shapeless",
+        "ingredients": [
+            [{"item": "minecraft:stick"}, {"tag": "minecraft:planks"}],
+            {"item": "minecraft:stick"},
+        ],
+        "result": {"item": "minecraft:test_item"},
+    })
+
+    resolved = resolve_recipe_ingredients(recipe, TagResolver.from_directory(Path("minecraft-data/tags/items")))
+
+    assert [slot.accepted_items for slot in resolved.ingredient_slots] == [
+        (
+            "minecraft:acacia_planks", "minecraft:birch_planks", "minecraft:crimson_planks",
+            "minecraft:dark_oak_planks", "minecraft:jungle_planks", "minecraft:oak_planks",
+            "minecraft:spruce_planks", "minecraft:stick", "minecraft:warped_planks",
+        ),
+        ("minecraft:stick",),
+    ]

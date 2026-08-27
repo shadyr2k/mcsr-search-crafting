@@ -1,8 +1,10 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Literal, cast
 
 from mcsr_data.models import IngredientRef, IngredientSlot, NormalizedRecipe
+from mcsr_data.tags import TagResolver
 
 
 class RecipeParseError(ValueError):
@@ -49,6 +51,22 @@ def load_crafting_recipes(path: Path) -> list[NormalizedRecipe]:
         if recipe is not None:
             recipes.append(recipe)
     return recipes
+
+
+def resolve_recipe_ingredients(recipe: NormalizedRecipe, tags: TagResolver) -> NormalizedRecipe:
+    """Return a recipe whose slots include each concrete accepted item."""
+    slots = tuple(
+        replace(
+            slot,
+            accepted_items=tuple(sorted({
+                item
+                for option in slot.options
+                for item in (tags.resolve(option.value) if option.kind == "tag" else (option.value,))
+            })),
+        )
+        for slot in recipe.ingredient_slots
+    )
+    return replace(recipe, ingredient_slots=slots)
 
 
 def _parse_result(recipe_id: str, raw_result: object) -> tuple[str, int]:
