@@ -1,0 +1,53 @@
+import pytest
+
+from mcsr_data.recipes import RecipeParseError, parse_recipe
+
+
+def test_shaped_recipe_is_trimmed_and_grid_compatible():
+    recipe = parse_recipe("minecraft:test", {
+        "type": "minecraft:crafting_shaped",
+        "pattern": [" A ", " B "],
+        "key": {"A": {"item": "minecraft:iron_ingot"}, "B": {"item": "minecraft:stick"}},
+        "result": {"item": "minecraft:iron_sword"},
+    })
+    assert recipe.width == 1
+    assert recipe.height == 2
+    assert recipe.fits_2x2 is True
+
+
+def test_non_crafting_recipe_is_ignored():
+    assert parse_recipe("minecraft:coal", {
+        "type": "minecraft:smelting",
+        "ingredient": {"item": "minecraft:coal_ore"},
+        "result": "minecraft:coal",
+    }) is None
+
+
+def test_shapeless_recipe_preserves_repeated_slots_and_counts_them():
+    recipe = parse_recipe("minecraft:test", {
+        "type": "minecraft:crafting_shapeless",
+        "ingredients": [
+            {"item": "minecraft:red_dye"},
+            [{"item": "minecraft:blue_dye"}, {"tag": "minecraft:green_dyes"}],
+            {"item": "minecraft:red_dye"},
+        ],
+        "result": {"item": "minecraft:test_item", "count": 2},
+    })
+    assert recipe.width == 3
+    assert recipe.height == 1
+    assert recipe.fits_2x2 is True
+    assert recipe.output_count == 2
+    assert [slot.options[0].value for slot in recipe.ingredient_slots] == [
+        "minecraft:red_dye", "minecraft:blue_dye", "minecraft:red_dye",
+    ]
+    assert recipe.ingredient_slots[1].options[1].kind == "tag"
+
+
+def test_shaped_recipe_with_unknown_pattern_symbol_is_rejected():
+    with pytest.raises(RecipeParseError, match="missing key"):
+        parse_recipe("minecraft:bad", {
+            "type": "minecraft:crafting_shaped",
+            "pattern": ["A"],
+            "key": {},
+            "result": {"item": "minecraft:test_item"},
+        })

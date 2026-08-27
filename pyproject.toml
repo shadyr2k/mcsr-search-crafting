@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcsr-search-data"
+version = "0.1.0"
+requires-python = ">=3.11"
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10"]
+
+[tool.setuptools]
+package-dir = {"" = "generator/src"}
+
+[tool.setuptools.packages.find]
+where = ["generator/src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["generator/src"]
+testpaths = ["generator/tests"]
