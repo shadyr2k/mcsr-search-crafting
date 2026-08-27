@@ -1,6 +1,6 @@
 import type { SearchItem } from '../domain/types'
 
-import { normalizeSearchText } from './search'
+import { normalizeSearchLine } from './search'
 
 const MAX_QUERY_LENGTH = 5
 
@@ -10,10 +10,10 @@ export function candidateQueries(targets: Iterable<SearchItem>, maxLength = MAX_
 
   for (const target of targets) {
     for (const { text } of target.searchLines) {
-      const line = normalizeSearchText(text)
-      for (let start = 0; start < line.length; start += 1) {
-        for (let length = 1; length <= effectiveMaxLength && start + length <= line.length; length += 1) {
-          candidates.add(line.slice(start, start + length))
+      const line = normalizeSearchLine(text)
+      for (const start of line.originalCharacterStarts) {
+        for (let length = 1; length <= effectiveMaxLength && start + length <= line.text.length; length += 1) {
+          candidates.add(line.text.slice(start, start + length))
         }
       }
     }

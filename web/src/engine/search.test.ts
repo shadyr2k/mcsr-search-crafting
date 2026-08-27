@@ -48,4 +48,18 @@ describe('matchItem', () => {
     expect(matchItem(item, '')).toEqual([])
     expect(matchItem(item, 'Sword!')).toEqual([])
   })
+
+  test('maps a match after an expanded lowercase character to the original span', () => {
+    const expandedItem: SearchItem = {
+      ...item,
+      searchLines: [{ source: 'name', text: 'İx' }],
+    }
+
+    expect(matchItem(expandedItem, 'x')).toEqual([{
+      itemId: 'minecraft:diamond_sword',
+      source: 'name',
+      line: 'İx',
+      matchedSpan: { start: 1, end: 2, text: 'x' },
+    }])
+  })
 })

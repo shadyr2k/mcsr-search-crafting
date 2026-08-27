@@ -32,4 +32,12 @@ describe('candidateQueries', () => {
     expect(candidateQueries([target('minecraft:long', ['abcdef'])], 10)).not.toContain('abcdef')
     expect(candidateQueries([target('minecraft:long', ['abcdef'])], 0)).toEqual([])
   })
+
+  test('does not begin candidates inside an expanded lowercase character', () => {
+    const candidates = candidateQueries([target('minecraft:expanded', ['İx'])])
+
+    expect(candidates).toEqual(['i', 'i̇', 'i̇x', 'x'])
+    expect(candidates).not.toContain('̇')
+    expect(candidates).not.toContain('̇x')
+  })
 })
