@@ -131,9 +131,9 @@ Define `IngredientRef(kind: Literal["item", "tag"], value: str)`, `IngredientSlo
 
 Run: `python -m pytest generator/tests/test_recipes.py -v`
 
-Run: `python -c "from pathlib import Path; from mcsr_data.recipes import load_crafting_recipes; r=load_crafting_recipes(Path('minecraft-data/recipes')); assert len(r)==633; print(len(r))"`
+Run: `python -c "from pathlib import Path; from mcsr_data.recipes import load_crafting_recipes; r=load_crafting_recipes(Path('minecraft-data/recipes')); assert len(r)==634; print(len(r))"`
 
-Expected: tests PASS and count prints `633`.
+Expected: tests PASS and count prints `634`.
 
 - [ ] **Step 6: Commit the recipe parser**
 
@@ -239,7 +239,7 @@ Try `item.<namespace>.<path>` first, then `block.<namespace>.<path>`. Never synt
 
 Run: `python -m pytest generator/tests/test_translations.py generator/tests/test_validation.py -v`
 
-Run a focused integration test that loads all 633 recipes, deduplicates output IDs, and calls `item_name` for each.
+Run a focused integration test that loads all 634 recipes, deduplicates output IDs, and calls `item_name` for each.
 
 Expected: PASS or an explicit fixture-backed exception list added as validation data, never silent fallback text.
 
@@ -359,7 +359,7 @@ Add a `mcsr-generate` script entry point accepting `--source minecraft-data` and
 
 Run: `python -m mcsr_data.generate --source minecraft-data --output web/public/data`
 
-Expected: 633 recipes processed, all tag references resolved, every distinct output named, zero validation errors, and three JSON outputs created.
+Expected: 634 recipes processed, all tag references resolved, every distinct output named, zero validation errors, and three JSON outputs created.
 
 - [ ] **Step 5: Verify determinism and all Python tests**
 

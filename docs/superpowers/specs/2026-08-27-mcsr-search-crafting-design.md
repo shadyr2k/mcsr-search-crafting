@@ -44,7 +44,7 @@ minecraft-data/
     └── en_us.json
 ```
 
-The recipe folder currently contains 859 JSON files, of which 490 are shaped and 143 are shapeless. The item-tag folder contains 54 JSON files. The English language file contains 4,754 translation entries.
+The recipe folder currently contains 859 JSON files, of which 491 are shaped and 143 are shapeless. The item-tag folder contains 54 JSON files. The English language file contains 4,754 translation entries.
 
 ## Architecture
 
