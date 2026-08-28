@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import './App.css'
 import { InventoryPanel } from './components/InventoryPanel'
+import { ResultPanel } from './components/ResultPanel'
 import { TargetSetList } from './components/TargetSetList'
 import { loadGeneratedData } from './data/schema'
 import type { CustomInventoryPreset, GeneratedData, TargetWorkspace } from './domain/types'
+import { optimizeWorkspace, type WorkspaceResult } from './engine/optimizeWorkspace'
 import {
   clearCustomInventorySlot,
   loadCustomInventorySlots,
@@ -38,6 +40,10 @@ function App() {
   const [workspace, setWorkspace] = useState<TargetWorkspace>({ entries: [] })
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false)
   const [warning, setWarning] = useState<string | undefined>()
+  const [optimization, setOptimization] = useState<WorkspaceResult | undefined>()
+  const [optimizationPending, setOptimizationPending] = useState(false)
+  const [optimizationError, setOptimizationError] = useState<string | undefined>()
+  const optimizationRequestId = useRef(0)
 
   useEffect(() => {
     const slotsResult = loadCustomInventorySlots()
@@ -58,6 +64,32 @@ function App() {
   useEffect(() => {
     if (workspaceLoaded && data) saveTargetWorkspace(workspace)
   }, [data, workspace, workspaceLoaded])
+
+  useEffect(() => {
+    if (!data) return
+
+    const requestId = ++optimizationRequestId.current
+    const controller = new AbortController()
+    setOptimization(undefined)
+    setOptimizationError(undefined)
+    setOptimizationPending(true)
+
+    optimizeWorkspace(data, new Set(inventoryItemIds), workspace.entries, { signal: controller.signal })
+      .then((result) => {
+        if (requestId !== optimizationRequestId.current) return
+        setOptimization(result)
+        setOptimizationPending(false)
+      })
+      .catch((optimizationFailure: unknown) => {
+        if (controller.signal.aborted || requestId !== optimizationRequestId.current) return
+        setOptimizationError(optimizationFailure instanceof Error
+          ? optimizationFailure.message
+          : 'Workspace optimization failed.')
+        setOptimizationPending(false)
+      })
+
+    return () => controller.abort()
+  }, [data, inventoryItemIds, workspace])
 
   function loadPreset(preset: { name: string, itemIds: readonly string[] }) {
     setInventoryName(preset.name)
@@ -87,9 +119,6 @@ function App() {
       <p>Build an exact infinite inventory, then compare craftable search targets.</p>
     </header>
 
-    {warning && <p className="app-warning" role="alert">{warning}</p>}
-    {error && <p className="app-error" role="alert">{error}</p>}
-    {!data && !error && <p className="loading-state">Loading the searchable crafting dataset…</p>}
     {data && <div className="tool-grid">
       <InventoryPanel
         items={data.items}
@@ -106,6 +135,13 @@ function App() {
       />
       <TargetSetList items={data.items} recipes={data.recipes} workspace={workspace} onWorkspaceChange={setWorkspace} />
     </div>}
+    <ResultPanel
+      items={data?.items ?? new Map()}
+      result={optimization}
+      pending={(!data && !error) || optimizationPending}
+      warning={warning}
+      error={error ?? optimizationError}
+    />
   </main>
 }
 

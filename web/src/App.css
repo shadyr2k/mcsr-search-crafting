@@ -44,3 +44,28 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .app-warning { background: #fff2bf; border-left: 0.3rem solid #b07911; padding: 0.65rem; }
 .target-candidates li, .target-list li { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.35rem 0; border-top: 1px dashed #d5cebc; }
 .empty-state, .loading-state { color: #5f624e; }
+.result-panel { margin-top: 1.5rem; }
+.aggregate-score { font-size: 1.3rem; font-weight: 800; color: #25371b; }
+.entry-results { margin-top: 1.25rem; border: 1px solid #8d8267; background: #fffdf6; padding: 1rem; }
+.entry-results > header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; border-bottom: 1px solid #d5cebc; }
+.entry-results > header h3, .entry-results > header p { margin: 0 0 0.7rem; }
+.result-promotion { border-left: 0.3rem solid #769948; background: #edf4df; padding: 0.6rem; font-weight: 700; }
+.result-category { margin-top: 1rem; }
+.result-category h4 { margin-bottom: 0.5rem; }
+.ranked-result { border-left: 0.25rem solid #b3a889; padding-left: 0.9rem; }
+.ranked-result h5 { margin: 0.5rem 0; font-size: 1rem; }
+.ranked-result h6 { margin: 0.75rem 0 0.35rem; font-size: 0.9rem; }
+.ranked-result p { margin: 0.35rem 0; }
+.score-breakdown { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.45rem; margin: 0.75rem 0; }
+.score-breakdown div { border: 1px solid #d5cebc; padding: 0.45rem; }
+.score-breakdown dt { color: #5d5746; font-size: 0.78rem; }
+.score-breakdown dd { margin: 0.1rem 0 0; font-weight: 800; }
+.result-steps { display: grid; gap: 0.75rem; padding-left: 1.5rem; }
+.result-step { border-top: 1px dashed #c6bfa9; padding-top: 0.5rem; }
+.match-explanations { display: grid; gap: 0.35rem; list-style: none; padding: 0; margin: 0.45rem 0; }
+.match-explanation { display: grid; gap: 0.15rem; font-size: 0.86rem; color: #5d5746; }
+.search-line { display: block; width: fit-content; padding: 0.2rem 0.35rem; background: #f0ead8; color: #282416; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.search-line mark { background: #f4d35e; color: inherit; font-weight: 800; }
+.incomplete-result { margin-top: 0.9rem; border-left: 0.3rem solid #8d2424; background: #fbe8e5; padding: 0.75rem; }
+.incomplete-result h4, .incomplete-result p { margin: 0.35rem 0; }
+.result-data-error { color: #8d2424; font-weight: 650; }

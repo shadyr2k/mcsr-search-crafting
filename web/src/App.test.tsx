@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import App from './App'
@@ -74,5 +74,35 @@ describe('App persistence', () => {
     const warning = await screen.findByRole('alert')
     expect(warning.textContent).toMatch(/inventory-slots/i)
     expect(warning.textContent).toMatch(/target-workspace/i)
+  })
+
+  test('re-optimizes the persisted workspace when the controlled inventory changes', async () => {
+    localStorage.setItem(targetWorkspaceKey, JSON.stringify({
+      schemaVersion: 1,
+      entries: [{
+        id: 'saved-set', targetIds: ['minecraft:stick'], enabled: true, gridSize: 3, order: 0,
+      }],
+    }))
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+      ok: true,
+      json: async () => url.includes('search-items') ? itemsPayload : {
+        ...recipesPayload,
+        recipes: [{
+          ...recipesPayload.recipes[0],
+          ingredient_slots: [{ accepted_items: ['minecraft:stick'] }],
+        }],
+      },
+    })))
+
+    render(<App />)
+
+    expect(await screen.findByText(/Maximum failure score:/)).toBeTruthy()
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search inventory items' }), {
+      target: { value: 'stick' },
+    })
+    fireEvent.click(screen.getByRole('checkbox', { name: /stick/i }))
+
+    await waitFor(() => expect(screen.getByText('Aggregate score: 0')).toBeTruthy())
+    expect(screen.getByRole('region', { name: 'Single-query results for set 1' })).toBeTruthy()
   })
 })
