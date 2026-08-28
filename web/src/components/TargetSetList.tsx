@@ -14,16 +14,13 @@ function orderedEntries(entries: readonly TargetWorkspaceEntry[]): TargetWorkspa
   return [...entries].sort((left, right) => left.order - right.order || left.id.localeCompare(right.id))
 }
 
-function nextEntryId(entries: readonly TargetWorkspaceEntry[]): string {
-  const highest = entries.reduce((current, entry) => {
-    const match = /^target-set-(\d+)$/.exec(entry.id)
-    return match ? Math.max(current, Number(match[1])) : current
-  }, 0)
-  return `target-set-${highest + 1}`
-}
-
-function entryNumber(entry: TargetWorkspaceEntry): string {
-  return entry.id.replace(/^target-set-/, '') || entry.id
+function freshEntryId(entries: readonly TargetWorkspaceEntry[]): string {
+  const existing = new Set(entries.map((entry) => entry.id))
+  const base = globalThis.crypto?.randomUUID?.() ?? String(Date.now())
+  let candidate = `target-set-${base}`
+  let suffix = 1
+  while (existing.has(candidate)) candidate = `target-set-${base}-${suffix++}`
+  return candidate
 }
 
 function withUpdatedEntry(
@@ -44,15 +41,17 @@ export function TargetSetList({ items, recipes, workspace, onWorkspaceChange }: 
   const entries = orderedEntries(workspace.entries)
 
   function addSet() {
+    const id = freshEntryId(workspace.entries)
     onWorkspaceChange({
       entries: [...workspace.entries, {
-        id: nextEntryId(workspace.entries),
+        id,
         targetIds: [],
         enabled: true,
         gridSize: 3,
         order: workspace.entries.length,
       }],
     })
+    setQueries((current) => ({ ...current, [id]: '' }))
   }
 
   function addTarget(entry: TargetWorkspaceEntry, targetId: string) {
@@ -96,7 +95,7 @@ export function TargetSetList({ items, recipes, workspace, onWorkspaceChange }: 
       {entries.map((entry, index) => <TargetSetEditor
         key={entry.id}
         entry={entry}
-        entryLabel={entryNumber(entry)}
+        entryLabel={String(index + 1)}
         items={items}
         recipes={recipes}
         query={queries[entry.id] ?? ''}
@@ -108,7 +107,14 @@ export function TargetSetList({ items, recipes, workspace, onWorkspaceChange }: 
         onRemoveTarget={(targetId) => removeTarget(entry, targetId)}
         onChange={(update) => onWorkspaceChange(withUpdatedEntry(workspace, entry.id, update))}
         onMove={(delta) => moveEntry(entry.id, delta)}
-        onRemoveSet={() => onWorkspaceChange({ entries: workspace.entries.filter((candidate) => candidate.id !== entry.id) })}
+        onRemoveSet={() => {
+          onWorkspaceChange({ entries: workspace.entries.filter((candidate) => candidate.id !== entry.id) })
+          setQueries((current) => {
+            const remaining = { ...current }
+            delete remaining[entry.id]
+            return remaining
+          })
+        }}
       />)}
     </div>
   </section>

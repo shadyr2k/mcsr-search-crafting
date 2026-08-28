@@ -71,7 +71,7 @@ describe('InventoryPanel', () => {
     expect(screen.getByText('2 selected items')).toBeTruthy()
   })
 
-  test('names, saves, loads, and clears each custom slot', () => {
+  test('restores each custom slot independently after the working name and items change', () => {
     render(<PanelHarness />)
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Inventory name' }), {
@@ -82,12 +82,29 @@ describe('InventoryPanel', () => {
     })
     fireEvent.click(screen.getByRole('checkbox', { name: /oak log/i }))
 
-    for (const slot of [1, 2, 3]) {
-      fireEvent.click(screen.getByRole('button', { name: `Save slot ${slot}` }))
-      expect(screen.getByRole('button', { name: `Load slot ${slot}` })).toBeTruthy()
-      fireEvent.click(screen.getByRole('button', { name: `Load slot ${slot}` }))
-      fireEvent.click(screen.getByRole('button', { name: `Clear slot ${slot}` }))
-      expect(screen.queryByRole('button', { name: `Load slot ${slot}` })).toBeNull()
-    }
+    fireEvent.click(screen.getByRole('button', { name: 'Save slot 1' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Inventory name' }), { target: { value: 'Planks only' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: /oak log/i }))
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search inventory items' }), { target: { value: 'oak planks' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: /oak planks/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save slot 2' }))
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Inventory name' }), { target: { value: 'Temporary' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: /oak planks/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Load slot 1' }))
+
+    expect(screen.getByRole('textbox', { name: 'Inventory name' })).toHaveProperty('value', 'Logs only')
+    expect(screen.getByText('1 selected item')).toBeTruthy()
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search inventory items' }), { target: { value: 'oak log' } })
+    expect(screen.getByRole('checkbox', { name: /oak log/i })).toHaveProperty('checked', true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear slot 1' }))
+    expect(screen.queryByRole('button', { name: 'Load slot 1' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Load slot 2' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Load slot 2' }))
+
+    expect(screen.getByRole('textbox', { name: 'Inventory name' })).toHaveProperty('value', 'Planks only')
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search inventory items' }), { target: { value: 'oak planks' } })
+    expect(screen.getByRole('checkbox', { name: /oak planks/i })).toHaveProperty('checked', true)
   })
 })

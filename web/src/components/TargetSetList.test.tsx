@@ -62,8 +62,35 @@ describe('TargetSetList', () => {
     expect(screen.getByText(/Iron Sword cannot be crafted in a 2x2 grid/i)).toBeTruthy()
   })
 
-  test('removes targets, toggles entries, and reorders entries', () => {
+  test('prevents duplicate targets and removes a complete target set', () => {
     render(<ListHarness />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add target set' }))
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search targets for set 1' }), { target: { value: 'stick' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add Stick' }))
+
+    expect(screen.queryByRole('button', { name: 'Add Stick' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove set 1' }))
+
+    expect(screen.queryByRole('heading', { name: 'Target set 1' })).toBeNull()
+    expect(screen.getByText('Add a set to start selecting crafted outputs.')).toBeTruthy()
+  })
+
+  test('does not carry a removed set search query into a new set', () => {
+    render(<ListHarness />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add target set' }))
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search targets for set 1' }), { target: { value: 'iron sword' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Remove set 1' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add target set' }))
+
+    expect(screen.getByRole('searchbox', { name: 'Search targets for set 1' })).toHaveProperty('value', '')
+    expect(screen.getByRole('button', { name: 'Add Stick' })).toBeTruthy()
+  })
+
+  test('toggles entries and reorders the persisted entry state', () => {
+    const onPersist = vi.fn()
+    render(<ListHarness onPersist={onPersist} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Add target set' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add target set' }))
@@ -71,10 +98,13 @@ describe('TargetSetList', () => {
     fireEvent.click(within(screen.getByRole('article', { name: 'Target set 1' })).getByRole('button', { name: 'Add Stick' }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'Enable set 1' }))
     fireEvent.click(screen.getByRole('button', { name: 'Move set 2 up' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Stick from set 1' }))
 
-    expect(screen.getByRole('checkbox', { name: 'Enable set 1' })).toHaveProperty('checked', false)
-    expect(within(screen.getByRole('article', { name: 'Target set 1' })).getByText('No targets yet.')).toBeTruthy()
-    expect(screen.getByText('Target set 2')).toBeTruthy()
+    expect(screen.getByRole('checkbox', { name: 'Enable set 2' })).toHaveProperty('checked', false)
+    expect(onPersist).toHaveBeenLastCalledWith(expect.objectContaining({
+      entries: [
+        expect.objectContaining({ targetIds: [], order: 0 }),
+        expect.objectContaining({ targetIds: ['minecraft:stick'], enabled: false, order: 1 }),
+      ],
+    }))
   })
 })

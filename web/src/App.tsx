@@ -14,6 +14,21 @@ import {
 } from './persistence/storage'
 import { BUILT_IN_INVENTORY_PRESETS } from './presets/builtInPresets'
 
+function normalizeWorkspaceGridSizes(workspace: TargetWorkspace, data: GeneratedData): TargetWorkspace {
+  let changed = false
+  const entries = workspace.entries.map((entry) => {
+    const supports2x2 = entry.targetIds.every((targetId) => data.recipes.some((recipe) =>
+      recipe.outputItemId === targetId && recipe.fits2x2,
+    ))
+    if (entry.gridSize === 2 && !supports2x2) {
+      changed = true
+      return { ...entry, gridSize: 3 as const }
+    }
+    return entry
+  })
+  return changed ? { entries } : workspace
+}
+
 function App() {
   const [data, setData] = useState<GeneratedData | undefined>()
   const [error, setError] = useState<string | undefined>()
@@ -29,17 +44,20 @@ function App() {
     const workspaceResult = loadTargetWorkspace()
     setCustomSlots(slotsResult.value)
     setWorkspace(workspaceResult.value)
-    setWarning(slotsResult.warning ?? workspaceResult.warning)
+    setWarning([slotsResult.warning, workspaceResult.warning].filter((message): message is string => Boolean(message)).join(' '))
     setWorkspaceLoaded(true)
 
-    loadGeneratedData().then(setData).catch((loadError: unknown) => {
+    loadGeneratedData().then((loadedData) => {
+      setWorkspace((current) => normalizeWorkspaceGridSizes(current, loadedData))
+      setData(loadedData)
+    }).catch((loadError: unknown) => {
       setError(loadError instanceof Error ? loadError.message : 'The crafting data could not be loaded.')
     })
   }, [])
 
   useEffect(() => {
-    if (workspaceLoaded) saveTargetWorkspace(workspace)
-  }, [workspace, workspaceLoaded])
+    if (workspaceLoaded && data) saveTargetWorkspace(workspace)
+  }, [data, workspace, workspaceLoaded])
 
   function loadPreset(preset: { name: string, itemIds: readonly string[] }) {
     setInventoryName(preset.name)
