@@ -28,3 +28,26 @@ export interface GeneratedData {
   items: Map<string, SearchItem>
   recipes: CraftingRecipe[]
 }
+
+export interface InventoryPreset {
+  id: string
+  name: string
+  itemIds: string[]
+}
+
+export interface CustomInventoryPreset {
+  name: string
+  itemIds: string[]
+}
+
+export interface TargetWorkspaceEntry {
+  id: string
+  targetIds: string[]
+  enabled: boolean
+  gridSize: 2 | 3
+  order: number
+}
+
+export interface TargetWorkspace {
+  entries: TargetWorkspaceEntry[]
+}
