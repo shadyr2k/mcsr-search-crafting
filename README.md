@@ -19,7 +19,16 @@ pnpm --dir web install --frozen-lockfile
 pnpm --dir web exec playwright install chromium
 ```
 
-On macOS or Linux, replace `.\.venv\Scripts\python.exe` with `./.venv/bin/python`. The Playwright browser download is a one-time setup for the end-to-end suite.
+On macOS or Linux, create the environment and install the Python package with:
+
+```sh
+python3 -m venv .venv
+./.venv/bin/python -m pip install -e ".[test]"
+pnpm --dir web install --frozen-lockfile
+pnpm --dir web exec playwright install chromium
+```
+
+Use `./.venv/bin/python` for the Python commands below. The Playwright browser download is a one-time setup for the end-to-end suite.
 
 ## Generate, develop, and verify
 
@@ -29,7 +38,7 @@ Generate the browser data from the pinned source tree:
 .\.venv\Scripts\python.exe -m mcsr_data.generate --source minecraft-data --output web/public/data
 ```
 
-A successful run reports the recipe and output-item counts and `0 validation errors`. It atomically writes:
+The clean Minecraft 1.16.1 English baseline generates exactly 634 recipes and 562 output items with 0 validation errors. The command atomically writes:
 
 - `web/public/data/search-items.json`: output item names, line-bounded searchable text, provenance, and confidence.
 - `web/public/data/crafting-recipes.json`: normalized recipes, resolved ingredient alternatives, output counts, and grid compatibility.
@@ -54,7 +63,7 @@ pnpm --dir web run build
 pnpm --dir web run e2e
 ```
 
-The browser test starts Vite on `127.0.0.1`, runs Chromium at a desktop viewport, and uses accessible roles and labels to exercise real generated data. It selects an explicit inventory, creates and configures a target set, verifies ranked single-query and overlap results, disables the set, and verifies that the aggregate excludes it.
+The two browser tests start Vite on `127.0.0.1` and run Chromium at an explicit 1440×1000 desktop viewport. The real-data path uses accessible roles and labels, verifies keyboard focus order, selects an explicit inventory, checks representative queries, target coverage, and scores in both ranked categories, excludes a disabled set from the aggregate, then reloads to verify target membership, enabled state, grid size, and set order persisted. A deterministic routed data fixture passes through the real App and `ResultPanel` boundary to verify that `😀İx` renders unchanged, reports its `name` source and UTF-16 span 3–4, and marks only `x`.
 
 The production build is emitted to the ignored `web/dist/` directory. Its files use relative asset paths and can be hosted by an ordinary static-file server.
 

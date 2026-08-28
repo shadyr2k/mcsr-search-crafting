@@ -7,12 +7,14 @@ export default defineConfig({
   reporter: 'list',
   use: {
     baseURL: 'http://127.0.0.1:5173',
-    viewport: { width: 1440, height: 1000 },
     trace: 'retain-on-failure',
   },
   projects: [{
     name: 'chromium',
-    use: { ...devices['Desktop Chrome'] },
+    use: {
+      ...devices['Desktop Chrome'],
+      viewport: { width: 1440, height: 1000 },
+    },
   }],
   webServer: {
     command: 'pnpm run dev --host 127.0.0.1',
