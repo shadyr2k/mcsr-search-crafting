@@ -81,6 +81,21 @@ function recover<T>(storage: Storage, key: string, recordName: string, raw: stri
   }
 }
 
+function recoverInvalidMembers<T>(
+  storage: Storage,
+  recordName: string,
+  raw: string,
+  value: T,
+  save: (value: T, storage: Storage) => void,
+): PersistenceLoadResult<T> {
+  storage.setItem(recoveryKey(recordName, storage), raw)
+  save(value, storage)
+  return {
+    value,
+    warning: `Saved ${recordName} data contained invalid entries. Valid data was preserved and the original data was saved for recovery.`,
+  }
+}
+
 function parseJson(storage: Storage, key: string): unknown | null {
   const raw = storage.getItem(key)
   if (raw === null) return null
@@ -108,11 +123,13 @@ export function loadCustomInventorySlots(storage?: Storage): PersistenceLoadResu
     if (parsed.schemaVersion !== 0 && parsed.schemaVersion !== 1) {
       return recover(target, INVENTORY_SLOTS_KEY, 'inventory-slots', raw, defaultSlots())
     }
-    if (!parsed.slots.every((slot) => slot === null || isCustomInventoryPreset(slot))) {
-      return recover(target, INVENTORY_SLOTS_KEY, 'inventory-slots', raw, defaultSlots())
+    const slots = parsed.slots.map((slot) =>
+      slot === null || isCustomInventoryPreset(slot) ? slot : null,
+    ) as Array<CustomInventoryPreset | null>
+    const hasInvalidSlot = parsed.slots.some((slot) => slot !== null && !isCustomInventoryPreset(slot))
+    if (hasInvalidSlot) {
+      return recoverInvalidMembers(target, 'inventory-slots', raw, slots, saveSlots)
     }
-
-    const slots = parsed.slots as Array<CustomInventoryPreset | null>
     if (parsed.schemaVersion === 0) saveSlots(slots, target)
     return { value: slots, warning: undefined }
   } catch {
@@ -151,12 +168,14 @@ export function loadTargetWorkspace(storage?: Storage): PersistenceLoadResult<Ta
   try {
     const parsed = parseJson(target, TARGET_WORKSPACE_KEY)
     if (!isRecord(parsed) || !Array.isArray(parsed.entries)
-      || (parsed.schemaVersion !== 0 && parsed.schemaVersion !== 1)
-      || !parsed.entries.every(isTargetWorkspaceEntry)) {
+      || (parsed.schemaVersion !== 0 && parsed.schemaVersion !== 1)) {
       return recover(target, TARGET_WORKSPACE_KEY, 'target-workspace', raw, defaultWorkspace())
     }
 
-    const workspace = { entries: parsed.entries as TargetWorkspaceEntry[] }
+    const workspace = { entries: parsed.entries.filter(isTargetWorkspaceEntry) }
+    if (workspace.entries.length !== parsed.entries.length) {
+      return recoverInvalidMembers(target, 'target-workspace', raw, workspace, saveTargetWorkspace)
+    }
     if (parsed.schemaVersion === 0) saveTargetWorkspace(workspace, target)
     return { value: workspace, warning: undefined }
   } catch {

@@ -61,6 +61,12 @@ function workspace() {
   }
 }
 
+function recoveryValue(storage: Storage, recordName: string): string | null {
+  const key = Array.from({ length: storage.length }, (_, index) => storage.key(index))
+    .find((candidate) => candidate?.startsWith(`mcsr.recovery.${recordName}.`))
+  return key ? storage.getItem(key) : null
+}
+
 describe('custom inventory slot persistence', () => {
   test('round trips exactly three name-and-item-only slots', () => {
     const storage = new MemoryStorage()
@@ -108,6 +114,40 @@ describe('custom inventory slot persistence', () => {
       null,
     ])
   })
+
+  test('drops a malformed slot while preserving valid siblings and its raw recovery record', () => {
+    const storage = new MemoryStorage()
+    const raw = JSON.stringify({
+      schemaVersion: 1,
+      slots: [inventory('wood', ['minecraft:oak_log']), { name: 'bad', itemIds: 'not-an-array' }, inventory('iron', ['minecraft:iron_ingot'])],
+    })
+    storage.setItem('mcsr.inventory-slots.v1', raw)
+
+    const loaded = loadCustomInventorySlots(storage)
+
+    expect(loaded.value).toEqual([
+      inventory('wood', ['minecraft:oak_log']),
+      null,
+      inventory('iron', ['minecraft:iron_ingot']),
+    ])
+    expect(loaded.warning).toMatch(/inventory/i)
+    expect(recoveryValue(storage, 'inventory-slots')).toBe(raw)
+  })
+
+  test('rejects a persisted preset with extra properties without dropping valid siblings', () => {
+    const storage = new MemoryStorage()
+    const raw = JSON.stringify({
+      schemaVersion: 1,
+      slots: [{ ...inventory('wood', ['minecraft:oak_log']), id: 'must-not-persist' }, inventory('stone', ['minecraft:cobblestone']), null],
+    })
+    storage.setItem('mcsr.inventory-slots.v1', raw)
+
+    const loaded = loadCustomInventorySlots(storage)
+
+    expect(loaded.value).toEqual([null, inventory('stone', ['minecraft:cobblestone']), null])
+    expect(loaded.warning).toMatch(/inventory/i)
+    expect(recoveryValue(storage, 'inventory-slots')).toBe(raw)
+  })
 })
 
 describe('target workspace persistence', () => {
@@ -152,9 +192,22 @@ describe('target workspace persistence', () => {
     expect(loaded.value).toEqual([null, null, null])
     expect(loaded.warning).toMatch(/inventory/i)
     expect(loadTargetWorkspace(storage).value).toEqual(workspace())
-    const recoveryKey = Array.from({ length: storage.length }, (_, index) => storage.key(index))
-      .find((key) => key?.startsWith('mcsr.recovery.inventory-slots.'))
-    expect(recoveryKey).toBeDefined()
-    expect(storage.getItem(recoveryKey!)).toBe('{bad json')
+    expect(recoveryValue(storage, 'inventory-slots')).toBe('{bad json')
+  })
+
+  test('drops a malformed entry while preserving valid siblings and its raw recovery record', () => {
+    const storage = new MemoryStorage()
+    const saved = workspace()
+    const raw = JSON.stringify({
+      schemaVersion: 1,
+      entries: [saved.entries[0], { ...saved.entries[1], gridSize: 4 }],
+    })
+    storage.setItem('mcsr.target-workspace.v1', raw)
+
+    const loaded = loadTargetWorkspace(storage)
+
+    expect(loaded.value).toEqual({ entries: [saved.entries[0]] })
+    expect(loaded.warning).toMatch(/workspace/i)
+    expect(recoveryValue(storage, 'target-workspace')).toBe(raw)
   })
 })
