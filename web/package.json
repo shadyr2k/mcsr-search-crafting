@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "e2e": "playwright test",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest",
     "test:watch": "vitest --watch"
@@ -15,6 +16,7 @@
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "@vitejs/plugin-react": "^5.0.0",
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "^16.3.0",
