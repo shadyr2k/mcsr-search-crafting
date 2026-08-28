@@ -10,6 +10,15 @@ test('scores ranked results, excludes a disabled set, and reloads the ordered wo
   await page.keyboard.press('Tab')
   await expect(page.getByRole('searchbox', { name: 'Search inventory items' })).toBeFocused()
 
+  await page.getByRole('searchbox', { name: 'Search inventory items' }).fill('oak log')
+  await page.getByRole('checkbox', { name: 'Oak Log minecraft:oak_log' }).check()
+  await page.getByRole('searchbox', { name: 'Search inventory items' }).fill('cobblestone')
+  await page.getByRole('checkbox', { name: 'Cobblestone minecraft:cobblestone' }).check()
+  await expect(page.getByText('2 selected items')).toBeVisible()
+  await page.getByRole('checkbox', { name: 'Cobblestone minecraft:cobblestone' }).uncheck()
+  await page.getByRole('searchbox', { name: 'Search inventory items' }).fill('oak log')
+  await page.getByRole('checkbox', { name: 'Oak Log minecraft:oak_log' }).uncheck()
+
   await page.getByRole('searchbox', { name: 'Search inventory items' }).fill('oak planks')
   await page.getByRole('checkbox', { name: 'Oak Planks minecraft:oak_planks' }).check()
   await page.getByRole('searchbox', { name: 'Search inventory items' }).fill('stick')
@@ -18,6 +27,8 @@ test('scores ranked results, excludes a disabled set, and reloads the ordered wo
 
   await page.getByRole('button', { name: 'Add target set' }).click()
   const oakSearch = page.getByRole('searchbox', { name: 'Search targets for set 1' })
+  await oakSearch.fill('oak log')
+  await expect(page.getByRole('button', { name: 'Add Oak Log', exact: true })).toHaveCount(0)
   await oakSearch.fill('oak slab')
   await page.getByRole('button', { name: 'Add Oak Slab', exact: true }).click()
   await oakSearch.fill('oak stairs')
@@ -78,14 +89,8 @@ test('scores ranked results, excludes a disabled set, and reloads the ordered wo
 
 test('renders an exact Unicode source line and UTF-16 matched span', async ({ page }) => {
   const items = {
-    schema_version: 1,
+    schema_version: 2,
     items: {
-      'fixture:base': {
-        name: 'Base Ingredient',
-        search_lines: [{ source: 'name', text: 'Base Ingredient' }],
-        generation_method: 'fixture',
-        confidence: 'source_reproduced',
-      },
       'fixture:unicode-target': {
         name: 'Unicode Target',
         search_lines: [{ source: 'name', text: '😀İx' }],
@@ -100,8 +105,14 @@ test('renders an exact Unicode source line and UTF-16 matched span', async ({ pa
       },
     },
   }
+  const inventoryItems = {
+    schema_version: 2,
+    items: {
+      'fixture:base': { name: 'Base Ingredient' },
+    },
+  }
   const recipes = {
-    schema_version: 1,
+    schema_version: 2,
     recipes: ['unicode-target', 'unicode-junk'].map((name) => ({
       id: `fixture:${name}`,
       type: 'minecraft:crafting_shapeless',
@@ -116,6 +127,7 @@ test('renders an exact Unicode source line and UTF-16 matched span', async ({ pa
   }
 
   await page.route('**/data/search-items.json', (route) => route.fulfill({ json: items }))
+  await page.route('**/data/inventory-items.json', (route) => route.fulfill({ json: inventoryItems }))
   await page.route('**/data/crafting-recipes.json', (route) => route.fulfill({ json: recipes }))
   await page.goto('/')
 

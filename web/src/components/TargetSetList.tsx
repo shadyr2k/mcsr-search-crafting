@@ -202,7 +202,10 @@ function TargetSetEditor({
       </li>)}
     </ul>}
 
-    {entry.targetIds.length === 0 ? <p>No targets yet.</p> : <ul className="target-list">
+    {entry.targetIds.length === 0 ? <>
+      <p>No targets yet.</p>
+      <p className="empty-target-note">Empty sets are saved but are not scored until you add a target.</p>
+    </> : <ul className="target-list">
       {entry.targetIds.map((targetId) => <li key={targetId}>
         <span>{items.get(targetId)?.name ?? targetId}</span>
         <button type="button" onClick={() => onRemoveTarget(targetId)}>Remove {items.get(targetId)?.name ?? targetId} from set {entryLabel}</button>

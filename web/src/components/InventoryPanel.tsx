@@ -1,8 +1,8 @@
-import type { CustomInventoryPreset, InventoryPreset, SearchItem } from '../domain/types'
+import type { CustomInventoryPreset, InventoryItem, InventoryPreset } from '../domain/types'
 import { ItemPicker } from './ItemPicker'
 
 interface InventoryPanelProps {
-  items: ReadonlyMap<string, SearchItem>
+  items: ReadonlyMap<string, InventoryItem>
   inventoryItemIds: readonly string[]
   inventoryName: string
   builtInPresets: readonly InventoryPreset[]

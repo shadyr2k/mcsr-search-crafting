@@ -30,6 +30,19 @@ function ListHarness({ onPersist = vi.fn() }: { onPersist?: (workspace: TargetWo
 }
 
 describe('TargetSetList', () => {
+  test('keeps a newly enabled empty set editable and explains that it is not scored', () => {
+    const onPersist = vi.fn()
+    render(<ListHarness onPersist={onPersist} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add target set' }))
+
+    expect(screen.getByRole('checkbox', { name: 'Enable set 1' })).toHaveProperty('checked', true)
+    expect(screen.getByText('Empty sets are saved but are not scored until you add a target.')).toBeTruthy()
+    expect(onPersist).toHaveBeenLastCalledWith(expect.objectContaining({
+      entries: [expect.objectContaining({ targetIds: [], enabled: true })],
+    }))
+  })
+
   test('adds targets to a new enabled 3x3 target set and autosaves the workspace', () => {
     const onPersist = vi.fn()
     render(<ListHarness onPersist={onPersist} />)

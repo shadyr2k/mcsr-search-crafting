@@ -2,11 +2,13 @@ import type {
   CraftingRecipe,
   GeneratedData,
   IngredientSlot,
+  InventoryItem,
   SearchItem,
   SearchLine,
 } from '../domain/types'
 
 type JsonRecord = Record<string, unknown>
+const GENERATED_SCHEMA_VERSION = 2
 
 interface IndexedRecipe {
   recipe: CraftingRecipe
@@ -85,8 +87,8 @@ function parseItems(value: unknown, errors: string[]): Map<string, SearchItem> {
   const root = getRecord(value, 'items', errors)
   if (!root) return new Map()
 
-  if (root.schema_version !== 1) {
-    errors.push('items.schema_version: expected 1')
+  if (root.schema_version !== GENERATED_SCHEMA_VERSION) {
+    errors.push(`items.schema_version: expected ${GENERATED_SCHEMA_VERSION}`)
   }
 
   const itemRecords = getRecord(root.items, 'items.items', errors)
@@ -105,6 +107,31 @@ function parseItems(value: unknown, errors: string[]): Map<string, SearchItem> {
     if (name !== undefined && confidence !== undefined && searchLines !== undefined) {
       items.set(validId, { id: validId, name, confidence, searchLines })
     }
+  })
+
+  return items
+}
+
+function parseInventoryItems(value: unknown, errors: string[]): Map<string, InventoryItem> {
+  const root = getRecord(value, 'inventoryItems', errors)
+  if (!root) return new Map()
+
+  if (root.schema_version !== GENERATED_SCHEMA_VERSION) {
+    errors.push(`inventoryItems.schema_version: expected ${GENERATED_SCHEMA_VERSION}`)
+  }
+
+  const itemRecords = getRecord(root.items, 'inventoryItems.items', errors)
+  const items = new Map<string, InventoryItem>()
+  if (!itemRecords) return items
+
+  Object.entries(itemRecords).forEach(([id, rawItem]) => {
+    const itemPath = `inventoryItems.items.${id}`
+    const validId = getNonEmptyString(id, itemPath, errors)
+    const record = getRecord(rawItem, itemPath, errors)
+    if (!record || validId === undefined) return
+
+    const name = getNonEmptyString(record.name, `${itemPath}.name`, errors)
+    if (name !== undefined) items.set(validId, { id: validId, name })
   })
 
   return items
@@ -144,8 +171,8 @@ function parseRecipes(value: unknown, errors: string[]): IndexedRecipe[] {
   const root = getRecord(value, 'recipes', errors)
   if (!root) return []
 
-  if (root.schema_version !== 1) {
-    errors.push('recipes.schema_version: expected 1')
+  if (root.schema_version !== GENERATED_SCHEMA_VERSION) {
+    errors.push(`recipes.schema_version: expected ${GENERATED_SCHEMA_VERSION}`)
   }
   if (!Array.isArray(root.recipes)) {
     errors.push('recipes.recipes: expected an array')
@@ -195,7 +222,12 @@ function parseRecipes(value: unknown, errors: string[]): IndexedRecipe[] {
   return recipes
 }
 
-function validateRecipeReferences(recipes: IndexedRecipe[], items: Map<string, SearchItem>, errors: string[]) {
+function validateRecipeReferences(
+  recipes: IndexedRecipe[],
+  items: Map<string, SearchItem>,
+  inventoryItems: Map<string, InventoryItem>,
+  errors: string[],
+) {
   recipes.forEach(({ recipe, sourceIndex }) => {
     const recipePath = `recipes[${sourceIndex}]`
     // Search-item records are generated for recipe outputs. Ingredient IDs can be
@@ -203,20 +235,40 @@ function validateRecipeReferences(recipes: IndexedRecipe[], items: Map<string, S
     if (!items.has(recipe.outputItemId)) {
       errors.push(`${recipePath}.output_item_id: references missing item ${recipe.outputItemId}`)
     }
+    recipe.ingredientSlots.forEach((slot, slotIndex) => {
+      slot.acceptedItems.forEach((itemId, itemIndex) => {
+        if (!inventoryItems.has(itemId)) {
+          errors.push(
+            `${recipePath}.ingredient_slots[${slotIndex}].accepted_items[${itemIndex}]: `
+            + `references missing inventory item ${itemId}`,
+          )
+        }
+      })
+    })
   })
 }
 
-export function parseGeneratedData(itemsPayload: unknown, recipesPayload: unknown): GeneratedData {
+export function parseGeneratedData(
+  itemsPayload: unknown,
+  inventoryItemsPayload: unknown,
+  recipesPayload: unknown,
+): GeneratedData {
   const errors: string[] = []
   const items = parseItems(itemsPayload, errors)
+  const inventoryItems = parseInventoryItems(inventoryItemsPayload, errors)
   const indexedRecipes = parseRecipes(recipesPayload, errors)
-  validateRecipeReferences(indexedRecipes, items, errors)
+  validateRecipeReferences(indexedRecipes, items, inventoryItems, errors)
 
   if (errors.length > 0) {
     throw new GeneratedDataError(errors)
   }
 
-  return { schemaVersion: 1, items, recipes: indexedRecipes.map(({ recipe }) => recipe) }
+  return {
+    schemaVersion: GENERATED_SCHEMA_VERSION,
+    items,
+    inventoryItems,
+    recipes: indexedRecipes.map(({ recipe }) => recipe),
+  }
 }
 
 async function fetchJson(url: string): Promise<unknown> {
@@ -234,9 +286,10 @@ async function fetchJson(url: string): Promise<unknown> {
 
 export async function loadGeneratedData(baseUrl = import.meta.env.BASE_URL): Promise<GeneratedData> {
   const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
-  const [itemsPayload, recipesPayload] = await Promise.all([
+  const [itemsPayload, inventoryItemsPayload, recipesPayload] = await Promise.all([
     fetchJson(`${base}data/search-items.json`),
+    fetchJson(`${base}data/inventory-items.json`),
     fetchJson(`${base}data/crafting-recipes.json`),
   ])
-  return parseGeneratedData(itemsPayload, recipesPayload)
+  return parseGeneratedData(itemsPayload, inventoryItemsPayload, recipesPayload)
 }

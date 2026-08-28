@@ -30,6 +30,7 @@ const items = new Map<string, SearchItem>([
 
 const result: WorkspaceResult = {
   aggregateScore: 2.5,
+  skippedEmptyEntryCount: 0,
   entries: [{
     entryId: 'set-one',
     displayIndex: 0,
@@ -160,6 +161,7 @@ describe('ResultPanel', () => {
     }
     const incomplete: WorkspaceResult = {
       aggregateScore: 13,
+      skippedEmptyEntryCount: 0,
       entries: [{
         ...result.entries[0],
         single: [], overlap: [], availableCompleteMethod: null, bestScore: 13,
@@ -192,6 +194,25 @@ describe('ResultPanel', () => {
     ])
   })
 
+  test('shows within-entry calculation progress and explains skipped empty sets', () => {
+    const emptyResult: WorkspaceResult = {
+      aggregateScore: 0,
+      skippedEmptyEntryCount: 1,
+      entries: [],
+    }
+    const { rerender } = render(<ResultPanel
+      items={items}
+      pending
+      progress={{ entryId: 'set-one', entryIndex: 0, entryCount: 1, phase: 'matching', completed: 32, total: 64 }}
+    />)
+
+    expect(screen.getByText('Calculating target set 1 of 1: matching candidates (32 of 64)…')).toBeTruthy()
+
+    rerender(<ResultPanel items={items} result={emptyResult} />)
+    expect(screen.getByText('1 enabled empty target set is saved but not scored.')).toBeTruthy()
+    expect(screen.queryByText('Enable a target set to include it in optimization.')).toBeNull()
+  })
+
   test('retains workspace set numbering when disabled sets are excluded', () => {
     const secondSet = {
       ...result,
@@ -207,6 +228,7 @@ describe('ResultPanel', () => {
   test('highlights a UTF-16 span after astral and lowercase-expanding characters exactly', () => {
     const unicodeResult: WorkspaceResult = {
       aggregateScore: 0,
+      skippedEmptyEntryCount: 0,
       entries: [{
         ...result.entries[0],
         targetIds: ['target:unicode'], visibleItemIds: ['target:unicode'], overlap: [], bestScore: 0,

@@ -36,13 +36,26 @@ const alpha = item('target:alpha', 'ax')
 const beta = item('target:beta', 'by')
 const hidden = item('target:hidden', 'qz')
 const data: GeneratedData = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   items: new Map([alpha, beta, hidden].map((searchItem) => [searchItem.id, searchItem])),
+  inventoryItems: new Map([['ingredient:shared', { id: 'ingredient:shared', name: 'Shared ingredient' }]]),
   recipes: [recipe(alpha.id, true), recipe(beta.id, false)],
 }
 const inventory = new Set(['ingredient:shared'])
 
 describe('optimizeWorkspace', () => {
+  test('preserves enabled empty sets as non-scoring editor state', async () => {
+    const result = await optimizeWorkspace(data, inventory, [
+      entry('empty', [], { order: 0 }),
+      entry('scored', [alpha.id], { order: 1 }),
+    ])
+
+    expect(result.entries.map(({ entryId }) => entryId)).toEqual(['scored'])
+    expect(result.entries[0].displayIndex).toBe(1)
+    expect(result.skippedEmptyEntryCount).toBe(1)
+    expect(result.aggregateScore).toBe(result.entries[0].bestScore)
+  })
+
   test('excludes disabled entries and computes each enabled grid independently', async () => {
     const result = await optimizeWorkspace(data, inventory, [
       entry('two-by-two', [beta.id], { gridSize: 2, order: 0 }),
@@ -114,8 +127,9 @@ describe('optimizeWorkspace', () => {
     const second = item('target:second', 'ay')
     const junk = item('junk:common-a', 'a')
     const competingData: GeneratedData = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       items: new Map([first, second, junk].map((searchItem) => [searchItem.id, searchItem])),
+      inventoryItems: data.inventoryItems,
       recipes: [recipe(first.id, true), recipe(second.id, true), recipe(junk.id, true)],
     }
 
@@ -162,6 +176,26 @@ describe('optimizeWorkspace', () => {
     releaseYield()
 
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
+  test('aborts cooperatively during one large entry and reports within-entry progress', async () => {
+    const controller = new AbortController()
+    const phases: string[] = []
+    let yieldCount = 0
+
+    const pending = optimizeWorkspace(data, inventory, [entry('large', [alpha.id, beta.id])], {
+      signal: controller.signal,
+      workChunkSize: 1,
+      onProgress: (progress) => phases.push(progress.phase),
+      yieldControl: async () => {
+        yieldCount += 1
+        controller.abort()
+      },
+    })
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    expect(yieldCount).toBeGreaterThan(0)
+    expect(phases).toContain('matching')
   })
 
   test('is deterministic across repeated and differently ordered equivalent inputs', async () => {

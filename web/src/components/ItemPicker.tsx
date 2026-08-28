@@ -1,15 +1,15 @@
 import { useId, useMemo, useState } from 'react'
 
-import type { SearchItem } from '../domain/types'
+import type { InventoryItem } from '../domain/types'
 
 interface ItemPickerProps {
-  items: ReadonlyMap<string, SearchItem>
+  items: ReadonlyMap<string, InventoryItem>
   label: string
   selectedItemIds: readonly string[]
   onSelectedItemIdsChange: (itemIds: string[]) => void
 }
 
-function sortItems(items: Iterable<SearchItem>): SearchItem[] {
+function sortItems(items: Iterable<InventoryItem>): InventoryItem[] {
   return [...items].sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id))
 }
 

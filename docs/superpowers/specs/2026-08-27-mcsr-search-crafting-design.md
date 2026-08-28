@@ -60,6 +60,7 @@ Minecraft 1.16.1 source data
              v
 Python data generator
 ├── search-items.json
+├── inventory-items.json
 ├── crafting-recipes.json
 └── validation report
              |
@@ -76,6 +77,8 @@ React + TypeScript static application
 Vite will build the React application to ordinary static files. Python is required only when regenerating Minecraft data, not when using the application.
 
 ## Generated Data
+
+The browser-data contract uses `schema_version: 2`. Searchable target/output records and selectable inventory-input records are deliberately separate so ingredient-only items never become target choices.
 
 ### Searchable items
 
@@ -115,6 +118,10 @@ The initial confidence values distinguish source-reproduced data from explicit o
 
 Recipe data is separate from searchable item data because multiple recipes can produce the same output. Search text belongs to an output item; ingredient requirements and grid compatibility belong to recipes.
 
+### Inventory items
+
+`inventory-items.json` contains the sorted union of every concrete item ID accepted by any normalized recipe ingredient slot, paired with its exact English name. The inventory picker uses this catalog, including ingredient-only items such as `minecraft:oak_log` and `minecraft:cobblestone`. The target picker continues to use `search-items.json`, which contains recipe outputs only.
+
 ## Tooltip Reproduction
 
 The generator will reproduce the Minecraft 1.16.1 recipe-book tooltip path rather than approximate visible player tooltips:
@@ -143,6 +150,8 @@ A recipe is craftable when every ingredient slot accepts at least one selected i
 
 There is no recursive inference. Selecting `minecraft:oak_log` does not select or imply `minecraft:oak_planks`, `minecraft:stick`, or any other derived item.
 
+The inventory editor offers every concrete ID present in the generated ingredient catalog; it is not limited to items that are themselves crafting outputs.
+
 A distinct output is visible if at least one of its recipes is craftable and fits the entry's selected grid.
 
 Grid rules are inclusive:
@@ -166,6 +175,8 @@ Each optimization entry contains:
 The grid defaults to 3x3. The user may select 2x2 only when every target has at least one 2x2-compatible recipe. When 2x2 is unavailable, the interface explains which targets require 3x3.
 
 Each entry is optimized independently. Disabled entries remain saved and visible but are excluded from optimization and aggregate scores.
+
+Enabled entries with no targets are also preserved as editor state but are excluded from optimization and aggregate scores until at least one target is added.
 
 ## Search Semantics
 
@@ -304,9 +315,13 @@ Optimization logic remains framework-independent TypeScript so it can be tested 
 
 The generator fails with actionable diagnostics for malformed JSON, unresolved tags, missing translations, unsupported recipe structures, invalid patterns, or unexplained tooltip cases. A machine-readable validation report accompanies human-readable errors.
 
+The production generator command requires the pinned Minecraft 1.16.1 source layout and validates the authoritative baseline of 634 crafting recipes and 562 distinct outputs. Fixture generation requires an explicit non-baseline option. A failed run retains its complete `ValidationReport`, prints every diagnostic, and atomically writes `validation-failure-report.json` without replacing the last valid browser artifacts.
+
 The browser validates generated schemas before optimization. If data is invalid or incomplete, it blocks misleading results and identifies the affected file or record. Individual malformed browser presets or workspace entries are isolated so one bad record does not break the entire application.
 
 Computationally expensive optimization is cancellable when inputs change. The UI shows calculation progress for large target sets and prevents stale results from replacing newer ones.
+
+Candidate matching is shared by the single-query and overlap optimizers. Matching and overlap state expansion run in bounded chunks with abort checks, progress updates, and event-loop yields inside each entry.
 
 ## Testing
 
@@ -319,6 +334,7 @@ Python generator tests cover:
 - Attribute and tooltip formatting rules.
 - Validation failures and override reporting.
 - Stable, deterministic generated output.
+- Version-2 ingredient catalogs, pinned baseline enforcement, and non-destructive failure reports.
 
 TypeScript engine tests cover:
 
@@ -335,10 +351,13 @@ TypeScript engine tests cover:
 - Complete-result and maximum-failure ranking guarantees.
 - Deterministic tie-breakers.
 - Browser schema migration and recovery.
+- Empty enabled-set exclusion and cancellation during one large entry.
 
 Known-behavior regression fixtures include swords matching `4` through `-2.4 Attack Speed` and symbolic tool searches such as `+8` when supported by the reproduced 1.16.1 tooltip data.
 
 React tests cover creating and disabling target sets, grid eligibility feedback, loading built-in and custom inventories, all three custom preset operations, persistence, scoring explanations, and error presentation.
+
+Browser persistence tests also cover unavailable or quota-limited local storage: state remains usable in memory and the interface warns that it may be lost on reload.
 
 ## Delivery Sequence
 

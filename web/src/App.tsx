@@ -6,7 +6,11 @@ import { ResultPanel } from './components/ResultPanel'
 import { TargetSetList } from './components/TargetSetList'
 import { loadGeneratedData } from './data/schema'
 import type { CustomInventoryPreset, GeneratedData, TargetWorkspace } from './domain/types'
-import { optimizeWorkspace, type WorkspaceResult } from './engine/optimizeWorkspace'
+import {
+  optimizeWorkspace,
+  type WorkspaceOptimizationProgress,
+  type WorkspaceResult,
+} from './engine/optimizeWorkspace'
 import {
   clearCustomInventorySlot,
   loadCustomInventorySlots,
@@ -31,6 +35,12 @@ function normalizeWorkspaceGridSizes(workspace: TargetWorkspace, data: Generated
   return changed ? { entries } : workspace
 }
 
+function combineWarnings(current: string | undefined, next: string | undefined): string | undefined {
+  if (!next) return current
+  if (!current) return next
+  return current.includes(next) ? current : `${current} ${next}`
+}
+
 function App() {
   const [data, setData] = useState<GeneratedData | undefined>()
   const [error, setError] = useState<string | undefined>()
@@ -42,6 +52,7 @@ function App() {
   const [warning, setWarning] = useState<string | undefined>()
   const [optimization, setOptimization] = useState<WorkspaceResult | undefined>()
   const [optimizationPending, setOptimizationPending] = useState(false)
+  const [optimizationProgress, setOptimizationProgress] = useState<WorkspaceOptimizationProgress | undefined>()
   const [optimizationError, setOptimizationError] = useState<string | undefined>()
   const optimizationRequestId = useRef(0)
 
@@ -50,7 +61,10 @@ function App() {
     const workspaceResult = loadTargetWorkspace()
     setCustomSlots(slotsResult.value)
     setWorkspace(workspaceResult.value)
-    setWarning([slotsResult.warning, workspaceResult.warning].filter((message): message is string => Boolean(message)).join(' '))
+    const persistenceWarning = [slotsResult.warning, workspaceResult.warning]
+      .filter((message): message is string => Boolean(message))
+      .join(' ')
+    setWarning(persistenceWarning || undefined)
     setWorkspaceLoaded(true)
 
     loadGeneratedData().then((loadedData) => {
@@ -62,7 +76,10 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (workspaceLoaded && data) saveTargetWorkspace(workspace)
+    if (workspaceLoaded && data) {
+      const saveResult = saveTargetWorkspace(workspace)
+      setWarning((current) => combineWarnings(current, saveResult.warning))
+    }
   }, [data, workspace, workspaceLoaded])
 
   useEffect(() => {
@@ -71,13 +88,22 @@ function App() {
     const requestId = ++optimizationRequestId.current
     const controller = new AbortController()
     setOptimization(undefined)
+    setOptimizationProgress(undefined)
     setOptimizationError(undefined)
     setOptimizationPending(true)
 
-    optimizeWorkspace(data, new Set(inventoryItemIds), workspace.entries, { signal: controller.signal })
+    optimizeWorkspace(data, new Set(inventoryItemIds), workspace.entries, {
+      signal: controller.signal,
+      onProgress: (progress) => {
+        if (requestId === optimizationRequestId.current && !controller.signal.aborted) {
+          setOptimizationProgress(progress)
+        }
+      },
+    })
       .then((result) => {
         if (requestId !== optimizationRequestId.current) return
         setOptimization(result)
+        setOptimizationProgress(undefined)
         setOptimizationPending(false)
       })
       .catch((optimizationFailure: unknown) => {
@@ -85,6 +111,7 @@ function App() {
         setOptimizationError(optimizationFailure instanceof Error
           ? optimizationFailure.message
           : 'Workspace optimization failed.')
+        setOptimizationProgress(undefined)
         setOptimizationPending(false)
       })
 
@@ -98,8 +125,9 @@ function App() {
 
   function saveSlot(index: number) {
     const preset = { name: inventoryName.trim() || `Inventory ${index + 1}`, itemIds: [...inventoryItemIds] }
-    saveCustomInventorySlot(index, preset)
+    const saveResult = saveCustomInventorySlot(index, preset)
     setCustomSlots((current) => current.map((slot, slotIndex) => slotIndex === index ? preset : slot))
+    setWarning((current) => combineWarnings(current, saveResult.warning))
   }
 
   function loadSlot(index: number) {
@@ -108,8 +136,9 @@ function App() {
   }
 
   function clearSlot(index: number) {
-    clearCustomInventorySlot(index)
+    const saveResult = clearCustomInventorySlot(index)
     setCustomSlots((current) => current.map((slot, slotIndex) => slotIndex === index ? null : slot))
+    setWarning((current) => combineWarnings(current, saveResult.warning))
   }
 
   return <main className="app-shell">
@@ -121,7 +150,7 @@ function App() {
 
     {data && <div className="tool-grid">
       <InventoryPanel
-        items={data.items}
+        items={data.inventoryItems}
         inventoryItemIds={inventoryItemIds}
         inventoryName={inventoryName}
         customSlots={customSlots}
@@ -139,6 +168,7 @@ function App() {
       items={data?.items ?? new Map()}
       result={optimization}
       pending={(!data && !error) || optimizationPending}
+      progress={optimizationProgress}
       warning={warning}
       error={error ?? optimizationError}
     />

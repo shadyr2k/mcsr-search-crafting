@@ -17,20 +17,31 @@ vi.mock('./engine/optimizeWorkspace', async (importOriginal) => {
 })
 
 import App from './App'
+import { saveTargetWorkspace } from './persistence/storage'
 
 const inventorySlotsKey = 'mcsr.inventory-slots.v1'
 const targetWorkspaceKey = 'mcsr.target-workspace.v1'
 
 const itemsPayload = {
-  schema_version: 1,
+  schema_version: 2,
   items: {
     'minecraft:stick': { name: 'Stick', confidence: 'exact', search_lines: [{ source: 'name', text: 'Stick' }] },
     'minecraft:iron_sword': { name: 'Iron Sword', confidence: 'exact', search_lines: [{ source: 'name', text: 'Iron Sword' }] },
   },
 }
 
+const inventoryItemsPayload = {
+  schema_version: 2,
+  items: {
+    'minecraft:oak_log': { name: 'Oak Log' },
+    'minecraft:oak_planks': { name: 'Oak Planks' },
+    'minecraft:iron_ingot': { name: 'Iron Ingot' },
+    'minecraft:stick': { name: 'Stick' },
+  },
+}
+
 const recipesPayload = {
-  schema_version: 1,
+  schema_version: 2,
   recipes: [
     {
       id: 'stick', output_item_id: 'minecraft:stick', output_count: 4,
@@ -43,14 +54,56 @@ const recipesPayload = {
   ],
 }
 
+function stubGeneratedData(recipes: unknown = recipesPayload) {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+    ok: true,
+    json: async () => url.includes('search-items')
+      ? itemsPayload
+      : url.includes('inventory-items')
+        ? inventoryItemsPayload
+        : recipes,
+  })))
+}
+
 afterEach(() => {
   cleanup()
-  localStorage.clear()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+  saveTargetWorkspace({ entries: [] })
+  localStorage.clear()
   optimizerControl.implementation = undefined
 })
 
 describe('App persistence', () => {
+  test('keeps an enabled empty set in the editor while excluding it from the aggregate', async () => {
+    localStorage.setItem(targetWorkspaceKey, JSON.stringify({
+      schemaVersion: 1,
+      entries: [{ id: 'empty', targetIds: [], enabled: true, gridSize: 3, order: 0 }],
+    }))
+    stubGeneratedData()
+
+    render(<App />)
+
+    expect(await screen.findByRole('article', { name: 'Target set 1' })).toBeTruthy()
+    await waitFor(() => expect(screen.getByText('Aggregate score: 0')).toBeTruthy())
+    expect(screen.getByText('1 enabled empty target set is saved but not scored.')).toBeTruthy()
+    expect(screen.queryByText(/Maximum failure score:/)).toBeNull()
+  })
+
+  test('retains editor changes and surfaces a warning when localStorage writes fail', async () => {
+    stubGeneratedData()
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Storage quota exceeded.', 'QuotaExceededError')
+    })
+
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Target sets' })
+    fireEvent.click(screen.getByRole('button', { name: 'Add target set' }))
+
+    expect(screen.getByRole('article', { name: 'Target set 1' })).toBeTruthy()
+    expect(await screen.findByText(/browser storage.*write.*memory/i)).toBeTruthy()
+  })
+
   test('normalizes an incompatible saved 2x2 workspace before autosaving without changing inventory slots', async () => {
     const inventorySlots = JSON.stringify({
       schemaVersion: 1,
@@ -63,10 +116,7 @@ describe('App persistence', () => {
         id: 'saved-set', targetIds: ['minecraft:iron_sword'], enabled: true, gridSize: 2, order: 0,
       }],
     }))
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
-      ok: true,
-      json: async () => url.includes('search-items') ? itemsPayload : recipesPayload,
-    })))
+    stubGeneratedData()
 
     render(<App />)
 
@@ -80,10 +130,7 @@ describe('App persistence', () => {
   test('shows both inventory and target workspace persistence warnings', async () => {
     localStorage.setItem(inventorySlotsKey, '{invalid')
     localStorage.setItem(targetWorkspaceKey, '{invalid')
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
-      ok: true,
-      json: async () => url.includes('search-items') ? itemsPayload : recipesPayload,
-    })))
+    stubGeneratedData()
 
     render(<App />)
 
@@ -99,16 +146,13 @@ describe('App persistence', () => {
         id: 'saved-set', targetIds: ['minecraft:stick'], enabled: true, gridSize: 3, order: 0,
       }],
     }))
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
-      ok: true,
-      json: async () => url.includes('search-items') ? itemsPayload : {
-        ...recipesPayload,
-        recipes: [{
-          ...recipesPayload.recipes[0],
-          ingredient_slots: [{ accepted_items: ['minecraft:stick'] }],
-        }],
-      },
-    })))
+    stubGeneratedData({
+      ...recipesPayload,
+      recipes: [{
+        ...recipesPayload.recipes[0],
+        ingredient_slots: [{ accepted_items: ['minecraft:stick'] }],
+      }],
+    })
 
     render(<App />)
 
@@ -130,10 +174,7 @@ describe('App persistence', () => {
         { id: 'second-set', targetIds: ['minecraft:stick'], enabled: true, gridSize: 3, order: 1 },
       ],
     }))
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
-      ok: true,
-      json: async () => url.includes('search-items') ? itemsPayload : recipesPayload,
-    })))
+    stubGeneratedData()
 
     render(<App />)
 
@@ -154,13 +195,11 @@ describe('App persistence', () => {
         id: 'saved-set', targetIds: ['minecraft:stick'], enabled: true, gridSize: 3, order: 0,
       }],
     }))
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
-      ok: true,
-      json: async () => url.includes('search-items') ? itemsPayload : recipesPayload,
-    })))
+    stubGeneratedData()
 
     const stale: WorkspaceResult = {
       aggregateScore: 10,
+      skippedEmptyEntryCount: 0,
       entries: [{
         entryId: 'saved-set', displayIndex: 0, targetIds: ['minecraft:stick'], gridSize: 3,
         visibleItemIds: [], single: [], overlap: [], availableCompleteMethod: null, bestScore: 10,
@@ -169,6 +208,7 @@ describe('App persistence', () => {
     }
     const fresh: WorkspaceResult = {
       aggregateScore: 0,
+      skippedEmptyEntryCount: 0,
       entries: [{
         entryId: 'saved-set', displayIndex: 0, targetIds: ['minecraft:stick'], gridSize: 3,
         visibleItemIds: ['minecraft:stick'], overlap: [], availableCompleteMethod: 'single', bestScore: 0,

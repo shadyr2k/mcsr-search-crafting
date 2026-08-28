@@ -6,6 +6,10 @@ from mcsr_data.recipes import load_crafting_recipes
 from mcsr_data.translations import TranslationCatalog
 
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+MINECRAFT_DATA_ROOT = REPOSITORY_ROOT / "minecraft-data"
+
+
 def test_item_name_falls_back_to_block_translation():
     catalog = TranslationCatalog({"block.minecraft.crafting_table": "Crafting Table"})
 
@@ -29,8 +33,8 @@ def test_item_name_reports_an_unknown_id_without_synthesizing_a_name():
 
 
 def test_all_distinct_crafting_outputs_have_an_english_name():
-    recipes = load_crafting_recipes(Path("minecraft-data/recipes"))
-    catalog = TranslationCatalog.load(Path("minecraft-data/lang/en_us.json"))
+    recipes = load_crafting_recipes(MINECRAFT_DATA_ROOT / "recipes")
+    catalog = TranslationCatalog.load(MINECRAFT_DATA_ROOT / "lang" / "en_us.json")
     output_ids = {recipe.output_item for recipe in recipes}
 
     assert len(recipes) == 634

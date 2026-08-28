@@ -16,6 +16,8 @@ from mcsr_data.translations import TranslationCatalog
 
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "expected_tooltips.json"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+MINECRAFT_DATA_ROOT = REPOSITORY_ROOT / "minecraft-data"
 
 
 def expected_tooltips() -> dict[str, list[str]]:
@@ -88,6 +90,23 @@ def test_hide_attributes_flag_removes_the_attribute_section():
     assert [line.text for line in item.search_lines] == ["Iron Sword"]
 
 
+def test_nonzero_hide_flags_with_an_explicit_override_are_rejected(tmp_path):
+    override_path = tmp_path / "overrides.json"
+    override_path.write_text(json.dumps([{
+        "item_id": "minecraft:iron_sword",
+        "lines": ["Iron Sword", "Audited custom line"],
+        "reason": "Fixture override.",
+    }]), encoding="utf-8")
+    overrides = load_overrides(override_path)
+    with pytest.raises(UnsupportedTooltipDataError, match="HideFlags.*override"):
+        build_search_item(
+            "minecraft:iron_sword",
+            "Iron Sword",
+            {"HideFlags": 2},
+            overrides=overrides,
+        )
+
+
 @pytest.mark.parametrize("output_nbt, key", [
     ({"AttributeModifiers": []}, "AttributeModifiers"),
     ({"display": {"Lore": ['{"text":"Audited lore"}']}}, "display"),
@@ -126,8 +145,8 @@ def test_unknown_item_is_not_silently_marked_source_reproduced():
 
 
 def test_all_scoped_recipe_outputs_have_an_explicit_tooltip_classification():
-    recipes = load_crafting_recipes(Path("minecraft-data/recipes"))
-    catalog = TranslationCatalog.load(Path("minecraft-data/lang/en_us.json"))
+    recipes = load_crafting_recipes(MINECRAFT_DATA_ROOT / "recipes")
+    catalog = TranslationCatalog.load(MINECRAFT_DATA_ROOT / "lang" / "en_us.json")
 
     assert len(recipes) == 634
     for recipe in recipes:
@@ -142,7 +161,7 @@ def test_all_scoped_recipe_outputs_have_an_explicit_tooltip_classification():
 def test_classification_catalog_exactly_covers_distinct_scoped_outputs():
     outputs = {
         recipe.output_item
-        for recipe in load_crafting_recipes(Path("minecraft-data/recipes"))
+        for recipe in load_crafting_recipes(MINECRAFT_DATA_ROOT / "recipes")
     }
     classifications = load_tooltip_classifications()
 

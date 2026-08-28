@@ -43,3 +43,9 @@ class SearchItem:
     ]
     confidence: Literal["source_reproduced", "explicit_override"]
     override_reason: str | None = None
+
+
+@dataclass(frozen=True)
+class InventoryItem:
+    item_id: str
+    name: str

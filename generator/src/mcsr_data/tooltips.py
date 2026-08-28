@@ -279,6 +279,11 @@ def build_search_item(
     hide_flags = _validated_hide_flags(item_id, output_nbt)
     override = (load_overrides() if overrides is None else overrides).get(item_id)
     if override is not None:
+        if hide_flags != 0:
+            raise UnsupportedTooltipDataError(
+                f"{item_id}: nonzero HideFlags cannot be combined with an explicit override; "
+                "add a source-backed HideFlags-specific override contract before generation"
+            )
         lines = tuple(
             SearchLine("name" if index == 0 and text == name else "override", text)
             for index, text in enumerate(override.lines)

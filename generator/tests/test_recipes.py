@@ -6,6 +6,10 @@ from mcsr_data.recipes import RecipeParseError, parse_recipe, resolve_recipe_ing
 from mcsr_data.tags import TagResolver
 
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+MINECRAFT_DATA_ROOT = REPOSITORY_ROOT / "minecraft-data"
+
+
 def test_shaped_recipe_is_trimmed_and_grid_compatible():
     recipe = parse_recipe("minecraft:test", {
         "type": "minecraft:crafting_shaped",
@@ -16,6 +20,20 @@ def test_shaped_recipe_is_trimmed_and_grid_compatible():
     assert recipe.width == 1
     assert recipe.height == 2
     assert recipe.fits_2x2 is True
+
+
+def test_shaped_recipe_trimming_does_not_mutate_the_source_pattern():
+    pattern = ["   ", " A ", " B ", "   "]
+    raw = {
+        "type": "minecraft:crafting_shaped",
+        "pattern": pattern,
+        "key": {"A": {"item": "minecraft:iron_ingot"}, "B": {"item": "minecraft:stick"}},
+        "result": {"item": "minecraft:iron_sword"},
+    }
+
+    parse_recipe("minecraft:test", raw)
+
+    assert pattern == ["   ", " A ", " B ", "   "]
 
 
 def test_non_crafting_recipe_is_ignored():
@@ -66,7 +84,10 @@ def test_resolve_recipe_ingredients_replaces_each_slot_with_concrete_alternative
         "result": {"item": "minecraft:test_item"},
     })
 
-    resolved = resolve_recipe_ingredients(recipe, TagResolver.from_directory(Path("minecraft-data/tags/items")))
+    resolved = resolve_recipe_ingredients(
+        recipe,
+        TagResolver.from_directory(MINECRAFT_DATA_ROOT / "tags" / "items"),
+    )
 
     assert [slot.accepted_items for slot in resolved.ingredient_slots] == [
         (

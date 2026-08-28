@@ -2,14 +2,14 @@ import { useState } from 'react'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, test } from 'vitest'
 
-import type { CustomInventoryPreset, InventoryPreset, SearchItem } from '../domain/types'
+import type { CustomInventoryPreset, InventoryItem, InventoryPreset } from '../domain/types'
 import { InventoryPanel } from './InventoryPanel'
 
 afterEach(cleanup)
 
-const items = new Map<string, SearchItem>([
-  ['minecraft:oak_log', { id: 'minecraft:oak_log', name: 'Oak Log', confidence: 'exact', searchLines: [] }],
-  ['minecraft:oak_planks', { id: 'minecraft:oak_planks', name: 'Oak Planks', confidence: 'exact', searchLines: [] }],
+const items = new Map<string, InventoryItem>([
+  ['minecraft:oak_log', { id: 'minecraft:oak_log', name: 'Oak Log' }],
+  ['minecraft:oak_planks', { id: 'minecraft:oak_planks', name: 'Oak Planks' }],
 ])
 
 function PanelHarness({ presets = [] }: { presets?: readonly InventoryPreset[] }) {

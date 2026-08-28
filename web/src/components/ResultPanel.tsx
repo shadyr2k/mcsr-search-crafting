@@ -1,13 +1,26 @@
 import type { SearchItem } from '../domain/types'
 import type { MatchExplanation } from '../engine/search'
-import type { WorkspaceEntryResult, WorkspaceResult } from '../engine/optimizeWorkspace'
+import type {
+  WorkspaceEntryResult,
+  WorkspaceOptimizationProgress,
+  WorkspaceResult,
+} from '../engine/optimizeWorkspace'
 
 interface ResultPanelProps {
   items: ReadonlyMap<string, SearchItem>
   result?: WorkspaceResult
   pending?: boolean
+  progress?: WorkspaceOptimizationProgress
   warning?: string
   error?: string
+}
+
+function progressMessage(progress: WorkspaceOptimizationProgress): string {
+  const phase = progress.phase === 'matching' ? 'matching candidates' : 'ranking overlap paths'
+  const count = progress.total === undefined
+    ? `${progress.completed} operations`
+    : `${progress.completed} of ${progress.total}`
+  return `Calculating target set ${progress.entryIndex + 1} of ${progress.entryCount}: ${phase} (${count})…`
 }
 
 function itemLabel(itemId: string, items: ReadonlyMap<string, SearchItem>): string {
@@ -154,7 +167,7 @@ function EntryResults({
   </article>
 }
 
-export function ResultPanel({ items, result, pending = false, warning, error }: ResultPanelProps) {
+export function ResultPanel({ items, result, pending = false, progress, warning, error }: ResultPanelProps) {
   return <section className="tool-panel result-panel" aria-labelledby="results-heading">
     <div className="tool-panel__heading">
       <p className="eyebrow">Ranked crafts</p>
@@ -164,12 +177,19 @@ export function ResultPanel({ items, result, pending = false, warning, error }: 
 
     {warning && <p className="app-warning" role="alert">{warning}</p>}
     {error && <p className="app-error" role="alert">{error}</p>}
-    {pending && !error && <p className="loading-state">Calculating optimized crafts…</p>}
+    {pending && !error && <p className="loading-state">
+      {progress ? progressMessage(progress) : 'Calculating optimized crafts…'}
+    </p>}
     {!pending && !error && !result && <p className="empty-state">Results will appear when crafting data is ready.</p>}
     {result && <>
       <p className="aggregate-score">Aggregate score: {result.aggregateScore}</p>
+      {result.skippedEmptyEntryCount > 0 && <p className="empty-state">
+        {result.skippedEmptyEntryCount} enabled empty target set{result.skippedEmptyEntryCount === 1 ? ' is' : 's are'} saved but not scored.
+      </p>}
       {result.entries.length === 0
-        ? <p className="empty-state">Enable a target set to include it in optimization.</p>
+        ? result.skippedEmptyEntryCount === 0
+          ? <p className="empty-state">Enable a target set to include it in optimization.</p>
+          : null
         : result.entries.map((entry) => <EntryResults
           key={entry.entryId}
           entry={entry}

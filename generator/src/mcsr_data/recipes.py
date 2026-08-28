@@ -105,20 +105,23 @@ def _parse_shaped(recipe_id: str, raw: dict[str, object]) -> tuple[list[Ingredie
 
 
 def _trim_pattern(pattern: list[str], recipe_id: str) -> list[str]:
-    while pattern and pattern[0].strip(" ") == "":
-        pattern.pop(0)
-    while pattern and pattern[-1].strip(" ") == "":
-        pattern.pop()
-    if not pattern:
+    first_row = 0
+    last_row = len(pattern)
+    while first_row < last_row and pattern[first_row].strip(" ") == "":
+        first_row += 1
+    while last_row > first_row and pattern[last_row - 1].strip(" ") == "":
+        last_row -= 1
+    trimmed = pattern[first_row:last_row]
+    if not trimmed:
         raise RecipeParseError(f"{recipe_id}: pattern cannot be all spaces")
-    if len({len(row) for row in pattern}) != 1:
+    if len({len(row) for row in trimmed}) != 1:
         raise RecipeParseError(f"{recipe_id}: pattern rows must have equal widths")
 
-    left = min(next((index for index, symbol in enumerate(row) if symbol != " "), len(row)) for row in pattern)
-    right = max(index for row in pattern for index, symbol in enumerate(row) if symbol != " ")
+    left = min(next((index for index, symbol in enumerate(row) if symbol != " "), len(row)) for row in trimmed)
+    right = max(index for row in trimmed for index, symbol in enumerate(row) if symbol != " ")
     if left > right:
         raise RecipeParseError(f"{recipe_id}: pattern cannot be all spaces")
-    return [row[left:right + 1] for row in pattern]
+    return [row[left:right + 1] for row in trimmed]
 
 
 def _parse_shapeless(recipe_id: str, raw: dict[str, object]) -> tuple[list[IngredientSlot], int, int]:

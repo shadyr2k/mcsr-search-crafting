@@ -1,7 +1,11 @@
-import { candidateQueries } from './candidates'
-import { type MatchExplanation, matchItem } from './search'
+import type { MatchExplanation } from './search'
 import { scoreStep, transitionTypingCost } from './scoring'
-import type { OptimizeInput } from './singleOptimizer'
+import {
+  prepareOptimization,
+  type OptimizeInput,
+  type PreparedCandidate,
+  type PreparedOptimization,
+} from './singleOptimizer'
 
 export interface OverlapStep {
   query: string
@@ -29,14 +33,6 @@ export interface OverlapResult {
   totalJunkAppearances: number
   newCharacterCount: number
   score: OverlapScoreBreakdown
-}
-
-interface Candidate {
-  query: string
-  targetMask: bigint
-  coveredTargetIds: string[]
-  junkItemIds: string[]
-  explanations: MatchExplanation[]
 }
 
 interface SearchState {
@@ -94,57 +90,11 @@ function targetIdsForMask(targetIds: readonly string[], mask: bigint): string[] 
   return targetIds.filter((_, index) => (mask & (1n << BigInt(index))) !== 0n)
 }
 
-function precomputeCandidates(input: OptimizeInput, targetIds: readonly string[]): Candidate[] {
-  const targetIdSet = new Set(targetIds)
-  const targetIndexes = new Map(targetIds.map((targetId, index) => [targetId, index]))
-  const targetItems = targetIds
-    .map((targetId) => input.items.get(targetId))
-    .filter((target): target is NonNullable<typeof target> => target !== undefined)
-  const visibleItemIds = [...input.visibleItemIds].sort(compareText)
-  const candidates: Candidate[] = []
-
-  for (const query of candidateQueries(targetItems)) {
-    const matchedItemIds = new Set<string>()
-    const explanations: MatchExplanation[] = []
-
-    for (const itemId of visibleItemIds) {
-      const item = input.items.get(itemId)
-      if (item === undefined) continue
-
-      const itemExplanations = matchItem(item, query)
-      if (itemExplanations.length === 0) continue
-
-      matchedItemIds.add(itemId)
-      explanations.push(...itemExplanations)
-    }
-
-    const coveredTargetIds = targetIds.filter((targetId) => matchedItemIds.has(targetId))
-    if (coveredTargetIds.length === 0) continue
-
-    let targetMask = 0n
-    for (const targetId of coveredTargetIds) {
-      targetMask |= 1n << BigInt(targetIndexes.get(targetId)!)
-    }
-
-    candidates.push({
-      query,
-      targetMask,
-      coveredTargetIds,
-      junkItemIds: [...matchedItemIds]
-        .filter((itemId) => !targetIdSet.has(itemId))
-        .sort(compareText),
-      explanations,
-    })
-  }
-
-  return candidates
-}
-
-function candidateJunkScore(candidate: Candidate) {
+function candidateJunkScore(candidate: PreparedCandidate) {
   return scoreStep(0, candidate.junkItemIds.length)
 }
 
-function initialState(candidate: Candidate): SearchState {
+function initialState(candidate: PreparedCandidate): SearchState {
   const stepScore = scoreStep(candidate.query.length, candidate.junkItemIds.length)
 
   return {
@@ -174,7 +124,7 @@ function initialState(candidate: Candidate): SearchState {
 
 function transitionState(
   state: SearchState,
-  candidate: Candidate,
+  candidate: PreparedCandidate,
   targetIds: readonly string[],
 ): SearchState {
   const newMask = candidate.targetMask & ~state.coveredMask
@@ -236,15 +186,27 @@ function toResult(state: SearchState, targetIds: string[]): OverlapResult {
   }
 }
 
-export function optimizeOverlap(input: OptimizeInput): OverlapResult[] {
-  const targetIds = [...input.targetIds].sort(compareText)
-  if (targetIds.length === 0) return []
-
-  const candidates = precomputeCandidates(input, targetIds)
-  const statesByCoverage = Array.from(
-    { length: targetIds.length + 1 },
+function createStateBuckets(targetCount: number): Array<Map<string, SearchState>> {
+  return Array.from(
+    { length: targetCount + 1 },
     () => new Map<string, SearchState>(),
   )
+}
+
+function resultsFromBuckets(
+  statesByCoverage: Array<Map<string, SearchState>>,
+  targetIds: string[],
+): OverlapResult[] {
+  return [...statesByCoverage[targetIds.length].values()]
+    .map((state) => toResult(state, targetIds))
+    .sort(compareRankedPaths)
+}
+
+export function optimizeOverlapPrepared(prepared: PreparedOptimization): OverlapResult[] {
+  const { targetIds, candidates } = prepared
+  if (targetIds.length === 0) return []
+
+  const statesByCoverage = createStateBuckets(targetIds.length)
 
   for (const candidate of candidates) {
     const state = initialState(candidate)
@@ -262,7 +224,78 @@ export function optimizeOverlap(input: OptimizeInput): OverlapResult[] {
     }
   }
 
-  return [...statesByCoverage[targetIds.length].values()]
-    .map((state) => toResult(state, targetIds))
-    .sort(compareRankedPaths)
+  return resultsFromBuckets(statesByCoverage, targetIds)
+}
+
+export interface CooperativeOverlapOptions {
+  signal?: AbortSignal
+  yieldControl: () => Promise<void>
+  workChunkSize?: number
+  onProgress?: (completed: number) => void
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new DOMException('Workspace optimization was cancelled.', 'AbortError')
+}
+
+function boundedChunkSize(value: number | undefined): number {
+  return Number.isInteger(value) && (value ?? 0) > 0 ? value! : 4096
+}
+
+export async function optimizeOverlapPreparedCooperatively(
+  prepared: PreparedOptimization,
+  options: CooperativeOverlapOptions,
+): Promise<OverlapResult[]> {
+  const { targetIds, candidates } = prepared
+  if (targetIds.length === 0) return []
+
+  const statesByCoverage = createStateBuckets(targetIds.length)
+  const workChunkSize = boundedChunkSize(options.workChunkSize)
+  let completed = 0
+  let workSinceYield = 0
+
+  function recordWork(): Promise<void> | undefined {
+    completed += 1
+    workSinceYield += 1
+    if (workSinceYield < workChunkSize) return undefined
+    return yieldForCooperation()
+  }
+
+  async function yieldForCooperation(): Promise<void> {
+    options.onProgress?.(completed)
+    throwIfAborted(options.signal)
+    await options.yieldControl()
+    throwIfAborted(options.signal)
+    workSinceYield = 0
+  }
+
+  throwIfAborted(options.signal)
+  options.onProgress?.(completed)
+  for (const candidate of candidates) {
+    const state = initialState(candidate)
+    retainBetterState(statesByCoverage[countBits(state.coveredMask)], state)
+    const pendingYield = recordWork()
+    if (pendingYield) await pendingYield
+  }
+
+  for (let coveredCount = 1; coveredCount < targetIds.length; coveredCount += 1) {
+    for (const state of statesByCoverage[coveredCount].values()) {
+      for (const candidate of candidates) {
+        if ((candidate.targetMask & ~state.coveredMask) !== 0n) {
+          const nextState = transitionState(state, candidate, targetIds)
+          retainBetterState(statesByCoverage[countBits(nextState.coveredMask)], nextState)
+        }
+        const pendingYield = recordWork()
+        if (pendingYield) await pendingYield
+      }
+    }
+  }
+
+  throwIfAborted(options.signal)
+  options.onProgress?.(completed)
+  return resultsFromBuckets(statesByCoverage, targetIds)
+}
+
+export function optimizeOverlap(input: OptimizeInput): OverlapResult[] {
+  return optimizeOverlapPrepared(prepareOptimization(input))
 }

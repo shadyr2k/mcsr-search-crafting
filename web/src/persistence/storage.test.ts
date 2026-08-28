@@ -36,6 +36,25 @@ class MemoryStorage implements Storage {
   }
 }
 
+class FailingStorage extends MemoryStorage {
+  constructor(
+    private readonly failReads: boolean,
+    private readonly failWrites: boolean,
+  ) {
+    super()
+  }
+
+  override getItem(key: string): string | null {
+    if (this.failReads) throw new DOMException('Storage read blocked.', 'SecurityError')
+    return super.getItem(key)
+  }
+
+  override setItem(key: string, value: string): void {
+    if (this.failWrites) throw new DOMException('Storage quota exceeded.', 'QuotaExceededError')
+    super.setItem(key, value)
+  }
+}
+
 function inventory(name: string, itemIds: string[]) {
   return { name, itemIds }
 }
@@ -151,6 +170,17 @@ describe('custom inventory slot persistence', () => {
 })
 
 describe('target workspace persistence', () => {
+  test('round trips an enabled empty entry without turning it into a scoreable target', () => {
+    const storage = new MemoryStorage()
+    const emptyWorkspace = {
+      entries: [{ id: 'empty', targetIds: [], enabled: true, gridSize: 3 as const, order: 0 }],
+    }
+
+    saveTargetWorkspace(emptyWorkspace, storage)
+
+    expect(loadTargetWorkspace(storage).value).toEqual(emptyWorkspace)
+  })
+
   test('stores target entries separately and preserves enabled grid and order', () => {
     const storage = new MemoryStorage()
     const saved = workspace()
@@ -209,5 +239,26 @@ describe('target workspace persistence', () => {
     expect(loaded.value).toEqual({ entries: [saved.entries[0]] })
     expect(loaded.warning).toMatch(/workspace/i)
     expect(recoveryValue(storage, 'target-workspace')).toBe(raw)
+  })
+
+  test('returns safe defaults and an actionable warning when browser storage reads fail', () => {
+    const storage = new FailingStorage(true, false)
+
+    const loaded = loadTargetWorkspace(storage)
+
+    expect(loaded.value).toEqual({ entries: [] })
+    expect(loaded.warning).toMatch(/browser storage.*read/i)
+    expect(loaded.warning).toMatch(/memory/i)
+  })
+
+  test('retains saved workspace state in memory and warns when browser storage writes fail', () => {
+    const storage = new FailingStorage(false, true)
+    const saved = workspace()
+
+    const saveResult = saveTargetWorkspace(saved, storage)
+
+    expect(saveResult.warning).toMatch(/browser storage.*write/i)
+    expect(saveResult.warning).toMatch(/memory/i)
+    expect(loadTargetWorkspace(storage).value).toEqual(saved)
   })
 })

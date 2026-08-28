@@ -10,6 +10,11 @@ export interface SearchItem {
   confidence: string
 }
 
+export interface InventoryItem {
+  id: string
+  name: string
+}
+
 export interface IngredientSlot {
   acceptedItems: string[]
 }
@@ -24,8 +29,9 @@ export interface CraftingRecipe {
 }
 
 export interface GeneratedData {
-  schemaVersion: 1
+  schemaVersion: 2
   items: Map<string, SearchItem>
+  inventoryItems: Map<string, InventoryItem>
   recipes: CraftingRecipe[]
 }
 
