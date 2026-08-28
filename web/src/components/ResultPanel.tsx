@@ -138,6 +138,9 @@ function EntryResults({
 
     {entry.availableCompleteMethod === 'overlap' && entry.single.length === 0
       && <p className="result-promotion">Overlap is the available complete method.</p>}
+    {entry.availableCompleteMethod && <p className="result-contribution">
+      {entry.availableCompleteMethod === 'single' ? 'Single-query' : 'Overlap'} supplies this set’s aggregate contribution.
+    </p>}
 
     {entry.incomplete ? <section className="incomplete-result" aria-label={`Incomplete result for set ${entryNumber}`}>
       <h4>No complete method is available.</h4>
@@ -170,7 +173,7 @@ export function ResultPanel({ items, result, pending = false, warning, error }: 
         : result.entries.map((entry) => <EntryResults
           key={entry.entryId}
           entry={entry}
-          entryNumber={entry.entryOrder + 1}
+          entryNumber={entry.displayIndex + 1}
           items={items}
         />)}
     </>}

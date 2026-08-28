@@ -13,7 +13,7 @@ export interface IncompleteAttempt {
 
 export interface WorkspaceEntryResult {
   entryId: string
-  entryOrder: number
+  displayIndex: number
   targetIds: string[]
   gridSize: 2 | 3
   visibleItemIds: string[]
@@ -46,9 +46,10 @@ function optimizeEntry(
   data: GeneratedData,
   inventory: ReadonlySet<string>,
   entry: TargetWorkspaceEntry,
+  displayIndex: number,
 ): WorkspaceEntryResult {
   const visibleIds = visibleOutputIds(data.recipes, new Set(inventory), entry.gridSize)
-  const targetIds = [...new Set(entry.targetIds)]
+  const targetIds = [...new Set(entry.targetIds)].sort()
   const input = {
     targetIds: new Set(targetIds),
     visibleItemIds: visibleIds,
@@ -77,7 +78,7 @@ function optimizeEntry(
 
   return {
     entryId: entry.id,
-    entryOrder: entry.order,
+    displayIndex,
     targetIds,
     gridSize: entry.gridSize,
     visibleItemIds: [...visibleIds].sort(),
@@ -99,15 +100,16 @@ export async function optimizeWorkspace(
   entries: readonly TargetWorkspaceEntry[],
   options: OptimizeWorkspaceOptions = {},
 ): Promise<WorkspaceResult> {
-  const enabledEntries = entries
-    .filter(({ enabled }) => enabled)
+  const enabledEntries = [...entries]
     .sort((left, right) => left.order - right.order || left.id.localeCompare(right.id))
+    .map((entry, displayIndex) => ({ entry, displayIndex }))
+    .filter(({ entry }) => entry.enabled)
   const optimizedEntries: WorkspaceEntryResult[] = []
   const yieldControl = options.yieldControl ?? yieldToBrowser
 
   throwIfAborted(options.signal)
-  for (const [index, entry] of enabledEntries.entries()) {
-    optimizedEntries.push(optimizeEntry(data, inventory, entry))
+  for (const [index, { entry, displayIndex }] of enabledEntries.entries()) {
+    optimizedEntries.push(optimizeEntry(data, inventory, entry, displayIndex))
     throwIfAborted(options.signal)
     if (index < enabledEntries.length - 1) {
       await yieldControl()

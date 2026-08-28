@@ -12,32 +12,46 @@ const items = new Map<string, SearchItem>([
   }],
   ['target:bow', {
     id: 'target:bow', name: 'Bow', confidence: 'source_reproduced',
-    searchLines: [{ source: 'name', text: 'Bow' }],
+    searchLines: [{ source: 'name', text: 'Brown Bow' }],
   }],
   ['junk:shared', {
     id: 'junk:shared', name: 'Shared junk', confidence: 'source_reproduced',
     searchLines: [{ source: 'name', text: 'Bed Bow' }],
   }],
+  ['junk:first', {
+    id: 'junk:first', name: 'First-step junk', confidence: 'source_reproduced',
+    searchLines: [{ source: 'name', text: 'Bed' }],
+  }],
+  ['target:unicode', {
+    id: 'target:unicode', name: 'Unicode target', confidence: 'source_reproduced',
+    searchLines: [{ source: 'name', text: '😀İx' }],
+  }],
 ])
 
 const result: WorkspaceResult = {
-  aggregateScore: 8,
+  aggregateScore: 2.5,
   entries: [{
     entryId: 'set-one',
-    entryOrder: 0,
+    displayIndex: 0,
     targetIds: ['target:bed', 'target:bow'],
     gridSize: 3,
-    visibleItemIds: ['junk:shared', 'target:bed', 'target:bow'],
+    visibleItemIds: ['junk:first', 'junk:shared', 'target:bed', 'target:bow'],
     availableCompleteMethod: 'single',
-    bestScore: 3.5,
+    bestScore: 2.5,
     incomplete: null,
     single: [{
-      query: 'b',
+      query: ' ',
       coveredTargetIds: ['target:bed', 'target:bow'],
       junkItemIds: ['junk:shared'],
       explanations: [{
         itemId: 'target:bed', source: 'name', line: 'Red Bed',
-        matchedSpan: { start: 4, end: 5, text: 'B' },
+        matchedSpan: { start: 3, end: 4, text: ' ' },
+      }, {
+        itemId: 'target:bow', source: 'name', line: 'Brown Bow',
+        matchedSpan: { start: 5, end: 6, text: ' ' },
+      }, {
+        itemId: 'junk:shared', source: 'name', line: 'Bed Bow',
+        matchedSpan: { start: 3, end: 4, text: ' ' },
       }],
       score: { lengthPenalty: 0, junkPresencePenalty: 2, junkCountPenalty: 0.5, total: 2.5 },
     }],
@@ -46,10 +60,16 @@ const result: WorkspaceResult = {
         query: 'bed',
         coveredTargetIds: ['target:bed'],
         newTargetIds: ['target:bed'],
-        junkItemIds: ['junk:shared'],
+        junkItemIds: ['junk:first', 'junk:shared'],
         explanations: [{
           itemId: 'target:bed', source: 'name', line: 'Red Bed',
           matchedSpan: { start: 4, end: 7, text: 'Bed' },
+        }, {
+          itemId: 'junk:first', source: 'name', line: 'Bed',
+          matchedSpan: { start: 0, end: 3, text: 'Bed' },
+        }, {
+          itemId: 'junk:shared', source: 'name', line: 'Bed Bow',
+          matchedSpan: { start: 0, end: 3, text: 'Bed' },
         }],
         retainedPrefix: '', freeBackspaceCount: 0, typedSuffix: 'bed',
       }, {
@@ -58,21 +78,24 @@ const result: WorkspaceResult = {
         newTargetIds: ['target:bow'],
         junkItemIds: ['junk:shared'],
         explanations: [{
-          itemId: 'target:bow', source: 'name', line: 'Bow',
-          matchedSpan: { start: 0, end: 3, text: 'Bow' },
+          itemId: 'target:bow', source: 'name', line: 'Brown Bow',
+          matchedSpan: { start: 6, end: 9, text: 'Bow' },
+        }, {
+          itemId: 'junk:shared', source: 'name', line: 'Bed Bow',
+          matchedSpan: { start: 4, end: 7, text: 'Bow' },
         }],
         retainedPrefix: 'b', freeBackspaceCount: 2, typedSuffix: 'ow',
       }],
       coveredTargetIds: ['target:bed', 'target:bow'],
-      junkItemIds: ['junk:shared'],
-      totalJunkAppearances: 2,
+      junkItemIds: ['junk:first', 'junk:shared'],
+      totalJunkAppearances: 3,
       newCharacterCount: 5,
       score: {
         initialLengthPenalty: 1,
         transitionTypingPenalty: 2,
         junkPresencePenalty: 4,
-        junkCountPenalty: 1,
-        total: 8,
+        junkCountPenalty: 1.5,
+        total: 8.5,
       },
     }],
   }],
@@ -84,9 +107,13 @@ describe('ResultPanel', () => {
   test('shows aggregate, independent categories, query sequence, and complete score breakdowns', () => {
     render(<ResultPanel items={items} result={result} />)
 
-    expect(screen.getByText('Aggregate score: 8')).toBeTruthy()
+    expect(screen.getByText('Aggregate score: 2.5')).toBeTruthy()
+    expect(screen.getByText('3x3 grid · Score contribution: 2.5')).toBeTruthy()
+    expect(screen.getByText('Single-query supplies this set’s aggregate contribution.')).toBeTruthy()
     const single = screen.getByRole('region', { name: 'Single-query results for set 1' })
-    expect(within(single).getByText('b', { selector: 'code' })).toBeTruthy()
+    expect(within(single).getByText((_, element) =>
+      element?.tagName === 'CODE' && element.textContent === ' ',
+    )).toBeTruthy()
     expect(within(single).getByText('Length penalty').nextElementSibling?.textContent).toBe('0')
     expect(within(single).getByText('Junk presence penalty').nextElementSibling?.textContent).toBe('2')
     expect(within(single).getByText('Junk count penalty').nextElementSibling?.textContent).toBe('0.5')
@@ -97,8 +124,8 @@ describe('ResultPanel', () => {
     expect(within(overlap).getByText('Initial length penalty').nextElementSibling?.textContent).toBe('1')
     expect(within(overlap).getByText('Transition typing penalty').nextElementSibling?.textContent).toBe('2')
     expect(within(overlap).getByText('Junk presence penalty').nextElementSibling?.textContent).toBe('4')
-    expect(within(overlap).getByText('Junk count penalty').nextElementSibling?.textContent).toBe('1')
-    expect(within(overlap).getByText('Total score').nextElementSibling?.textContent).toBe('8')
+    expect(within(overlap).getByText('Junk count penalty').nextElementSibling?.textContent).toBe('1.5')
+    expect(within(overlap).getByText('Total score').nextElementSibling?.textContent).toBe('8.5')
   })
 
   test('explains targets, per-step and repeated junk, combined junk, edits, and exact matched spans', () => {
@@ -109,10 +136,10 @@ describe('ResultPanel', () => {
     expect(steps).toHaveLength(2)
     expect(within(steps[0]).getByText('New targets: Bed (target:bed)')).toBeTruthy()
     expect(within(steps[1]).getByText('New targets: Bow (target:bow)')).toBeTruthy()
-    expect(within(steps[0]).getByText('Junk: Shared junk (junk:shared)')).toBeTruthy()
+    expect(within(steps[0]).getByText('Junk: First-step junk (junk:first), Shared junk (junk:shared)')).toBeTruthy()
     expect(within(steps[1]).getByText('Junk: Shared junk (junk:shared)')).toBeTruthy()
-    expect(within(overlap).getByText('Junk appearances charged: 2')).toBeTruthy()
-    expect(within(overlap).getByText('Combined junk: Shared junk (junk:shared)')).toBeTruthy()
+    expect(within(overlap).getByText('Junk appearances charged: 3')).toBeTruthy()
+    expect(within(overlap).getByText('Combined junk: First-step junk (junk:first), Shared junk (junk:shared)')).toBeTruthy()
     expect(within(steps[1]).getByText('Retained prefix: “b”')).toBeTruthy()
     expect(within(steps[1]).getByText('Free backspaces: 2')).toBeTruthy()
     expect(within(steps[1]).getByText('Typed suffix: “ow”')).toBeTruthy()
@@ -128,7 +155,8 @@ describe('ResultPanel', () => {
   test('promotes overlap and renders unmatched diagnostics with the maximum failure score', () => {
     const promoted: WorkspaceResult = {
       ...result,
-      entries: [{ ...result.entries[0], single: [], availableCompleteMethod: 'overlap' }],
+      aggregateScore: 8.5,
+      entries: [{ ...result.entries[0], single: [], bestScore: 8.5, availableCompleteMethod: 'overlap' }],
     }
     const incomplete: WorkspaceResult = {
       aggregateScore: 13,
@@ -141,6 +169,7 @@ describe('ResultPanel', () => {
 
     const { rerender } = render(<ResultPanel items={items} result={promoted} />)
     expect(screen.getByText('Overlap is the available complete method.')).toBeTruthy()
+    expect(screen.getByText('Overlap supplies this set’s aggregate contribution.')).toBeTruthy()
 
     rerender(<ResultPanel items={items} result={incomplete} />)
     expect(screen.getByText('No complete method is available.')).toBeTruthy()
@@ -166,12 +195,39 @@ describe('ResultPanel', () => {
   test('retains workspace set numbering when disabled sets are excluded', () => {
     const secondSet = {
       ...result,
-      entries: [{ ...result.entries[0], entryOrder: 1 }],
+      entries: [{ ...result.entries[0], displayIndex: 1 }],
     } as WorkspaceResult
 
     render(<ResultPanel items={items} result={secondSet} />)
 
     expect(screen.getByRole('heading', { name: 'Target set 2' })).toBeTruthy()
     expect(screen.getByRole('region', { name: 'Single-query results for set 2' })).toBeTruthy()
+  })
+
+  test('highlights a UTF-16 span after astral and lowercase-expanding characters exactly', () => {
+    const unicodeResult: WorkspaceResult = {
+      aggregateScore: 0,
+      entries: [{
+        ...result.entries[0],
+        targetIds: ['target:unicode'], visibleItemIds: ['target:unicode'], overlap: [], bestScore: 0,
+        single: [{
+          query: 'x', coveredTargetIds: ['target:unicode'], junkItemIds: [],
+          explanations: [{
+            itemId: 'target:unicode', source: 'name', line: '😀İx',
+            matchedSpan: { start: 3, end: 4, text: 'x' },
+          }],
+          score: { lengthPenalty: 0, junkPresencePenalty: 0, junkCountPenalty: 0, total: 0 },
+        }],
+      }],
+    }
+
+    render(<ResultPanel items={items} result={unicodeResult} />)
+
+    const line = screen.getByText((_, element) =>
+      element?.classList.contains('search-line') === true && element.textContent === '😀İx',
+    )
+    expect(line.textContent).toBe('😀İx')
+    expect(within(line).getByText('x').tagName).toBe('MARK')
+    expect(screen.getByText('name · target:unicode · span 3–4')).toBeTruthy()
   })
 })

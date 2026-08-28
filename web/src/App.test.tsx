@@ -1,5 +1,20 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+
+import type { WorkspaceResult } from './engine/optimizeWorkspace'
+
+const optimizerControl = vi.hoisted(() => ({
+  implementation: undefined as undefined | (() => Promise<WorkspaceResult>),
+}))
+
+vi.mock('./engine/optimizeWorkspace', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./engine/optimizeWorkspace')>()
+  return {
+    ...actual,
+    optimizeWorkspace: (...args: Parameters<typeof actual.optimizeWorkspace>) =>
+      optimizerControl.implementation?.() ?? actual.optimizeWorkspace(...args),
+  }
+})
 
 import App from './App'
 
@@ -32,6 +47,7 @@ afterEach(() => {
   cleanup()
   localStorage.clear()
   vi.unstubAllGlobals()
+  optimizerControl.implementation = undefined
 })
 
 describe('App persistence', () => {
@@ -104,5 +120,97 @@ describe('App persistence', () => {
 
     await waitFor(() => expect(screen.getByText('Aggregate score: 0')).toBeTruthy())
     expect(screen.getByRole('region', { name: 'Single-query results for set 1' })).toBeTruthy()
+  })
+
+  test('renumbers result labels with the target list after deleting an earlier set', async () => {
+    localStorage.setItem(targetWorkspaceKey, JSON.stringify({
+      schemaVersion: 1,
+      entries: [
+        { id: 'first-set', targetIds: ['minecraft:stick'], enabled: true, gridSize: 3, order: 0 },
+        { id: 'second-set', targetIds: ['minecraft:stick'], enabled: true, gridSize: 3, order: 1 },
+      ],
+    }))
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+      ok: true,
+      json: async () => url.includes('search-items') ? itemsPayload : recipesPayload,
+    })))
+
+    render(<App />)
+
+    expect(await screen.findByRole('region', { name: 'Incomplete result for set 2' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove set 1' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('region', { name: 'Incomplete result for set 1' })).toBeTruthy()
+      expect(screen.queryByRole('region', { name: 'Incomplete result for set 2' })).toBeNull()
+    })
+    expect(screen.getAllByRole('heading', { name: 'Target set 1' })).toHaveLength(2)
+  })
+
+  test('does not publish a stale optimization after a newer inventory result', async () => {
+    localStorage.setItem(targetWorkspaceKey, JSON.stringify({
+      schemaVersion: 1,
+      entries: [{
+        id: 'saved-set', targetIds: ['minecraft:stick'], enabled: true, gridSize: 3, order: 0,
+      }],
+    }))
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+      ok: true,
+      json: async () => url.includes('search-items') ? itemsPayload : recipesPayload,
+    })))
+
+    const stale: WorkspaceResult = {
+      aggregateScore: 10,
+      entries: [{
+        entryId: 'saved-set', displayIndex: 0, targetIds: ['minecraft:stick'], gridSize: 3,
+        visibleItemIds: [], single: [], overlap: [], availableCompleteMethod: null, bestScore: 10,
+        incomplete: { matchedTargetIds: [], unmatchedTargetIds: ['minecraft:stick'], score: 10 },
+      }],
+    }
+    const fresh: WorkspaceResult = {
+      aggregateScore: 0,
+      entries: [{
+        entryId: 'saved-set', displayIndex: 0, targetIds: ['minecraft:stick'], gridSize: 3,
+        visibleItemIds: ['minecraft:stick'], overlap: [], availableCompleteMethod: 'single', bestScore: 0,
+        incomplete: null,
+        single: [{
+          query: 's', coveredTargetIds: ['minecraft:stick'], junkItemIds: [],
+          explanations: [{
+            itemId: 'minecraft:stick', source: 'name', line: 'Stick',
+            matchedSpan: { start: 0, end: 1, text: 'S' },
+          }],
+          score: { lengthPenalty: 0, junkPresencePenalty: 0, junkCountPenalty: 0, total: 0 },
+        }],
+      }],
+    }
+    let resolveStale!: (result: WorkspaceResult) => void
+    let markFirstStarted!: () => void
+    const firstStarted = new Promise<void>((resolve) => { markFirstStarted = resolve })
+    const stalePromise = new Promise<WorkspaceResult>((resolve) => { resolveStale = resolve })
+    let invocation = 0
+    optimizerControl.implementation = () => {
+      invocation += 1
+      if (invocation === 1) {
+        markFirstStarted()
+        return stalePromise
+      }
+      return Promise.resolve(fresh)
+    }
+
+    render(<App />)
+    await firstStarted
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search inventory items' }), {
+      target: { value: 'stick' },
+    })
+    fireEvent.click(screen.getByRole('checkbox', { name: /stick/i }))
+    expect(await screen.findByText('Aggregate score: 0')).toBeTruthy()
+
+    await act(async () => {
+      resolveStale(stale)
+      await stalePromise
+    })
+
+    expect(screen.getByText('Aggregate score: 0')).toBeTruthy()
+    expect(screen.queryByText('Aggregate score: 10')).toBeNull()
   })
 })
