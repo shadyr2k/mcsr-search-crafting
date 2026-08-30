@@ -74,7 +74,7 @@ const stickOnlyCollectionsPayload = {
 }
 
 function stubGeneratedData(recipes: unknown = recipesPayload, collections: unknown = collectionsPayload) {
-  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+  const fetchMock = vi.fn(async (url: string) => ({
     ok: true,
     json: async () => url.includes('search-items')
       ? itemsPayload
@@ -83,7 +83,9 @@ function stubGeneratedData(recipes: unknown = recipesPayload, collections: unkno
         : url.includes('crafting-recipes')
           ? recipes
           : collections,
-  })))
+  }))
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
 }
 
 afterEach(() => {
@@ -101,11 +103,12 @@ describe('App persistence', () => {
       schemaVersion: 1,
       entries: [{ id: 'empty', targetIds: [], enabled: true, gridSize: 3, order: 0 }],
     }))
-    stubGeneratedData()
+    const fetchMock = stubGeneratedData()
 
     render(<App />)
 
     expect(await screen.findByRole('article', { name: 'Target set 1' })).toBeTruthy()
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('recipe-result-collections.json'))
     await waitFor(() => expect(screen.getByText('Aggregate score: 0')).toBeTruthy())
     expect(screen.getByText('1 enabled empty target set is saved but not scored.')).toBeTruthy()
     expect(screen.queryByText(/Maximum failure score:/)).toBeNull()
