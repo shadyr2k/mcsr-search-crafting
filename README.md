@@ -38,14 +38,15 @@ Generate the browser data from the pinned source tree:
 .\.venv\Scripts\python.exe -m mcsr_data.generate --source minecraft-data --output web/public/data
 ```
 
-The production command requires `recipes/`, `tags/items/`, and `lang/en_us.json`, then enforces the clean Minecraft 1.16.1 English baseline of exactly 634 recipes and 562 output items. The current baseline also contains 281 concrete inventory ingredients and 0 validation errors. It atomically writes schema-version-2 artifacts:
+The production command requires `recipes/`, `tags/items/`, and `lang/en_us.json`, then enforces the clean Minecraft 1.16.1 English baseline of exactly 634 recipes, 562 output items, 281 concrete inventory ingredients, 354 recipe-result collections, and 0 validation errors. It atomically writes five mutually consistent schema-version-3 artifacts:
 
 - `web/public/data/search-items.json`: output item names, line-bounded searchable text, provenance, and confidence.
 - `web/public/data/inventory-items.json`: every concrete recipe ingredient ID and its English name for the inventory picker.
-- `web/public/data/crafting-recipes.json`: normalized recipes, resolved ingredient alternatives, output counts, and grid compatibility.
+- `web/public/data/crafting-recipes.json`: normalized recipes, resolved ingredient alternatives, output counts, grid compatibility, exact recipe groups, recipe-book categories, and result-collection IDs.
+- `web/public/data/recipe-result-collections.json`: deterministic category-plus-group collections with their exact recipe and output members.
 - `web/public/data/validation-report.json`: generation counts and machine-readable diagnostics.
 
-If validation fails, the generator prints every diagnostic and atomically writes `validation-failure-report.json` while leaving all last-valid browser artifacts untouched. Small fixture generation is intentionally opt-in:
+If validation fails, the generator prints every diagnostic and atomically writes `validation-failure-report.json` while leaving all five last-valid browser artifacts untouched. Small fixture generation is intentionally opt-in:
 
 ```powershell
 .\.venv\Scripts\python.exe -m mcsr_data.generate --source path/to/fixture --output path/to/output --allow-non-baseline
@@ -72,17 +73,17 @@ pnpm --dir web run build
 pnpm --dir web run e2e
 ```
 
-The two browser tests start Vite on `127.0.0.1` and run Chromium at an explicit 1440×1000 desktop viewport. The real-data path uses accessible roles and labels, verifies keyboard focus order, selects ingredient-only `minecraft:oak_log` and `minecraft:cobblestone` from the real catalog, confirms ingredient-only IDs are not target choices, checks representative queries, target coverage, and scores in both ranked categories, excludes a disabled set from the aggregate, then reloads to verify target membership, enabled state, grid size, and set order persisted. A deterministic routed data fixture passes through the real App and `ResultPanel` boundary to verify that `😀İx` renders unchanged, reports its `name` source and UTF-16 span 3–4, and marks only `x`.
+The browser tests start Vite on `127.0.0.1` and run Chromium at an explicit 1440×1000 desktop viewport. The real-data path uses accessible roles and labels, verifies keyboard focus order, selects ingredient-only `minecraft:oak_log` and `minecraft:cobblestone` from the real catalog, confirms ingredient-only IDs are not target choices, checks representative queries, target coverage, and scores in both ranked categories, excludes a disabled set from the aggregate, then reloads to verify target membership, enabled state, grid size, and set order persisted. A deterministic routed data fixture passes through the real App and `ResultPanel` boundary to verify both Unicode-safe UTF-16 spans and collection alias explanations that distinguish the matched member from the visible craftable output. The generated-data acceptance suite locks the confirmed `wn`, `wn `, `re`, `ngo`, `ro`, and `oe` queries, including White Wool isolation and White Bed candidate generation.
 
 The production build is emitted to the ignored `web/dist/` directory. Its files use relative asset paths and can be hosted by an ordinary static-file server.
 
 ## Architecture
 
-The build-time generator under `generator/src/mcsr_data/` parses the extracted 1.16.1 recipes, resolves item tags, applies English translations and source-reproduced tooltip rules, validates cross-references, and publishes deterministic JSON. Generator tests live in `generator/tests/`; tooltip-source provenance is recorded in `generator/references/minecraft-1.16.1-tooltip-sources.md`.
+The build-time generator under `generator/src/mcsr_data/` parses the extracted 1.16.1 recipes, resolves item tags, applies English translations and source-reproduced tooltip rules, constructs recipe-result collections, validates cross-references, and publishes deterministic JSON. Generator tests live in `generator/tests/`; source provenance is recorded in `generator/references/minecraft-1.16.1-tooltip-sources.md` and `generator/references/minecraft-1.16.1-recipe-collection-sources.md`.
 
 The runtime application under `web/src/` has explicit module boundaries:
 
-- `data/` validates and loads the generated schemas.
+- `data/` fetches the four runtime payloads (search items, inventory items, recipes, and result collections), rejects mixed schema versions, and validates their complete cross-reference graph.
 - `engine/` implements craftability, line-bounded search, shared candidate preparation, single-query ranking, overlap state search, scoring, bounded within-entry cancellation/progress, and workspace aggregation without React dependencies.
 - `persistence/` validates, migrates, and recovers browser records.
 - `presets/` contains committed read-only inventory presets.
@@ -106,6 +107,10 @@ Browser storage read, quota, or permission failures do not discard the active ed
 
 Queries are case-insensitive substrings, one through five characters long, and must occur within one searchable name or tooltip line. Printable spaces, numbers, punctuation, and symbols are eligible. Results explain the exact source line and matched span.
 
+Search reproduces Minecraft 1.16.1 recipe-result collections rather than treating each output as an isolated search document. Recipes with the same non-empty, exact JSON `group` join only when they also share the source-audited crafting recipe-book category; recipes with a missing or empty group each remain isolated. For a query, the engine first matches every searchable output member of an eligible recipe's collection, including members whose own recipes are not craftable, and then emits only the exact outputs of eligible recipes. For example, `wn` can match Brown Bed in the `bed` collection and surface craftable White Bed without claiming that Brown Bed is craftable.
+
+This collection lookup does not collapse item identity. Inventory entries, targets, visible outputs, and junk remain exact Minecraft item IDs: White Wool does not grant Brown Wool, White Bed and Brown Bed remain separate outputs, and ungrouped White Wool made from String does not inherit colored-wool aliases. There are no generic color, wood, or material-family records.
+
 For a complete single query:
 
 ```text
@@ -121,4 +126,4 @@ Single-query and overlap rankings remain separate. Each enabled target set contr
 
 ## Validation boundary
 
-The generator's tooltip behavior is audited against Minecraft 1.16.1 client sources, and every generated artifact must pass schema and diagnostic validation. However, automatic comparison with a running game is deferred: a future Fabric 1.16.1 client exporter will enumerate the same recipe outputs, call the game's tooltip implementation in English, and diff that export against `search-items.json`. Until that separate validator exists and runs, confidence means source-reproduced or explicitly overridden—not live-game verified.
+The generator's tooltip and recipe-result collection behavior is audited against Minecraft 1.16.1 client sources, and every generated artifact must pass schema and diagnostic validation. The browser requires schema version 3 for all four runtime payloads and rejects an older, newer, or mixed-version set explicitly. However, automatic comparison with a running game is deferred: a future Fabric 1.16.1 client exporter will enumerate the same recipe outputs, call the game's tooltip implementation in English, and diff that export against `search-items.json`. Until that separate validator exists and runs, confidence means source-reproduced or explicitly overridden—not live-game verified.
