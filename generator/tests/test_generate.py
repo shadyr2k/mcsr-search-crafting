@@ -1,8 +1,10 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
 
+import mcsr_data.generate as generate_module
 from mcsr_data.generate import (
     GenerationFailed,
     _validate_cross_references,
@@ -219,6 +221,115 @@ def test_collection_cross_references_report_invalid_graphs():
         "collection_group_mismatch",
         "result_collection_reference_mismatch",
     }
+
+
+def test_collection_members_must_be_sorted_and_unique():
+    recipes = [
+        NormalizedRecipe(
+            recipe_id="minecraft:a_recipe",
+            recipe_type="shapeless",
+            recipe_group="group",
+            output_item="minecraft:a_output",
+            output_count=1,
+            ingredient_slots=(),
+            width=1,
+            height=1,
+            fits_2x2=True,
+            fits_3x3=True,
+            recipe_book_category="crafting_building_blocks",
+            result_collection_id="crafting_building_blocks/group/group",
+        ),
+        NormalizedRecipe(
+            recipe_id="minecraft:b_recipe",
+            recipe_type="shapeless",
+            recipe_group="group",
+            output_item="minecraft:b_output",
+            output_count=1,
+            ingredient_slots=(),
+            width=1,
+            height=1,
+            fits_2x2=True,
+            fits_3x3=True,
+            recipe_book_category="crafting_building_blocks",
+            result_collection_id="crafting_building_blocks/group/group",
+        ),
+    ]
+    items = {
+        item_id: SearchItem(
+            item_id=item_id,
+            name=item_id,
+            search_lines=(),
+            generation_method="name_only",
+            confidence="source_reproduced",
+        )
+        for item_id in ("minecraft:a_output", "minecraft:b_output")
+    }
+    malformed_collection = RecipeResultCollection(
+        collection_id="crafting_building_blocks/group/group",
+        recipe_book_category="crafting_building_blocks",
+        recipe_group="group",
+        recipe_ids=("minecraft:b_recipe", "minecraft:a_recipe"),
+        output_item_ids=(
+            "minecraft:b_output",
+            "minecraft:a_output",
+            "minecraft:b_output",
+        ),
+    )
+    report = ValidationReport()
+
+    _validate_cross_references(recipes, items, {}, [malformed_collection], report)
+
+    assert {
+        diagnostic.code for diagnostic in report.diagnostics
+    } >= {
+        "invalid_collection_recipe_ids",
+        "invalid_collection_output_item_ids",
+    }
+
+
+def test_atomic_publish_restores_all_artifacts_after_an_intermediate_replacement_fails(
+    tmp_path,
+    monkeypatch,
+):
+    output = tmp_path / "output"
+    output.mkdir()
+    filenames = (
+        "search-items.json",
+        "inventory-items.json",
+        "crafting-recipes.json",
+        "recipe-result-collections.json",
+        "validation-report.json",
+    )
+    previous = {filename: f"old {filename}".encode("utf-8") for filename in filenames}
+    for filename, contents in previous.items():
+        (output / filename).write_bytes(contents)
+    payloads = {filename: {"version": 3, "filename": filename} for filename in filenames}
+    original_replace = os.replace
+    failed = False
+
+    def fail_after_intermediate_replacement(source, destination):
+        nonlocal failed
+        source_path = Path(source)
+        destination_path = Path(destination)
+        if (
+            not failed
+            and source_path.name.startswith(".crafting-recipes.json.")
+            and destination_path.name == "crafting-recipes.json"
+        ):
+            failed = True
+            raise OSError("injected replacement failure")
+        original_replace(source, destination)
+
+    monkeypatch.setattr(generate_module.os, "replace", fail_after_intermediate_replacement)
+
+    with pytest.raises(OSError, match="injected replacement failure"):
+        generate_module._atomic_write_all(output, payloads)
+
+    assert failed
+    assert {
+        filename: (output / filename).read_bytes()
+        for filename in filenames
+    } == previous
 
 
 def test_generate_reports_every_missing_required_source_path(tmp_path):

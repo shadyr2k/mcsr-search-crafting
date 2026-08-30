@@ -334,6 +334,18 @@ def _validate_cross_references(
             report.error("empty_collection", collection.collection_id, "collection has no recipes")
         if not collection.output_item_ids:
             report.error("empty_collection_outputs", collection.collection_id, "collection has no outputs")
+        if collection.recipe_ids != tuple(sorted(set(collection.recipe_ids))):
+            report.error(
+                "invalid_collection_recipe_ids",
+                collection.collection_id,
+                "recipe IDs must be sorted and unique",
+            )
+        if collection.output_item_ids != tuple(sorted(set(collection.output_item_ids))):
+            report.error(
+                "invalid_collection_output_item_ids",
+                collection.collection_id,
+                "output item IDs must be sorted and unique",
+            )
 
         member_output_item_ids: set[str] = set()
         for recipe_id in collection.recipe_ids:
@@ -540,6 +552,8 @@ def _serialize_report(summary: GenerationSummary, *, status: str) -> dict[str, o
 def _atomic_write_all(output_root: Path, payloads: dict[str, dict[str, object]]) -> None:
     output_root.mkdir(parents=True, exist_ok=True)
     temporary_paths: list[tuple[Path, Path]] = []
+    backup_paths: list[tuple[Path, Path]] = []
+    published_paths: list[Path] = []
     try:
         for filename, payload in payloads.items():
             destination = output_root / filename
@@ -555,11 +569,38 @@ def _atomic_write_all(output_root: Path, payloads: dict[str, dict[str, object]])
                 temporary.write("\n")
                 temporary_path = Path(temporary.name)
             temporary_paths.append((temporary_path, destination))
+
+        for _, destination in temporary_paths:
+            if destination.exists():
+                with NamedTemporaryFile(
+                    mode="w",
+                    encoding="utf-8",
+                    dir=output_root,
+                    prefix=f".{destination.name}.",
+                    suffix=".backup",
+                    delete=False,
+                ) as backup:
+                    backup_path = Path(backup.name)
+                os.replace(destination, backup_path)
+                backup_paths.append((backup_path, destination))
         for temporary_path, destination in temporary_paths:
             os.replace(temporary_path, destination)
+            published_paths.append(destination)
+    except OSError:
+        destinations_with_backups = {
+            destination for _, destination in backup_paths
+        }
+        for backup_path, destination in reversed(backup_paths):
+            os.replace(backup_path, destination)
+        for destination in reversed(published_paths):
+            if destination not in destinations_with_backups:
+                destination.unlink(missing_ok=True)
+        raise
     finally:
         for temporary_path, _ in temporary_paths:
             temporary_path.unlink(missing_ok=True)
+        for backup_path, _ in backup_paths:
+            backup_path.unlink(missing_ok=True)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
