@@ -1,7 +1,10 @@
 import type { CraftingRecipe, RecipeResultCollection, SearchItem } from '../domain/types'
 
 import { candidateQueriesForTargets } from './candidates'
-import { matchEligibleCollectionOutputs } from './collectionSearch'
+import {
+  matchEligibleCollectionOutputs,
+  matchEligibleCollectionOutputsCooperatively,
+} from './collectionSearch'
 import type { CollectionMatchExplanation } from './search'
 import { type ScoreBreakdown, scoreStep } from './scoring'
 
@@ -82,12 +85,18 @@ function addCollectionMatches(
   matchedItemIds: Set<string>,
   explanations: CollectionMatchExplanation[],
 ): void {
-  const matches = matchEligibleCollectionOutputs(
-    query,
-    eligibleRecipes,
-    input.collections,
-    input.items,
+  addMatches(
+    matchEligibleCollectionOutputs(query, eligibleRecipes, input.collections, input.items),
+    matchedItemIds,
+    explanations,
   )
+}
+
+function addMatches(
+  matches: ReadonlyMap<string, CollectionMatchExplanation[]>,
+  matchedItemIds: Set<string>,
+  explanations: CollectionMatchExplanation[],
+): void {
   for (const [outputItemId, outputExplanations] of matches) {
     matchedItemIds.add(outputItemId)
     explanations.push(...outputExplanations)
@@ -152,7 +161,23 @@ export async function prepareOptimizationCooperatively(
     const explanations: CollectionMatchExplanation[] = []
 
     for (const { recipes } of context.eligibleCollections) {
-      addCollectionMatches(input, query, recipes, matchedItemIds, explanations)
+      let membersSinceYield = 0
+      const matches = await matchEligibleCollectionOutputsCooperatively(
+        query,
+        recipes,
+        input.collections,
+        input.items,
+        async () => {
+          throwIfAborted(options.signal)
+          membersSinceYield += 1
+          if (membersSinceYield < boundedChunkSize) return
+          options.onProgress?.(completed, total)
+          await options.yieldControl()
+          throwIfAborted(options.signal)
+          membersSinceYield = 0
+        },
+      )
+      addMatches(matches, matchedItemIds, explanations)
 
       completed += 1
       workSinceYield += 1

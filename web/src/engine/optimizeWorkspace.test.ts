@@ -305,7 +305,7 @@ describe('optimizeWorkspace', () => {
     expect(phases).toContain('matching')
   })
 
-  test('cancels after matching one eligible collection with many member aliases', async () => {
+  test('cancels during member matching before the eligible collection reports completion', async () => {
     const targetItem = item('target:visible', 'Ivory Rest')
     const aliases = Array.from(
       { length: 100 },
@@ -352,9 +352,9 @@ describe('optimizeWorkspace', () => {
     )
 
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
-    expect(matchingProgress[0][0]).toBe(0)
+    expect(matchingProgress.length).toBeGreaterThan(1)
     expect(matchingProgress[0][1]).toBeGreaterThan(1)
-    expect(matchingProgress.at(-1)?.[0]).toBe(1)
+    expect(new Set(matchingProgress.map(([completed]) => completed))).toEqual(new Set([0]))
   })
 
   test('is deterministic across repeated and differently ordered equivalent inputs', async () => {

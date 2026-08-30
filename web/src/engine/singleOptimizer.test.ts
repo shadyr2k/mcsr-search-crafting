@@ -197,7 +197,22 @@ describe('optimizeSingle', () => {
   })
 
   test('prepares deeply equal synchronous and cooperative candidates per eligible collection', async () => {
-    const input = isolatedInput([item('target:a', 'a')], [item('junk:b', 'b')])
+    const visible = item('target:visible', 'x')
+    const alias = item('alias:member', 'a')
+    const collectionId = 'collection:alias'
+    const visibleRecipe = recipe('recipe:visible', visible.id, collectionId)
+    const aliasRecipe = recipe('recipe:alias', alias.id, collectionId)
+    const input: OptimizeInput = {
+      targetIds: new Set([visible.id]),
+      eligibleRecipes: [visibleRecipe],
+      recipes: [aliasRecipe, visibleRecipe],
+      collections: new Map([[collectionId, collection(
+        collectionId,
+        [aliasRecipe.id, visibleRecipe.id],
+        [alias.id, visible.id],
+      )]]),
+      items: new Map([alias, visible].map((searchItem) => [searchItem.id, searchItem])),
+    }
     const progress: Array<[number, number]> = []
     let yieldCount = 0
 
@@ -209,6 +224,6 @@ describe('optimizeSingle', () => {
 
     expect(cooperative).toEqual(prepareOptimization(input))
     expect(progress.at(-1)).toEqual([2, 2])
-    expect(yieldCount).toBe(2)
+    expect(yieldCount).toBe(4)
   })
 })
