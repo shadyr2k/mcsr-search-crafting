@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import type { CraftingRecipe } from '../domain/types'
-import { isRecipeCraftable, targetSupports2x2, visibleOutputIds } from './craftability'
+import { eligibleRecipes, isRecipeCraftable, targetSupports2x2, visibleOutputIds } from './craftability'
 
 function recipe(overrides: Partial<CraftingRecipe> = {}): CraftingRecipe {
   return {
@@ -70,6 +70,19 @@ describe('visibleOutputIds', () => {
 
     expect(visibleOutputIds(recipes, new Set(['minecraft:stick', 'minecraft:planks']), 2))
       .toEqual(new Set(['minecraft:torch']))
+  })
+})
+
+describe('eligibleRecipes', () => {
+  test('returns every craftable recipe while visible outputs remain distinct', () => {
+    const recipes = [
+      recipe({ id: 'minecraft:first_torch', outputItemId: 'minecraft:torch' }),
+      recipe({ id: 'minecraft:second_torch', outputItemId: 'minecraft:torch' }),
+      recipe({ id: 'minecraft:uncraftable', ingredientSlots: [{ acceptedItems: ['minecraft:coal'] }] }),
+    ]
+
+    expect(eligibleRecipes(recipes, new Set(['minecraft:stick']), 2).map(({ id }) => id))
+      .toEqual(['minecraft:first_torch', 'minecraft:second_torch'])
   })
 })
 

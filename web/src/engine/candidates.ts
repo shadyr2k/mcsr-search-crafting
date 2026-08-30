@@ -1,4 +1,4 @@
-import type { SearchItem } from '../domain/types'
+import type { CraftingRecipe, RecipeResultCollection, SearchItem } from '../domain/types'
 
 import { normalizeSearchLine } from './search'
 
@@ -20,4 +20,36 @@ export function candidateQueries(targets: Iterable<SearchItem>, maxLength = MAX_
   }
 
   return [...candidates].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0))
+}
+
+export function candidateQueriesForTargets(
+  targetIds: ReadonlySet<string>,
+  recipes: readonly CraftingRecipe[],
+  collections: ReadonlyMap<string, RecipeResultCollection>,
+  items: ReadonlyMap<string, SearchItem>,
+  maxLength = MAX_QUERY_LENGTH,
+): string[] {
+  const targetCollections = new Set<string>()
+  for (const recipe of recipes) {
+    if (targetIds.has(recipe.outputItemId)) {
+      targetCollections.add(recipe.resultCollectionId)
+    }
+  }
+
+  const memberItems: SearchItem[] = []
+  for (const collectionId of [...targetCollections].sort()) {
+    const collection = collections.get(collectionId)
+    if (!collection) {
+      throw new Error(`recipe collection ${collectionId} is missing`)
+    }
+    for (const itemId of collection.outputItemIds) {
+      const item = items.get(itemId)
+      if (!item) {
+        throw new Error(`${collectionId}: references missing item ${itemId}`)
+      }
+      memberItems.push(item)
+    }
+  }
+
+  return candidateQueries(memberItems, maxLength)
 }

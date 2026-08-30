@@ -11,6 +11,23 @@ export interface MatchExplanation {
   }
 }
 
+export interface CollectionMatchExplanation {
+  query: string
+  collectionId: string
+  recipeGroup: string | null
+  matchedMemberItemId: string
+  matchedMemberName: string
+  visibleOutputItemId: string
+  visibleOutputName: string
+  source: string
+  line: string
+  matchedSpan: {
+    start: number
+    end: number
+    text: string
+  }
+}
+
 export interface NormalizedSearchLine {
   text: string
   originalStarts: number[]

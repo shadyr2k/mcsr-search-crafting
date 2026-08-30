@@ -10,7 +10,7 @@ function fitsGrid(recipe: CraftingRecipe, gridSize: GridSize): boolean {
 
 export function isRecipeCraftable(
   recipe: CraftingRecipe,
-  inventory: Set<string>,
+  inventory: ReadonlySet<string>,
   gridSize: GridSize,
 ): boolean {
   return fitsGrid(recipe, gridSize) && recipe.ingredientSlots.every((slot) =>
@@ -18,15 +18,21 @@ export function isRecipeCraftable(
   )
 }
 
+export function eligibleRecipes(
+  recipes: readonly CraftingRecipe[],
+  inventory: ReadonlySet<string>,
+  gridSize: GridSize,
+): CraftingRecipe[] {
+  return recipes.filter((recipe) => isRecipeCraftable(recipe, inventory, gridSize))
+}
+
 export function visibleOutputIds(
-  recipes: CraftingRecipe[],
-  inventory: Set<string>,
+  recipes: readonly CraftingRecipe[],
+  inventory: ReadonlySet<string>,
   gridSize: GridSize,
 ): Set<string> {
   return new Set(
-    recipes
-      .filter((recipe) => isRecipeCraftable(recipe, inventory, gridSize))
-      .map((recipe) => recipe.outputItemId),
+    eligibleRecipes(recipes, inventory, gridSize).map((recipe) => recipe.outputItemId),
   )
 }
 
