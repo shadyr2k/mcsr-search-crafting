@@ -23,7 +23,7 @@ const inventorySlotsKey = 'mcsr.inventory-slots.v1'
 const targetWorkspaceKey = 'mcsr.target-workspace.v1'
 
 const itemsPayload = {
-  schema_version: 2,
+  schema_version: 3,
   items: {
     'minecraft:stick': { name: 'Stick', confidence: 'exact', search_lines: [{ source: 'name', text: 'Stick' }] },
     'minecraft:iron_sword': { name: 'Iron Sword', confidence: 'exact', search_lines: [{ source: 'name', text: 'Iron Sword' }] },
@@ -31,7 +31,7 @@ const itemsPayload = {
 }
 
 const inventoryItemsPayload = {
-  schema_version: 2,
+  schema_version: 3,
   items: {
     'minecraft:oak_log': { name: 'Oak Log' },
     'minecraft:oak_planks': { name: 'Oak Planks' },
@@ -41,27 +41,48 @@ const inventoryItemsPayload = {
 }
 
 const recipesPayload = {
-  schema_version: 2,
+  schema_version: 3,
   recipes: [
     {
-      id: 'stick', output_item_id: 'minecraft:stick', output_count: 4,
+      id: 'stick', recipe_group: null, recipe_book_category: 'crafting_misc', result_collection_id: 'crafting_misc/recipe/stick', output_item_id: 'minecraft:stick', output_count: 4,
       ingredient_slots: [{ accepted_items: ['minecraft:oak_planks'] }], fits_2x2: true, fits_3x3: true,
     },
     {
-      id: 'sword', output_item_id: 'minecraft:iron_sword', output_count: 1,
+      id: 'sword', recipe_group: null, recipe_book_category: 'crafting_equipment', result_collection_id: 'crafting_equipment/recipe/sword', output_item_id: 'minecraft:iron_sword', output_count: 1,
       ingredient_slots: [{ accepted_items: ['minecraft:iron_ingot'] }], fits_2x2: false, fits_3x3: true,
     },
   ],
 }
 
-function stubGeneratedData(recipes: unknown = recipesPayload) {
+const collectionsPayload = {
+  schema_version: 3,
+  collections: [
+    {
+      id: 'crafting_misc/recipe/stick', recipe_book_category: 'crafting_misc', recipe_group: null,
+      recipe_ids: ['stick'], output_item_ids: ['minecraft:stick'],
+    },
+    {
+      id: 'crafting_equipment/recipe/sword', recipe_book_category: 'crafting_equipment', recipe_group: null,
+      recipe_ids: ['sword'], output_item_ids: ['minecraft:iron_sword'],
+    },
+  ],
+}
+
+const stickOnlyCollectionsPayload = {
+  schema_version: 3,
+  collections: [collectionsPayload.collections[0]],
+}
+
+function stubGeneratedData(recipes: unknown = recipesPayload, collections: unknown = collectionsPayload) {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
     ok: true,
     json: async () => url.includes('search-items')
       ? itemsPayload
       : url.includes('inventory-items')
         ? inventoryItemsPayload
-        : recipes,
+        : url.includes('crafting-recipes')
+          ? recipes
+          : collections,
   })))
 }
 
@@ -152,7 +173,7 @@ describe('App persistence', () => {
         ...recipesPayload.recipes[0],
         ingredient_slots: [{ accepted_items: ['minecraft:stick'] }],
       }],
-    })
+    }, stickOnlyCollectionsPayload)
 
     render(<App />)
 

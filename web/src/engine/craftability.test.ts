@@ -6,6 +6,9 @@ import { isRecipeCraftable, targetSupports2x2, visibleOutputIds } from './crafta
 function recipe(overrides: Partial<CraftingRecipe> = {}): CraftingRecipe {
   return {
     id: 'minecraft:test_recipe',
+    recipeGroup: null,
+    recipeBookCategory: 'crafting_misc',
+    resultCollectionId: 'crafting_misc/recipe/minecraft%3Atest_recipe',
     outputItemId: 'minecraft:test_output',
     outputCount: 1,
     ingredientSlots: [{ acceptedItems: ['minecraft:stick'] }],

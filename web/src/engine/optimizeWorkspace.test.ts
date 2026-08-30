@@ -16,6 +16,9 @@ function item(id: string, text: string): SearchItem {
 function recipe(outputItemId: string, fits2x2: boolean): CraftingRecipe {
   return {
     id: `recipe:${outputItemId}`,
+    recipeGroup: null,
+    recipeBookCategory: 'crafting_misc',
+    resultCollectionId: `crafting_misc/recipe/${encodeURIComponent(outputItemId)}`,
     outputItemId,
     outputCount: 1,
     ingredientSlots: [{ acceptedItems: ['ingredient:shared'] }],
@@ -35,12 +38,23 @@ function entry(
 const alpha = item('target:alpha', 'ax')
 const beta = item('target:beta', 'by')
 const hidden = item('target:hidden', 'qz')
-const data: GeneratedData = {
-  schemaVersion: 2,
-  items: new Map([alpha, beta, hidden].map((searchItem) => [searchItem.id, searchItem])),
-  inventoryItems: new Map([['ingredient:shared', { id: 'ingredient:shared', name: 'Shared ingredient' }]]),
-  recipes: [recipe(alpha.id, true), recipe(beta.id, false)],
+function generatedData(items: SearchItem[], recipes: CraftingRecipe[]): GeneratedData {
+  return {
+    schemaVersion: 3,
+    items: new Map(items.map((searchItem) => [searchItem.id, searchItem])),
+    inventoryItems: new Map([['ingredient:shared', { id: 'ingredient:shared', name: 'Shared ingredient' }]]),
+    recipes,
+    collections: new Map(recipes.map((craftingRecipe) => [craftingRecipe.resultCollectionId, {
+      id: craftingRecipe.resultCollectionId,
+      recipeBookCategory: craftingRecipe.recipeBookCategory,
+      recipeGroup: craftingRecipe.recipeGroup,
+      recipeIds: [craftingRecipe.id],
+      outputItemIds: [craftingRecipe.outputItemId],
+    }])),
+  }
 }
+
+const data = generatedData([alpha, beta, hidden], [recipe(alpha.id, true), recipe(beta.id, false)])
 const inventory = new Set(['ingredient:shared'])
 
 describe('optimizeWorkspace', () => {
@@ -126,12 +140,10 @@ describe('optimizeWorkspace', () => {
     const first = item('target:first', 'ax')
     const second = item('target:second', 'ay')
     const junk = item('junk:common-a', 'a')
-    const competingData: GeneratedData = {
-      schemaVersion: 2,
-      items: new Map([first, second, junk].map((searchItem) => [searchItem.id, searchItem])),
-      inventoryItems: data.inventoryItems,
-      recipes: [recipe(first.id, true), recipe(second.id, true), recipe(junk.id, true)],
-    }
+    const competingData = generatedData(
+      [first, second, junk],
+      [recipe(first.id, true), recipe(second.id, true), recipe(junk.id, true)],
+    )
 
     const result = await optimizeWorkspace(competingData, inventory, [
       entry('competing', [first.id, second.id]),

@@ -14,9 +14,9 @@ const items = new Map<string, SearchItem>([
 ])
 
 const recipes: CraftingRecipe[] = [
-  { id: 'stick', outputItemId: 'minecraft:stick', outputCount: 4, ingredientSlots: [{ acceptedItems: ['minecraft:oak_planks'] }], fits2x2: true, fits3x3: true },
-  { id: 'table', outputItemId: 'minecraft:crafting_table', outputCount: 1, ingredientSlots: [{ acceptedItems: ['minecraft:oak_planks'] }], fits2x2: true, fits3x3: true },
-  { id: 'sword', outputItemId: 'minecraft:iron_sword', outputCount: 1, ingredientSlots: [{ acceptedItems: ['minecraft:iron_ingot'] }], fits2x2: false, fits3x3: true },
+  { id: 'stick', recipeGroup: null, recipeBookCategory: 'crafting_misc', resultCollectionId: 'crafting_misc/recipe/stick', outputItemId: 'minecraft:stick', outputCount: 4, ingredientSlots: [{ acceptedItems: ['minecraft:oak_planks'] }], fits2x2: true, fits3x3: true },
+  { id: 'table', recipeGroup: null, recipeBookCategory: 'crafting_misc', resultCollectionId: 'crafting_misc/recipe/table', outputItemId: 'minecraft:crafting_table', outputCount: 1, ingredientSlots: [{ acceptedItems: ['minecraft:oak_planks'] }], fits2x2: true, fits3x3: true },
+  { id: 'sword', recipeGroup: null, recipeBookCategory: 'crafting_equipment', resultCollectionId: 'crafting_equipment/recipe/sword', outputItemId: 'minecraft:iron_sword', outputCount: 1, ingredientSlots: [{ acceptedItems: ['minecraft:iron_ingot'] }], fits2x2: false, fits3x3: true },
 ]
 
 function ListHarness({ onPersist = vi.fn() }: { onPersist?: (workspace: TargetWorkspace) => void }) {
