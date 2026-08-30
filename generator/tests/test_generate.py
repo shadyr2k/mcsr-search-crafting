@@ -3,7 +3,18 @@ from pathlib import Path
 
 import pytest
 
-from mcsr_data.generate import GenerationFailed, generate, main
+from mcsr_data.generate import (
+    GenerationFailed,
+    _validate_cross_references,
+    generate,
+    main,
+)
+from mcsr_data.models import (
+    IngredientSlot,
+    NormalizedRecipe,
+    RecipeResultCollection,
+    SearchItem,
+)
 from mcsr_data.validation import ValidationReport
 
 
@@ -23,6 +34,7 @@ def fixture_data(tmp_path):
     }), encoding="utf-8")
     (source / "recipes" / "crafting_table.json").write_text(json.dumps({
         "type": "minecraft:crafting_shaped",
+        "group": "fixture_group",
         "pattern": ["PP", "PP"],
         "key": {"P": {"item": "minecraft:oak_planks"}},
         "result": {"item": "minecraft:crafting_table"},
@@ -33,22 +45,39 @@ def fixture_data(tmp_path):
 def test_generate_writes_stable_versioned_files(fixture_data, tmp_path):
     output = tmp_path / "output"
 
-    summary = generate(fixture_data, output, baseline=None)
+    summary = generate(
+        fixture_data,
+        output,
+        baseline=None,
+        recipe_book_categories={
+            "minecraft:crafting_table": "crafting_building_blocks",
+        },
+    )
 
     items = json.loads((output / "search-items.json").read_text(encoding="utf-8"))
     inventory_items = json.loads((output / "inventory-items.json").read_text(encoding="utf-8"))
     recipes = json.loads((output / "crafting-recipes.json").read_text(encoding="utf-8"))
+    collections = json.loads(
+        (output / "recipe-result-collections.json").read_text(encoding="utf-8")
+    )
     report = json.loads((output / "validation-report.json").read_text(encoding="utf-8"))
-    assert items["schema_version"] == 2
+    assert items["schema_version"] == 3
     assert inventory_items == {
         "items": {"minecraft:oak_planks": {"name": "Oak Planks"}},
-        "schema_version": 2,
+        "schema_version": 3,
     }
-    assert recipes["schema_version"] == 2
-    assert report["schema_version"] == 2
+    assert recipes["schema_version"] == 3
+    assert collections["schema_version"] == 3
+    assert report["schema_version"] == 3
+    assert recipes["recipes"][0]["recipe_group"] == "fixture_group"
+    assert recipes["recipes"][0]["recipe_book_category"] == "crafting_building_blocks"
+    assert recipes["recipes"][0]["result_collection_id"] == collections["collections"][0]["id"]
+    assert collections["minecraft_version"] == "1.16.1"
+    assert collections["language"] == "en_us"
     assert summary.error_count == 0
     assert summary.recipe_count == 1
     assert summary.inventory_item_count == 1
+    assert summary.collection_count == 1
     assert list(items["items"]) == sorted(items["items"])
     assert recipes["recipes"][0]["output_count"] == 1
     assert recipes["recipes"][0]["fits_2x2"] is True
@@ -65,8 +94,9 @@ def test_generate_is_byte_deterministic_for_all_success_artifacts(fixture_data, 
     first = tmp_path / "first"
     second = tmp_path / "second"
 
-    generate(fixture_data, first, baseline=None)
-    generate(fixture_data, second, baseline=None)
+    categories = {"minecraft:crafting_table": "crafting_building_blocks"}
+    generate(fixture_data, first, baseline=None, recipe_book_categories=categories)
+    generate(fixture_data, second, baseline=None, recipe_book_categories=categories)
 
     assert {
         path.name: path.read_bytes()
@@ -86,6 +116,7 @@ def test_generate_preserves_existing_outputs_when_validation_fails(fixture_data,
             "search-items.json",
             "inventory-items.json",
             "crafting-recipes.json",
+            "recipe-result-collections.json",
             "validation-report.json",
         )
     }
@@ -98,7 +129,15 @@ def test_generate_preserves_existing_outputs_when_validation_fails(fixture_data,
     }), encoding="utf-8")
 
     with pytest.raises(GenerationFailed, match="validation failed") as failure:
-        generate(fixture_data, output, baseline=None)
+        generate(
+            fixture_data,
+            output,
+            baseline=None,
+            recipe_book_categories={
+                "minecraft:crafting_table": "crafting_building_blocks",
+                "minecraft:unknown": "crafting_misc",
+            },
+        )
 
     assert isinstance(failure.value.report, ValidationReport)
     assert any(
@@ -119,6 +158,67 @@ def test_generate_preserves_existing_outputs_when_validation_fails(fixture_data,
         filename: (output / filename).read_text(encoding="utf-8")
         for filename in valid_artifacts
     } == valid_artifacts
+
+
+def test_collection_cross_references_report_invalid_graphs():
+    recipe = NormalizedRecipe(
+        recipe_id="minecraft:recipe",
+        recipe_type="shapeless",
+        recipe_group="recipe_group",
+        output_item="minecraft:output",
+        output_count=1,
+        ingredient_slots=(IngredientSlot(options=()),),
+        width=1,
+        height=1,
+        fits_2x2=True,
+        fits_3x3=True,
+        recipe_book_category="crafting_building_blocks",
+        result_collection_id="crafting_building_blocks/group/expected",
+    )
+    output = SearchItem(
+        item_id="minecraft:output",
+        name="Output",
+        search_lines=(),
+        generation_method="name_only",
+        confidence="source_reproduced",
+    )
+    invalid_collection = RecipeResultCollection(
+        collection_id="crafting_misc/group/actual",
+        recipe_book_category="crafting_misc",
+        recipe_group="different_group",
+        recipe_ids=("minecraft:recipe", "minecraft:missing"),
+        output_item_ids=("minecraft:missing",),
+    )
+    empty_duplicate_collection = RecipeResultCollection(
+        collection_id="crafting_misc/group/actual",
+        recipe_book_category="crafting_misc",
+        recipe_group=None,
+        recipe_ids=(),
+        output_item_ids=(),
+    )
+    report = ValidationReport()
+
+    _validate_cross_references(
+        [recipe],
+        {output.item_id: output},
+        {},
+        [invalid_collection, empty_duplicate_collection],
+        report,
+    )
+
+    assert {
+        diagnostic.code for diagnostic in report.diagnostics
+    } >= {
+        "duplicate_collection",
+        "empty_collection",
+        "empty_collection_outputs",
+        "missing_collection_recipe",
+        "missing_collection_output_item",
+        "collection_output_reference_mismatch",
+        "collection_category_mismatch",
+        "collection_group_mismatch",
+        "result_collection_reference_mismatch",
+    }
 
 
 def test_generate_reports_every_missing_required_source_path(tmp_path):
@@ -152,6 +252,10 @@ def test_production_cli_enforces_the_pinned_recipe_and_output_counts(
     assert "expected 634" in captured.err
     assert "baseline_output_count" in captured.err
     assert "expected 562" in captured.err
+    assert "baseline_inventory_count" in captured.err
+    assert "expected 281" in captured.err
+    assert "baseline_collection_count" in captured.err
+    assert "expected 354" in captured.err
     assert "validation-failure-report.json" in captured.err
     assert not (output / "search-items.json").exists()
 
@@ -198,6 +302,8 @@ def test_real_inventory_catalog_covers_every_concrete_ingredient_with_english_na
 
     assert summary.recipe_count == 634
     assert summary.output_item_count == 562
+    assert summary.inventory_item_count == 281
+    assert summary.collection_count == 354
     assert set(inventory_items) == ingredient_ids
     assert inventory_items["minecraft:oak_log"]["name"] == "Oak Log"
     assert inventory_items["minecraft:cobblestone"]["name"] == "Cobblestone"

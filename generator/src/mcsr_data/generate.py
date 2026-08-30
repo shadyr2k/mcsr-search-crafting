@@ -7,9 +7,20 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Sequence
+from typing import Mapping, Sequence
 
-from mcsr_data.models import InventoryItem, NormalizedRecipe, SearchItem
+from mcsr_data.models import (
+    InventoryItem,
+    NormalizedRecipe,
+    RecipeBookCategory,
+    RecipeResultCollection,
+    SearchItem,
+)
+from mcsr_data.recipe_collections import (
+    RecipeCollectionError,
+    assign_recipe_result_collections,
+    load_recipe_book_categories,
+)
 from mcsr_data.recipes import load_crafting_recipes, resolve_recipe_ingredients
 from mcsr_data.tags import TagResolver
 from mcsr_data.tooltips import build_search_item, load_overrides
@@ -17,7 +28,9 @@ from mcsr_data.translations import TranslationCatalog
 from mcsr_data.validation import Diagnostic, ValidationReport
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+MINECRAFT_VERSION = "1.16.1"
+LANGUAGE = "en_us"
 FAILURE_REPORT_FILENAME = "validation-failure-report.json"
 
 
@@ -25,11 +38,15 @@ FAILURE_REPORT_FILENAME = "validation-failure-report.json"
 class GenerationBaseline:
     recipe_count: int
     output_item_count: int
+    inventory_item_count: int
+    collection_count: int
 
 
 MINECRAFT_1_16_1_BASELINE = GenerationBaseline(
     recipe_count=634,
     output_item_count=562,
+    inventory_item_count=281,
+    collection_count=354,
 )
 
 
@@ -38,6 +55,7 @@ class GenerationSummary:
     recipe_count: int
     output_item_count: int
     inventory_item_count: int
+    collection_count: int
     error_count: int
     warning_count: int
     diagnostics: tuple[Diagnostic, ...]
@@ -63,6 +81,7 @@ def generate(
     output_root: Path,
     *,
     baseline: GenerationBaseline | None = MINECRAFT_1_16_1_BASELINE,
+    recipe_book_categories: Mapping[str, RecipeBookCategory] | None = None,
 ) -> GenerationSummary:
     """Validate source data and atomically publish browser artifacts."""
     report = ValidationReport()
@@ -73,13 +92,29 @@ def generate(
     overrides = _load_overrides(report)
 
     resolved_recipes = _resolve_recipes(recipes, tags, report)
-    items = _build_items(resolved_recipes, catalog, overrides, report)
-    inventory_items = _build_inventory_items(resolved_recipes, catalog, report)
-    _validate_cross_references(resolved_recipes, items, inventory_items, report)
+    categories = (
+        recipe_book_categories
+        if recipe_book_categories is not None
+        else _load_recipe_book_categories(report)
+    )
+    enriched_recipes, collections = _assign_recipe_collections(
+        resolved_recipes,
+        categories,
+        report,
+    )
+    items = _build_items(enriched_recipes, catalog, overrides, report)
+    inventory_items = _build_inventory_items(enriched_recipes, catalog, report)
+    _validate_cross_references(
+        enriched_recipes,
+        items,
+        inventory_items,
+        collections,
+        report,
+    )
     if baseline is not None:
-        _validate_baseline(resolved_recipes, items, baseline, report)
+        _validate_baseline(enriched_recipes, items, inventory_items, collections, baseline, report)
 
-    summary = _summary(resolved_recipes, items, inventory_items, report)
+    summary = _summary(enriched_recipes, items, inventory_items, collections, report)
     if summary.error_count:
         failure_path = output_root / FAILURE_REPORT_FILENAME
         try:
@@ -88,7 +123,7 @@ def generate(
             })
         except OSError as error:
             report.error("failure_report_write_failed", str(failure_path), str(error))
-            summary = _summary(resolved_recipes, items, inventory_items, report)
+            summary = _summary(enriched_recipes, items, inventory_items, collections, report)
             raise GenerationFailed(report, summary, None) from error
         raise GenerationFailed(report, summary, failure_path)
 
@@ -106,7 +141,13 @@ def generate(
         },
         "crafting-recipes.json": {
             "schema_version": SCHEMA_VERSION,
-            "recipes": [_serialize_recipe(recipe) for recipe in sorted(resolved_recipes, key=lambda item: item.recipe_id)],
+            "recipes": [_serialize_recipe(recipe) for recipe in enriched_recipes],
+        },
+        "recipe-result-collections.json": {
+            "schema_version": SCHEMA_VERSION,
+            "minecraft_version": MINECRAFT_VERSION,
+            "language": LANGUAGE,
+            "collections": [_serialize_collection(collection) for collection in collections],
         },
         "validation-report.json": _serialize_report(summary, status="valid"),
     }
@@ -182,6 +223,28 @@ def _resolve_recipes(
     return resolved
 
 
+def _load_recipe_book_categories(
+    report: ValidationReport,
+) -> Mapping[str, RecipeBookCategory]:
+    try:
+        return load_recipe_book_categories()
+    except RecipeCollectionError as error:
+        report.error("invalid_recipe_book_categories", "recipe_book_categories", str(error))
+        return {}
+
+
+def _assign_recipe_collections(
+    recipes: list[NormalizedRecipe],
+    categories: Mapping[str, RecipeBookCategory],
+    report: ValidationReport,
+) -> tuple[list[NormalizedRecipe], list[RecipeResultCollection]]:
+    try:
+        return assign_recipe_result_collections(recipes, categories)
+    except RecipeCollectionError as error:
+        report.error("invalid_recipe_collections", "recipes", str(error))
+        return [], []
+
+
 def _build_items(
     recipes: list[NormalizedRecipe],
     catalog: TranslationCatalog | None,
@@ -232,13 +295,16 @@ def _validate_cross_references(
     recipes: list[NormalizedRecipe],
     items: dict[str, SearchItem],
     inventory_items: dict[str, InventoryItem],
+    collections: list[RecipeResultCollection],
     report: ValidationReport,
 ) -> None:
     seen_recipe_ids: set[str] = set()
+    recipes_by_id: dict[str, NormalizedRecipe] = {}
     for recipe in recipes:
         if recipe.recipe_id in seen_recipe_ids:
             report.error("duplicate_recipe", recipe.recipe_id, "recipe ID is not unique")
         seen_recipe_ids.add(recipe.recipe_id)
+        recipes_by_id[recipe.recipe_id] = recipe
         if recipe.output_item not in items:
             report.error("missing_output_item", recipe.recipe_id, recipe.output_item)
         if not recipe.fits_2x2 and not recipe.fits_3x3:
@@ -254,10 +320,104 @@ def _validate_cross_references(
                         item_id,
                     )
 
+    membership_counts = {recipe_id: 0 for recipe_id in recipes_by_id}
+    seen_collection_ids: set[str] = set()
+    for collection in collections:
+        if collection.collection_id in seen_collection_ids:
+            report.error(
+                "duplicate_collection",
+                collection.collection_id,
+                "collection ID is not unique",
+            )
+        seen_collection_ids.add(collection.collection_id)
+        if not collection.recipe_ids:
+            report.error("empty_collection", collection.collection_id, "collection has no recipes")
+        if not collection.output_item_ids:
+            report.error("empty_collection_outputs", collection.collection_id, "collection has no outputs")
+
+        member_output_item_ids: set[str] = set()
+        for recipe_id in collection.recipe_ids:
+            recipe = recipes_by_id.get(recipe_id)
+            if recipe is None:
+                report.error(
+                    "missing_collection_recipe",
+                    collection.collection_id,
+                    recipe_id,
+                )
+                continue
+            membership_counts[recipe_id] += 1
+            member_output_item_ids.add(recipe.output_item)
+            if recipe.result_collection_id != collection.collection_id:
+                report.error(
+                    "result_collection_reference_mismatch",
+                    recipe_id,
+                    collection.collection_id,
+                )
+            if recipe.recipe_book_category != collection.recipe_book_category:
+                report.error(
+                    "collection_category_mismatch",
+                    recipe_id,
+                    collection.collection_id,
+                )
+            if recipe.recipe_group != collection.recipe_group:
+                report.error(
+                    "collection_group_mismatch",
+                    recipe_id,
+                    collection.collection_id,
+                )
+        for output_item_id in collection.output_item_ids:
+            if output_item_id not in items:
+                report.error(
+                    "missing_collection_output_item",
+                    collection.collection_id,
+                    output_item_id,
+                )
+        if set(collection.output_item_ids) != member_output_item_ids:
+            report.error(
+                "collection_output_reference_mismatch",
+                collection.collection_id,
+                "collection outputs do not match its recipe outputs",
+            )
+
+    for recipe in recipes:
+        if recipe.recipe_book_category is None:
+            report.error(
+                "missing_recipe_book_category",
+                recipe.recipe_id,
+                "recipe has no recipe-book category",
+            )
+        if recipe.result_collection_id is None:
+            report.error(
+                "missing_result_collection",
+                recipe.recipe_id,
+                "recipe has no result collection",
+            )
+        elif recipe.result_collection_id not in seen_collection_ids:
+            report.error(
+                "missing_result_collection_reference",
+                recipe.recipe_id,
+                recipe.result_collection_id,
+            )
+        membership_count = membership_counts[recipe.recipe_id]
+        if membership_count == 0:
+            report.error(
+                "missing_collection_membership",
+                recipe.recipe_id,
+                "recipe is not referenced by a collection",
+            )
+        elif membership_count > 1:
+            report.error(
+                "multiple_collection_memberships",
+                recipe.recipe_id,
+                "recipe is referenced by multiple collections",
+            )
+
 
 def _validate_baseline(
     recipes: list[NormalizedRecipe],
     items: dict[str, SearchItem],
+    inventory_items: dict[str, InventoryItem],
+    collections: list[RecipeResultCollection],
     baseline: GenerationBaseline,
     report: ValidationReport,
 ) -> None:
@@ -273,12 +433,25 @@ def _validate_baseline(
             "minecraft:1.16.1",
             f"expected {baseline.output_item_count} distinct recipe outputs, found {len(items)}",
         )
+    if len(inventory_items) != baseline.inventory_item_count:
+        report.error(
+            "baseline_inventory_count",
+            "minecraft:1.16.1",
+            f"expected {baseline.inventory_item_count} inventory items, found {len(inventory_items)}",
+        )
+    if len(collections) != baseline.collection_count:
+        report.error(
+            "baseline_collection_count",
+            "minecraft:1.16.1",
+            f"expected {baseline.collection_count} result collections, found {len(collections)}",
+        )
 
 
 def _summary(
     recipes: list[NormalizedRecipe],
     items: dict[str, SearchItem],
     inventory_items: dict[str, InventoryItem],
+    collections: list[RecipeResultCollection],
     report: ValidationReport,
 ) -> GenerationSummary:
     diagnostics = report.diagnostics
@@ -286,6 +459,7 @@ def _summary(
         recipe_count=len(recipes),
         output_item_count=len(items),
         inventory_item_count=len(inventory_items),
+        collection_count=len(collections),
         error_count=sum(diagnostic.severity == "error" for diagnostic in diagnostics),
         warning_count=sum(diagnostic.severity == "warning" for diagnostic in diagnostics),
         diagnostics=diagnostics,
@@ -315,6 +489,9 @@ def _serialize_recipe(recipe: NormalizedRecipe) -> dict[str, object]:
     return {
         "id": recipe.recipe_id,
         "type": recipe.recipe_type,
+        "recipe_group": recipe.recipe_group,
+        "recipe_book_category": recipe.recipe_book_category,
+        "result_collection_id": recipe.result_collection_id,
         "output_item_id": recipe.output_item,
         "output_count": recipe.output_count,
         "ingredient_slots": [
@@ -328,6 +505,16 @@ def _serialize_recipe(recipe: NormalizedRecipe) -> dict[str, object]:
     }
 
 
+def _serialize_collection(collection: RecipeResultCollection) -> dict[str, object]:
+    return {
+        "id": collection.collection_id,
+        "recipe_book_category": collection.recipe_book_category,
+        "recipe_group": collection.recipe_group,
+        "recipe_ids": list(collection.recipe_ids),
+        "output_item_ids": list(collection.output_item_ids),
+    }
+
+
 def _serialize_report(summary: GenerationSummary, *, status: str) -> dict[str, object]:
     return {
         "schema_version": SCHEMA_VERSION,
@@ -335,6 +522,7 @@ def _serialize_report(summary: GenerationSummary, *, status: str) -> dict[str, o
         "recipe_count": summary.recipe_count,
         "output_item_count": summary.output_item_count,
         "inventory_item_count": summary.inventory_item_count,
+        "collection_count": summary.collection_count,
         "error_count": summary.error_count,
         "warning_count": summary.warning_count,
         "diagnostics": [
@@ -404,7 +592,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     print(
         f"Generated {summary.recipe_count} recipes, {summary.output_item_count} output items, "
-        f"and {summary.inventory_item_count} inventory items "
+        f"{summary.inventory_item_count} inventory items, and {summary.collection_count} result collections "
         f"with {summary.error_count} validation errors."
     )
     return 0
