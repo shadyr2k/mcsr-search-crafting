@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'vitest'
 
-import type { CraftingRecipe, GeneratedData, SearchItem, TargetWorkspaceEntry } from '../domain/types'
+import type {
+  CraftingRecipe,
+  GeneratedData,
+  RecipeResultCollection,
+  SearchItem,
+  TargetWorkspaceEntry,
+} from '../domain/types'
 import { incompleteScore } from './scoring'
 import { optimizeWorkspace } from './optimizeWorkspace'
 
@@ -51,6 +57,74 @@ function generatedData(items: SearchItem[], recipes: CraftingRecipe[]): Generate
       recipeIds: [craftingRecipe.id],
       outputItemIds: [craftingRecipe.outputItemId],
     }])),
+  }
+}
+
+function groupedCollection(
+  id: string,
+  recipes: CraftingRecipe[],
+  outputItemIds: string[],
+  recipeGroup: string,
+): RecipeResultCollection {
+  return {
+    id,
+    recipeBookCategory: 'crafting_misc',
+    recipeGroup,
+    recipeIds: recipes.map(({ id: recipeId }) => recipeId),
+    outputItemIds,
+  }
+}
+
+function aliasFixture(): {
+  data: GeneratedData
+  inventory: Set<string>
+  whiteBedId: string
+  whiteCarpetId: string
+} {
+  const brownBed = item('minecraft:brown_bed', 'Brown Bed')
+  const whiteBed = item('minecraft:white_bed', 'Ivory Rest')
+  const brownCarpet = item('minecraft:brown_carpet', 'Brown Carpet')
+  const whiteCarpet = item('minecraft:white_carpet', 'Ivory Rug')
+  const bedRecipes = [
+    { ...recipe(brownBed.id, true), id: 'recipe:brown_bed', resultCollectionId: 'collection:bed', ingredientSlots: [{ acceptedItems: ['ingredient:missing'] }] },
+    { ...recipe(whiteBed.id, true), id: 'recipe:white_bed', resultCollectionId: 'collection:bed', ingredientSlots: [{ acceptedItems: ['ingredient:bed'] }] },
+  ]
+  const carpetRecipes = [
+    { ...recipe(brownCarpet.id, true), id: 'recipe:brown_carpet', resultCollectionId: 'collection:carpet', ingredientSlots: [{ acceptedItems: ['ingredient:missing'] }] },
+    { ...recipe(whiteCarpet.id, true), id: 'recipe:white_carpet', resultCollectionId: 'collection:carpet', ingredientSlots: [{ acceptedItems: ['ingredient:carpet'] }] },
+  ]
+  const recipes = [...bedRecipes, ...carpetRecipes]
+
+  return {
+    data: {
+      schemaVersion: 3,
+      items: new Map([brownBed, whiteBed, brownCarpet, whiteCarpet].map((searchItem) => [
+        searchItem.id,
+        searchItem,
+      ])),
+      inventoryItems: new Map([
+        ['ingredient:bed', { id: 'ingredient:bed', name: 'Bed ingredient' }],
+        ['ingredient:carpet', { id: 'ingredient:carpet', name: 'Carpet ingredient' }],
+      ]),
+      recipes,
+      collections: new Map([
+        ['collection:bed', groupedCollection(
+          'collection:bed',
+          bedRecipes,
+          [brownBed.id, whiteBed.id],
+          'bed',
+        )],
+        ['collection:carpet', groupedCollection(
+          'collection:carpet',
+          carpetRecipes,
+          [brownCarpet.id, whiteCarpet.id],
+          'carpet',
+        )],
+      ]),
+    },
+    inventory: new Set(['ingredient:bed', 'ingredient:carpet']),
+    whiteBedId: whiteBed.id,
+    whiteCarpetId: whiteCarpet.id,
   }
 }
 
@@ -157,6 +231,27 @@ describe('optimizeWorkspace', () => {
     expect(result.aggregateScore).toBe(1)
   })
 
+  test('optimizes collection aliases while keeping visible output and junk IDs exact', async () => {
+    const alias = aliasFixture()
+
+    const result = await optimizeWorkspace(
+      alias.data,
+      alias.inventory,
+      [entry('bed', [alias.whiteBedId])],
+    )
+    const aliasResult = result.entries[0].single.find(({ query }) => query === 'wn')
+
+    expect(aliasResult).toMatchObject({
+      coveredTargetIds: [alias.whiteBedId],
+      junkItemIds: [alias.whiteCarpetId],
+    })
+    expect(aliasResult?.explanations).toContainEqual(expect.objectContaining({
+      matchedMemberItemId: 'minecraft:brown_bed',
+      visibleOutputItemId: alias.whiteBedId,
+    }))
+    expect(result.entries[0].visibleItemIds).toEqual([alias.whiteBedId, alias.whiteCarpetId])
+  })
+
   test('honors an aborted optimization request before publishing results', async () => {
     const controller = new AbortController()
     controller.abort()
@@ -210,29 +305,82 @@ describe('optimizeWorkspace', () => {
     expect(phases).toContain('matching')
   })
 
-  test('is deterministic across repeated and differently ordered equivalent inputs', async () => {
-    const entries = [
-      entry('second', [beta.id, alpha.id], { order: 1 }),
-      entry('first', [alpha.id], { order: 0 }),
-    ]
-    const reorderedData: GeneratedData = {
-      ...data,
-      items: new Map([...data.items].reverse()),
-      recipes: [...data.recipes].reverse(),
+  test('cancels after matching one eligible collection with many member aliases', async () => {
+    const targetItem = item('target:visible', 'Ivory Rest')
+    const aliases = Array.from(
+      { length: 100 },
+      (_, index) => item(`alias:${index.toString().padStart(3, '0')}`, `Alias ${index} target`),
+    )
+    const targetRecipe = {
+      ...recipe(targetItem.id, true),
+      id: 'recipe:visible',
+      resultCollectionId: 'collection:large',
     }
+    const aliasRecipes = aliases.map((alias, index) => ({
+      ...recipe(alias.id, true),
+      id: `recipe:alias:${index.toString().padStart(3, '0')}`,
+      resultCollectionId: 'collection:large',
+      ingredientSlots: [{ acceptedItems: ['ingredient:missing'] }],
+    }))
+    const largeData: GeneratedData = {
+      schemaVersion: 3,
+      items: new Map([targetItem, ...aliases].map((searchItem) => [searchItem.id, searchItem])),
+      inventoryItems: data.inventoryItems,
+      recipes: [targetRecipe, ...aliasRecipes],
+      collections: new Map([['collection:large', groupedCollection(
+        'collection:large',
+        [targetRecipe, ...aliasRecipes],
+        [targetItem.id, ...aliases.map(({ id }) => id)],
+        'large',
+      )]]),
+    }
+    const controller = new AbortController()
+    const matchingProgress: Array<[number, number | undefined]> = []
 
-    const first = await optimizeWorkspace(data, new Set([...inventory]), entries)
-    const repeated = await optimizeWorkspace(data, new Set([...inventory]), entries)
-    const reordered = await optimizeWorkspace(
-      reorderedData,
-      new Set([...inventory].reverse()),
-      [...entries].reverse().map((workspaceEntry) => ({
-        ...workspaceEntry,
-        targetIds: [...workspaceEntry.targetIds].reverse(),
-      })),
+    const pending = optimizeWorkspace(
+      largeData,
+      inventory,
+      [entry('large-collection', [targetItem.id])],
+      {
+        signal: controller.signal,
+        workChunkSize: 1,
+        onProgress: ({ phase, completed, total }) => {
+          if (phase === 'matching') matchingProgress.push([completed, total])
+        },
+        yieldControl: async () => { controller.abort() },
+      },
     )
 
-    expect(repeated).toEqual(first)
-    expect(reordered).toEqual(first)
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    expect(matchingProgress[0][0]).toBe(0)
+    expect(matchingProgress[0][1]).toBeGreaterThan(1)
+    expect(matchingProgress.at(-1)?.[0]).toBe(1)
+  })
+
+  test('is deterministic across repeated and differently ordered equivalent inputs', async () => {
+    const alias = aliasFixture()
+    const entries = [entry('aliases', [alias.whiteBedId, alias.whiteCarpetId])]
+    const expected = await optimizeWorkspace(alias.data, alias.inventory, entries)
+    const reversedCollections = new Map([...alias.data.collections].reverse())
+    const reversedMembers = new Map([...alias.data.collections].map(([collectionId, value]) => [
+      collectionId,
+      { ...value, recipeIds: [...value.recipeIds].reverse(), outputItemIds: [...value.outputItemIds].reverse() },
+    ]))
+    const variants: Array<{
+      data: GeneratedData
+      inventory: Set<string>
+      entries: TargetWorkspaceEntry[]
+    }> = [
+      { data: { ...alias.data, recipes: [...alias.data.recipes].reverse() }, inventory: alias.inventory, entries },
+      { data: { ...alias.data, collections: reversedCollections }, inventory: alias.inventory, entries },
+      { data: { ...alias.data, collections: reversedMembers }, inventory: alias.inventory, entries },
+      { data: alias.data, inventory: alias.inventory, entries: [entry('aliases', [...entries[0].targetIds].reverse())] },
+      { data: alias.data, inventory: new Set([...alias.inventory].reverse()), entries },
+    ]
+
+    expect(await optimizeWorkspace(alias.data, alias.inventory, entries)).toEqual(expected)
+    for (const variant of variants) {
+      expect(await optimizeWorkspace(variant.data, variant.inventory, variant.entries)).toEqual(expected)
+    }
   })
 })

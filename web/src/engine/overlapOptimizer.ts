@@ -1,4 +1,4 @@
-import type { MatchExplanation } from './search'
+import type { CollectionMatchExplanation } from './search'
 import { scoreStep, transitionTypingCost } from './scoring'
 import {
   prepareOptimization,
@@ -12,7 +12,7 @@ export interface OverlapStep {
   coveredTargetIds: string[]
   newTargetIds: string[]
   junkItemIds: string[]
-  explanations: MatchExplanation[]
+  explanations: CollectionMatchExplanation[]
   retainedPrefix: string
   freeBackspaceCount: number
   typedSuffix: string

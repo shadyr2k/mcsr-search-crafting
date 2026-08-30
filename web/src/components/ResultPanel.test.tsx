@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from 'vitest'
 
 import type { SearchItem } from '../domain/types'
 import type { WorkspaceResult } from '../engine/optimizeWorkspace'
+import type { CollectionMatchExplanation } from '../engine/search'
 import { ResultPanel } from './ResultPanel'
 
 const items = new Map<string, SearchItem>([
@@ -28,6 +29,29 @@ const items = new Map<string, SearchItem>([
   }],
 ])
 
+function directExplanation(
+  itemId: string,
+  query: string,
+  line: string,
+  start: number,
+  end: number,
+  text: string,
+): CollectionMatchExplanation {
+  const name = items.get(itemId)?.name ?? itemId
+  return {
+    query,
+    collectionId: `collection:${itemId}`,
+    recipeGroup: null,
+    matchedMemberItemId: itemId,
+    matchedMemberName: name,
+    visibleOutputItemId: itemId,
+    visibleOutputName: name,
+    source: 'name',
+    line,
+    matchedSpan: { start, end, text },
+  }
+}
+
 const result: WorkspaceResult = {
   aggregateScore: 2.5,
   skippedEmptyEntryCount: 0,
@@ -44,16 +68,11 @@ const result: WorkspaceResult = {
       query: ' ',
       coveredTargetIds: ['target:bed', 'target:bow'],
       junkItemIds: ['junk:shared'],
-      explanations: [{
-        itemId: 'target:bed', source: 'name', line: 'Red Bed',
-        matchedSpan: { start: 3, end: 4, text: ' ' },
-      }, {
-        itemId: 'target:bow', source: 'name', line: 'Brown Bow',
-        matchedSpan: { start: 5, end: 6, text: ' ' },
-      }, {
-        itemId: 'junk:shared', source: 'name', line: 'Bed Bow',
-        matchedSpan: { start: 3, end: 4, text: ' ' },
-      }],
+      explanations: [
+        directExplanation('target:bed', ' ', 'Red Bed', 3, 4, ' '),
+        directExplanation('target:bow', ' ', 'Brown Bow', 5, 6, ' '),
+        directExplanation('junk:shared', ' ', 'Bed Bow', 3, 4, ' '),
+      ],
       score: { lengthPenalty: 0, junkPresencePenalty: 2, junkCountPenalty: 0.5, total: 2.5 },
     }],
     overlap: [{
@@ -62,29 +81,21 @@ const result: WorkspaceResult = {
         coveredTargetIds: ['target:bed'],
         newTargetIds: ['target:bed'],
         junkItemIds: ['junk:first', 'junk:shared'],
-        explanations: [{
-          itemId: 'target:bed', source: 'name', line: 'Red Bed',
-          matchedSpan: { start: 4, end: 7, text: 'Bed' },
-        }, {
-          itemId: 'junk:first', source: 'name', line: 'Bed',
-          matchedSpan: { start: 0, end: 3, text: 'Bed' },
-        }, {
-          itemId: 'junk:shared', source: 'name', line: 'Bed Bow',
-          matchedSpan: { start: 0, end: 3, text: 'Bed' },
-        }],
+        explanations: [
+          directExplanation('target:bed', 'bed', 'Red Bed', 4, 7, 'Bed'),
+          directExplanation('junk:first', 'bed', 'Bed', 0, 3, 'Bed'),
+          directExplanation('junk:shared', 'bed', 'Bed Bow', 0, 3, 'Bed'),
+        ],
         retainedPrefix: '', freeBackspaceCount: 0, typedSuffix: 'bed',
       }, {
         query: 'bow',
         coveredTargetIds: ['target:bow'],
         newTargetIds: ['target:bow'],
         junkItemIds: ['junk:shared'],
-        explanations: [{
-          itemId: 'target:bow', source: 'name', line: 'Brown Bow',
-          matchedSpan: { start: 6, end: 9, text: 'Bow' },
-        }, {
-          itemId: 'junk:shared', source: 'name', line: 'Bed Bow',
-          matchedSpan: { start: 4, end: 7, text: 'Bow' },
-        }],
+        explanations: [
+          directExplanation('target:bow', 'bow', 'Brown Bow', 6, 9, 'Bow'),
+          directExplanation('junk:shared', 'bow', 'Bed Bow', 4, 7, 'Bow'),
+        ],
         retainedPrefix: 'b', freeBackspaceCount: 2, typedSuffix: 'ow',
       }],
       coveredTargetIds: ['target:bed', 'target:bow'],
@@ -150,7 +161,46 @@ describe('ResultPanel', () => {
     )
     expect(exactLine.textContent).toBe('Red Bed')
     expect(within(exactLine).getByText('Bed').tagName).toBe('MARK')
-    expect(within(steps[0]).getByText('name · target:bed · span 4–7')).toBeTruthy()
+    expect(within(steps[0]).getByText('Matched Bed (target:bed): name · span 4–7')).toBeTruthy()
+  })
+
+  test('distinguishes an alias member from the visible craftable output', () => {
+    const aliasResult: WorkspaceResult = {
+      ...result,
+      entries: [{
+        ...result.entries[0],
+        targetIds: ['minecraft:white_bed'],
+        visibleItemIds: ['minecraft:white_bed'],
+        overlap: [],
+        single: [{
+          query: 'wn',
+          coveredTargetIds: ['minecraft:white_bed'],
+          junkItemIds: [],
+          explanations: [{
+            query: 'wn',
+            collectionId: 'collection:bed',
+            recipeGroup: 'bed',
+            matchedMemberItemId: 'minecraft:brown_bed',
+            matchedMemberName: 'Brown Bed',
+            visibleOutputItemId: 'minecraft:white_bed',
+            visibleOutputName: 'White Bed',
+            source: 'name',
+            line: 'Brown Bed',
+            matchedSpan: { start: 3, end: 5, text: 'wn' },
+          }],
+          score: { lengthPenalty: 0, junkPresencePenalty: 0, junkCountPenalty: 0, total: 0 },
+        }],
+      }],
+    }
+
+    render(<ResultPanel items={items} result={aliasResult} />)
+
+    expect(screen.getByText('White Bed (minecraft:white_bed) was craftable in collection bed.')).toBeTruthy()
+    expect(screen.getByText('Matched Brown Bed (minecraft:brown_bed): name · span 3–5')).toBeTruthy()
+    const line = screen.getByText((_, element) =>
+      element?.classList.contains('search-line') === true && element.textContent === 'Brown Bed',
+    )
+    expect(within(line).getByText('wn').tagName).toBe('MARK')
   })
 
   test('promotes overlap and renders unmatched diagnostics with the maximum failure score', () => {
@@ -234,10 +284,7 @@ describe('ResultPanel', () => {
         targetIds: ['target:unicode'], visibleItemIds: ['target:unicode'], overlap: [], bestScore: 0,
         single: [{
           query: 'x', coveredTargetIds: ['target:unicode'], junkItemIds: [],
-          explanations: [{
-            itemId: 'target:unicode', source: 'name', line: '😀İx',
-            matchedSpan: { start: 3, end: 4, text: 'x' },
-          }],
+          explanations: [directExplanation('target:unicode', 'x', '😀İx', 3, 4, 'x')],
           score: { lengthPenalty: 0, junkPresencePenalty: 0, junkCountPenalty: 0, total: 0 },
         }],
       }],
@@ -250,6 +297,6 @@ describe('ResultPanel', () => {
     )
     expect(line.textContent).toBe('😀İx')
     expect(within(line).getByText('x').tagName).toBe('MARK')
-    expect(screen.getByText('name · target:unicode · span 3–4')).toBeTruthy()
+    expect(screen.getByText('Matched Unicode target (target:unicode): name · span 3–4')).toBeTruthy()
   })
 })

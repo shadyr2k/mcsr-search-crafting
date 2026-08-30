@@ -1,5 +1,5 @@
 import type { SearchItem } from '../domain/types'
-import type { MatchExplanation } from '../engine/search'
+import type { CollectionMatchExplanation } from '../engine/search'
 import type {
   WorkspaceEntryResult,
   WorkspaceOptimizationProgress,
@@ -31,8 +31,11 @@ function itemList(itemIds: readonly string[], items: ReadonlyMap<string, SearchI
   return itemIds.length === 0 ? 'none' : itemIds.map((itemId) => itemLabel(itemId, items)).join(', ')
 }
 
-function ExactMatch({ explanation }: { explanation: MatchExplanation }) {
+function ExactMatch({ explanation }: { explanation: CollectionMatchExplanation }) {
   const { line, matchedSpan } = explanation
+  const collectionLabel = explanation.recipeGroup === null
+    ? `isolated collection ${explanation.collectionId}`
+    : `collection ${explanation.recipeGroup}`
   const validSpan = Number.isInteger(matchedSpan.start)
     && Number.isInteger(matchedSpan.end)
     && matchedSpan.start >= 0
@@ -41,7 +44,8 @@ function ExactMatch({ explanation }: { explanation: MatchExplanation }) {
     && line.slice(matchedSpan.start, matchedSpan.end) === matchedSpan.text
 
   return <li className="match-explanation">
-    <span>{explanation.source} · {explanation.itemId} · span {matchedSpan.start}–{matchedSpan.end}</span>
+    <span>{explanation.visibleOutputName} ({explanation.visibleOutputItemId}) was craftable in {collectionLabel}.</span>
+    <span>Matched {explanation.matchedMemberName} ({explanation.matchedMemberItemId}): {explanation.source} · span {matchedSpan.start}–{matchedSpan.end}</span>
     {validSpan ? <span className="search-line">
       {line.slice(0, matchedSpan.start)}
       <mark>{line.slice(matchedSpan.start, matchedSpan.end)}</mark>
@@ -52,10 +56,10 @@ function ExactMatch({ explanation }: { explanation: MatchExplanation }) {
   </li>
 }
 
-function Explanations({ explanations }: { explanations: readonly MatchExplanation[] }) {
+function Explanations({ explanations }: { explanations: readonly CollectionMatchExplanation[] }) {
   return <ul className="match-explanations">
     {explanations.map((explanation, index) => <ExactMatch
-      key={`${explanation.itemId}-${explanation.source}-${explanation.matchedSpan.start}-${index}`}
+      key={`${explanation.collectionId}-${explanation.visibleOutputItemId}-${explanation.matchedMemberItemId}-${explanation.source}-${explanation.matchedSpan.start}-${index}`}
       explanation={explanation}
     />)}
   </ul>

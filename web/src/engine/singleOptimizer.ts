@@ -1,12 +1,15 @@
-import type { SearchItem } from '../domain/types'
+import type { CraftingRecipe, RecipeResultCollection, SearchItem } from '../domain/types'
 
-import { candidateQueries } from './candidates'
-import { type MatchExplanation, matchItem } from './search'
+import { candidateQueriesForTargets } from './candidates'
+import { matchEligibleCollectionOutputs } from './collectionSearch'
+import type { CollectionMatchExplanation } from './search'
 import { type ScoreBreakdown, scoreStep } from './scoring'
 
 export interface OptimizeInput {
   targetIds: ReadonlySet<string>
-  visibleItemIds: ReadonlySet<string>
+  eligibleRecipes: readonly CraftingRecipe[]
+  recipes: readonly CraftingRecipe[]
+  collections: ReadonlyMap<string, RecipeResultCollection>
   items: ReadonlyMap<string, SearchItem>
 }
 
@@ -14,7 +17,7 @@ export interface SingleResult {
   query: string
   coveredTargetIds: string[]
   junkItemIds: string[]
-  explanations: MatchExplanation[]
+  explanations: CollectionMatchExplanation[]
   score: ScoreBreakdown
 }
 
@@ -23,7 +26,7 @@ export interface PreparedCandidate {
   targetMask: bigint
   coveredTargetIds: string[]
   junkItemIds: string[]
-  explanations: MatchExplanation[]
+  explanations: CollectionMatchExplanation[]
 }
 
 export interface PreparedOptimization {
@@ -54,33 +57,49 @@ function preparationContext(input: OptimizeInput) {
   const targetIds = [...input.targetIds].sort(compareText)
   const targetIdSet = new Set(targetIds)
   const targetIndexes = new Map(targetIds.map((targetId, index) => [targetId, index]))
-  const targetItems = targetIds
-    .map((targetId) => input.items.get(targetId))
-    .filter((target): target is SearchItem => target !== undefined)
-  const visibleItemIds = [...input.visibleItemIds].sort(compareText)
-  const queries = candidateQueries(targetItems)
-  return { targetIds, targetIdSet, targetIndexes, visibleItemIds, queries }
+  const eligibleCollectionIds = [...new Set(
+    input.eligibleRecipes.map(({ resultCollectionId }) => resultCollectionId),
+  )].sort(compareText)
+  const eligibleCollections = eligibleCollectionIds.map((collectionId) => ({
+    collectionId,
+    recipes: input.eligibleRecipes.filter(
+      ({ resultCollectionId }) => resultCollectionId === collectionId,
+    ),
+  }))
+  const queries = candidateQueriesForTargets(
+    input.targetIds,
+    input.recipes,
+    input.collections,
+    input.items,
+  )
+  return { targetIds, targetIdSet, targetIndexes, eligibleCollections, queries }
 }
 
-function preparedCandidate(
+function addCollectionMatches(
   input: OptimizeInput,
+  query: string,
+  eligibleRecipes: readonly CraftingRecipe[],
+  matchedItemIds: Set<string>,
+  explanations: CollectionMatchExplanation[],
+): void {
+  const matches = matchEligibleCollectionOutputs(
+    query,
+    eligibleRecipes,
+    input.collections,
+    input.items,
+  )
+  for (const [outputItemId, outputExplanations] of matches) {
+    matchedItemIds.add(outputItemId)
+    explanations.push(...outputExplanations)
+  }
+}
+
+function preparedCandidateFromMatches(
   context: ReturnType<typeof preparationContext>,
   query: string,
+  matchedItemIds: ReadonlySet<string>,
+  explanations: CollectionMatchExplanation[],
 ): PreparedCandidate | undefined {
-  const matchedItemIds = new Set<string>()
-  const explanations: MatchExplanation[] = []
-
-  for (const itemId of context.visibleItemIds) {
-    const item = input.items.get(itemId)
-    if (item === undefined) continue
-
-    const itemExplanations = matchItem(item, query)
-    if (itemExplanations.length === 0) continue
-
-    matchedItemIds.add(itemId)
-    explanations.push(...itemExplanations)
-  }
-
   const coveredTargetIds = context.targetIds.filter((targetId) => matchedItemIds.has(targetId))
   if (coveredTargetIds.length === 0) return undefined
 
@@ -102,9 +121,16 @@ function preparedCandidate(
 
 export function prepareOptimization(input: OptimizeInput): PreparedOptimization {
   const context = preparationContext(input)
-  const candidates = context.queries
-    .map((query) => preparedCandidate(input, context, query))
-    .filter((candidate): candidate is PreparedCandidate => candidate !== undefined)
+  const candidates: PreparedCandidate[] = []
+  for (const query of context.queries) {
+    const matchedItemIds = new Set<string>()
+    const explanations: CollectionMatchExplanation[] = []
+    for (const { recipes } of context.eligibleCollections) {
+      addCollectionMatches(input, query, recipes, matchedItemIds, explanations)
+    }
+    const candidate = preparedCandidateFromMatches(context, query, matchedItemIds, explanations)
+    if (candidate !== undefined) candidates.push(candidate)
+  }
   return { targetIds: context.targetIds, candidates }
 }
 
@@ -114,7 +140,7 @@ export async function prepareOptimizationCooperatively(
 ): Promise<PreparedOptimization> {
   const context = preparationContext(input)
   const candidates: PreparedCandidate[] = []
-  const total = context.queries.length * context.visibleItemIds.length
+  const total = context.queries.length * context.eligibleCollections.length
   const boundedChunkSize = chunkSize(options.workChunkSize)
   let completed = 0
   let workSinceYield = 0
@@ -123,17 +149,10 @@ export async function prepareOptimizationCooperatively(
   options.onProgress?.(completed, total)
   for (const query of context.queries) {
     const matchedItemIds = new Set<string>()
-    const explanations: MatchExplanation[] = []
+    const explanations: CollectionMatchExplanation[] = []
 
-    for (const itemId of context.visibleItemIds) {
-      const item = input.items.get(itemId)
-      if (item !== undefined) {
-        const itemExplanations = matchItem(item, query)
-        if (itemExplanations.length > 0) {
-          matchedItemIds.add(itemId)
-          explanations.push(...itemExplanations)
-        }
-      }
+    for (const { recipes } of context.eligibleCollections) {
+      addCollectionMatches(input, query, recipes, matchedItemIds, explanations)
 
       completed += 1
       workSinceYield += 1
@@ -146,22 +165,8 @@ export async function prepareOptimizationCooperatively(
       }
     }
 
-    const coveredTargetIds = context.targetIds.filter((targetId) => matchedItemIds.has(targetId))
-    if (coveredTargetIds.length === 0) continue
-
-    let targetMask = 0n
-    for (const targetId of coveredTargetIds) {
-      targetMask |= 1n << BigInt(context.targetIndexes.get(targetId)!)
-    }
-    candidates.push({
-      query,
-      targetMask,
-      coveredTargetIds,
-      junkItemIds: [...matchedItemIds]
-        .filter((itemId) => !context.targetIdSet.has(itemId))
-        .sort(compareText),
-      explanations,
-    })
+    const candidate = preparedCandidateFromMatches(context, query, matchedItemIds, explanations)
+    if (candidate !== undefined) candidates.push(candidate)
   }
 
   throwIfAborted(options.signal)

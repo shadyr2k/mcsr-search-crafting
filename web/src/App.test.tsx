@@ -237,7 +237,14 @@ describe('App persistence', () => {
         single: [{
           query: 's', coveredTargetIds: ['minecraft:stick'], junkItemIds: [],
           explanations: [{
-            itemId: 'minecraft:stick', source: 'name', line: 'Stick',
+            query: 's',
+            collectionId: 'crafting_misc/recipe/minecraft%3Astick',
+            recipeGroup: null,
+            matchedMemberItemId: 'minecraft:stick',
+            matchedMemberName: 'Stick',
+            visibleOutputItemId: 'minecraft:stick',
+            visibleOutputName: 'Stick',
+            source: 'name', line: 'Stick',
             matchedSpan: { start: 0, end: 1, text: 'S' },
           }],
           score: { lengthPenalty: 0, junkPresencePenalty: 0, junkCountPenalty: 0, total: 0 },

@@ -1,6 +1,6 @@
 import type { GeneratedData, TargetWorkspaceEntry } from '../domain/types'
 
-import { visibleOutputIds } from './craftability'
+import { eligibleRecipes } from './craftability'
 import { optimizeOverlapPreparedCooperatively, type OverlapResult } from './overlapOptimizer'
 import { incompleteScore } from './scoring'
 import {
@@ -69,11 +69,14 @@ async function optimizeEntry(
   entryCount: number,
   options: Required<Pick<OptimizeWorkspaceOptions, 'yieldControl'>> & OptimizeWorkspaceOptions,
 ): Promise<WorkspaceEntryResult> {
-  const visibleIds = visibleOutputIds(data.recipes, new Set(inventory), entry.gridSize)
+  const eligible = eligibleRecipes(data.recipes, inventory, entry.gridSize)
+  const visibleIds = new Set(eligible.map(({ outputItemId }) => outputItemId))
   const targetIds = [...new Set(entry.targetIds)].sort()
   const input = {
     targetIds: new Set(targetIds),
-    visibleItemIds: visibleIds,
+    eligibleRecipes: eligible,
+    recipes: data.recipes,
+    collections: data.collections,
     items: data.items,
   }
   const prepared = await prepareOptimizationCooperatively(input, {
