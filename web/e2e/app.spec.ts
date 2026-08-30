@@ -177,7 +177,7 @@ test('explains a Brown Bed alias while keeping the White Bed output exact', asyn
       'fixture:junk': {
         name: 'Fixture Junk', confidence: 'source_reproduced',
         search_lines: [
-          'b', 'r', 'o', 'w', 'n', ' ', 'e', 'd', 'h', 'i', 't',
+          'b', 'r', 'o', 'w', 'n', ' x', 'e', 'd', 'h', 'i', 't',
           'br', 'ro', 'ow', 'n ', ' b', 'be', 'ed', 'wh', 'hi', 'it', 'te', 'e ',
         ].map((text) => ({ source: 'fixture', text })),
       },
@@ -187,6 +187,7 @@ test('explains a Brown Bed alias while keeping the White Bed output exact', asyn
     schema_version: 3,
     items: {
       'fixture:white-bed': { name: 'White Bed Ingredient' },
+      'fixture:unavailable': { name: 'Unavailable Ingredient' },
     },
   }
   const recipes = {
