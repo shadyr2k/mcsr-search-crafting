@@ -2,6 +2,14 @@ from dataclasses import dataclass
 from typing import Literal
 
 
+RecipeBookCategory = Literal[
+    "crafting_building_blocks",
+    "crafting_equipment",
+    "crafting_redstone",
+    "crafting_misc",
+]
+
+
 @dataclass(frozen=True)
 class IngredientRef:
     kind: Literal["item", "tag"]
@@ -18,6 +26,7 @@ class IngredientSlot:
 class NormalizedRecipe:
     recipe_id: str
     recipe_type: Literal["shaped", "shapeless"]
+    recipe_group: str | None
     output_item: str
     output_count: int
     ingredient_slots: tuple[IngredientSlot, ...]
@@ -25,6 +34,17 @@ class NormalizedRecipe:
     height: int
     fits_2x2: bool
     fits_3x3: bool
+    recipe_book_category: RecipeBookCategory | None = None
+    result_collection_id: str | None = None
+
+
+@dataclass(frozen=True)
+class RecipeResultCollection:
+    collection_id: str
+    recipe_book_category: RecipeBookCategory
+    recipe_group: str | None
+    recipe_ids: tuple[str, ...]
+    output_item_ids: tuple[str, ...]
 
 
 @dataclass(frozen=True)

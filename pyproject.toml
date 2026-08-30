@@ -19,6 +19,9 @@ package-dir = {"" = "generator/src"}
 [tool.setuptools.packages.find]
 where = ["generator/src"]
 
+[tool.setuptools.package-data]
+mcsr_data = ["*.json"]
+
 [tool.pytest.ini_options]
 pythonpath = ["generator/src"]
 testpaths = ["generator/tests"]

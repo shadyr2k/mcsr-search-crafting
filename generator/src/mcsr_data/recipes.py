@@ -1,7 +1,7 @@
 import json
 from dataclasses import replace
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal, Mapping, cast
 
 from mcsr_data.models import IngredientRef, IngredientSlot, NormalizedRecipe
 from mcsr_data.tags import TagResolver
@@ -31,6 +31,7 @@ def parse_recipe(recipe_id: str, raw: dict[str, object]) -> NormalizedRecipe | N
     return NormalizedRecipe(
         recipe_id=recipe_id,
         recipe_type=normalized_type,
+        recipe_group=_parse_group(recipe_id, raw),
         output_item=output_item,
         output_count=output_count,
         ingredient_slots=tuple(slots),
@@ -39,6 +40,15 @@ def parse_recipe(recipe_id: str, raw: dict[str, object]) -> NormalizedRecipe | N
         fits_2x2=fits_2x2,
         fits_3x3=fits_3x3,
     )
+
+
+def _parse_group(recipe_id: str, raw: Mapping[str, object]) -> str | None:
+    if "group" not in raw or raw["group"] == "":
+        return None
+    raw_group = raw["group"]
+    if not isinstance(raw_group, str):
+        raise RecipeParseError(f"{recipe_id}: group must be a string")
+    return raw_group
 
 
 def load_crafting_recipes(path: Path) -> list[NormalizedRecipe]:

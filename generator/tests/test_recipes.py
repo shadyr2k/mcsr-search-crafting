@@ -44,6 +44,35 @@ def test_non_crafting_recipe_is_ignored():
     }) is None
 
 
+@pytest.mark.parametrize(("raw_group", "expected"), [
+    (None, None),
+    ("", None),
+    ("bed", "bed"),
+    (" Bed ", " Bed "),
+])
+def test_recipe_group_preserves_nonempty_exact_values(raw_group, expected):
+    raw = {
+        "type": "minecraft:crafting_shapeless",
+        "ingredients": [{"item": "minecraft:white_wool"}],
+        "result": {"item": "minecraft:white_bed"},
+    }
+    if raw_group is not None:
+        raw["group"] = raw_group
+
+    assert parse_recipe("minecraft:white_bed", raw).recipe_group == expected
+
+
+@pytest.mark.parametrize("invalid_group", [None, 7, [], {}])
+def test_explicit_non_string_recipe_groups_are_rejected(invalid_group):
+    with pytest.raises(RecipeParseError, match="group must be a string"):
+        parse_recipe("minecraft:bad", {
+            "type": "minecraft:crafting_shapeless",
+            "group": invalid_group,
+            "ingredients": [{"item": "minecraft:white_wool"}],
+            "result": {"item": "minecraft:white_bed"},
+        })
+
+
 def test_shapeless_recipe_preserves_repeated_slots_and_counts_them():
     recipe = parse_recipe("minecraft:test", {
         "type": "minecraft:crafting_shapeless",
