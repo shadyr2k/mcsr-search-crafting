@@ -3,15 +3,22 @@ import type {
   GeneratedData,
   IngredientSlot,
   InventoryItem,
+  RecipeBookCategory,
+  RecipeResultCollection,
   SearchItem,
   SearchLine,
 } from '../domain/types'
 
 type JsonRecord = Record<string, unknown>
-const GENERATED_SCHEMA_VERSION = 2
+const GENERATED_SCHEMA_VERSION = 3
 
 interface IndexedRecipe {
   recipe: CraftingRecipe
+  sourceIndex: number
+}
+
+interface IndexedCollection {
+  collection: RecipeResultCollection
   sourceIndex: number
 }
 
@@ -29,6 +36,13 @@ function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+function isRecipeBookCategory(value: unknown): value is RecipeBookCategory {
+  return value === 'crafting_building_blocks'
+    || value === 'crafting_equipment'
+    || value === 'crafting_redstone'
+    || value === 'crafting_misc'
+}
+
 function getRecord(value: unknown, path: string, errors: string[]): JsonRecord | undefined {
   if (!isRecord(value)) {
     errors.push(`${path}: expected an object`)
@@ -40,6 +54,23 @@ function getRecord(value: unknown, path: string, errors: string[]): JsonRecord |
 function getNonEmptyString(value: unknown, path: string, errors: string[]): string | undefined {
   if (typeof value !== 'string' || value.trim() === '') {
     errors.push(`${path}: expected a non-empty string`)
+    return undefined
+  }
+  return value
+}
+
+function getNullableGroup(value: unknown, path: string, errors: string[]): string | null | undefined {
+  if (value === null) return null
+  return getNonEmptyString(value, path, errors)
+}
+
+function getRecipeBookCategory(
+  value: unknown,
+  path: string,
+  errors: string[],
+): RecipeBookCategory | undefined {
+  if (!isRecipeBookCategory(value)) {
+    errors.push(`${path}: expected a valid recipe book category`)
     return undefined
   }
   return value
@@ -59,6 +90,29 @@ function getBoolean(value: unknown, path: string, errors: string[]): boolean | u
     return undefined
   }
   return value
+}
+
+function parseUniqueStringArray(value: unknown, path: string, errors: string[]): string[] | undefined {
+  if (!Array.isArray(value)) {
+    errors.push(`${path}: expected an array`)
+    return undefined
+  }
+
+  const strings: string[] = []
+  const seen = new Set<string>()
+  value.forEach((entry, index) => {
+    const entryPath = `${path}[${index}]`
+    const string = getNonEmptyString(entry, entryPath, errors)
+    if (string === undefined) return
+    if (seen.has(string)) {
+      errors.push(`${entryPath}: duplicate value ${string}`)
+      return
+    }
+    seen.add(string)
+    strings.push(string)
+  })
+
+  return strings.length === value.length ? strings : undefined
 }
 
 function parseSearchLines(value: unknown, path: string, errors: string[]): SearchLine[] | undefined {
@@ -149,19 +203,14 @@ function parseIngredientSlots(value: unknown, path: string, errors: string[]): I
     const record = getRecord(slot, slotPath, errors)
     if (!record) return
 
-    if (!Array.isArray(record.accepted_items) || record.accepted_items.length === 0) {
-      errors.push(`${slotPath}.accepted_items: expected a non-empty array`)
+    const acceptedItems = parseUniqueStringArray(record.accepted_items, `${slotPath}.accepted_items`, errors)
+    if (acceptedItems === undefined || acceptedItems.length === 0) {
+      if (acceptedItems !== undefined) {
+        errors.push(`${slotPath}.accepted_items: expected a non-empty array`)
+      }
       return
     }
-
-    const acceptedItems: string[] = []
-    record.accepted_items.forEach((item, itemIndex) => {
-      const itemId = getNonEmptyString(item, `${slotPath}.accepted_items[${itemIndex}]`, errors)
-      if (itemId !== undefined) acceptedItems.push(itemId)
-    })
-    if (acceptedItems.length === record.accepted_items.length) {
-      slots.push({ acceptedItems })
-    }
+    slots.push({ acceptedItems })
   })
 
   return slots.length === value.length ? slots : undefined
@@ -194,6 +243,17 @@ function parseRecipes(value: unknown, errors: string[]): IndexedRecipe[] {
       recipeIds.add(id)
     }
 
+    const recipeGroup = getNullableGroup(record.recipe_group, `${recipePath}.recipe_group`, errors)
+    const recipeBookCategory = getRecipeBookCategory(
+      record.recipe_book_category,
+      `${recipePath}.recipe_book_category`,
+      errors,
+    )
+    const resultCollectionId = getNonEmptyString(
+      record.result_collection_id,
+      `${recipePath}.result_collection_id`,
+      errors,
+    )
     const outputItemId = getNonEmptyString(record.output_item_id, `${recipePath}.output_item_id`, errors)
     const outputCount = getPositiveInteger(record.output_count, `${recipePath}.output_count`, errors)
     const ingredientSlots = parseIngredientSlots(record.ingredient_slots, `${recipePath}.ingredient_slots`, errors)
@@ -205,21 +265,87 @@ function parseRecipes(value: unknown, errors: string[]): IndexedRecipe[] {
     }
 
     if (
-      id !== undefined &&
-      outputItemId !== undefined &&
-      outputCount !== undefined &&
-      ingredientSlots !== undefined &&
-      fits2x2 !== undefined &&
-      fits3x3 !== undefined
+      id !== undefined
+      && recipeGroup !== undefined
+      && recipeBookCategory !== undefined
+      && resultCollectionId !== undefined
+      && outputItemId !== undefined
+      && outputCount !== undefined
+      && ingredientSlots !== undefined
+      && fits2x2 !== undefined
+      && fits3x3 !== undefined
     ) {
       recipes.push({
-        recipe: { id, outputItemId, outputCount, ingredientSlots, fits2x2, fits3x3 },
+        recipe: {
+          id,
+          recipeGroup,
+          recipeBookCategory,
+          resultCollectionId,
+          outputItemId,
+          outputCount,
+          ingredientSlots,
+          fits2x2,
+          fits3x3,
+        },
         sourceIndex: index,
       })
     }
   })
 
   return recipes
+}
+
+function parseCollections(value: unknown, errors: string[]): IndexedCollection[] {
+  const root = getRecord(value, 'collections', errors)
+  if (!root) return []
+
+  if (root.schema_version !== GENERATED_SCHEMA_VERSION) {
+    errors.push(`collections.schema_version: expected ${GENERATED_SCHEMA_VERSION}`)
+  }
+  if (!Array.isArray(root.collections)) {
+    errors.push('collections.collections: expected an array')
+    return []
+  }
+
+  const collections: IndexedCollection[] = []
+  const collectionIds = new Set<string>()
+  root.collections.forEach((rawCollection, index) => {
+    const collectionPath = `collections[${index}]`
+    const record = getRecord(rawCollection, collectionPath, errors)
+    if (!record) return
+
+    const id = getNonEmptyString(record.id, `${collectionPath}.id`, errors)
+    if (id !== undefined) {
+      if (collectionIds.has(id)) {
+        errors.push(`${collectionPath}.id: duplicate collection ID ${id}`)
+      }
+      collectionIds.add(id)
+    }
+
+    const recipeBookCategory = getRecipeBookCategory(
+      record.recipe_book_category,
+      `${collectionPath}.recipe_book_category`,
+      errors,
+    )
+    const recipeGroup = getNullableGroup(record.recipe_group, `${collectionPath}.recipe_group`, errors)
+    const recipeIds = parseUniqueStringArray(record.recipe_ids, `${collectionPath}.recipe_ids`, errors)
+    const outputItemIds = parseUniqueStringArray(record.output_item_ids, `${collectionPath}.output_item_ids`, errors)
+
+    if (
+      id !== undefined
+      && recipeBookCategory !== undefined
+      && recipeGroup !== undefined
+      && recipeIds !== undefined
+      && outputItemIds !== undefined
+    ) {
+      collections.push({
+        collection: { id, recipeBookCategory, recipeGroup, recipeIds, outputItemIds },
+        sourceIndex: index,
+      })
+    }
+  })
+
+  return collections
 }
 
 function validateRecipeReferences(
@@ -248,16 +374,80 @@ function validateRecipeReferences(
   })
 }
 
+function validateCollectionGraph(
+  recipes: IndexedRecipe[],
+  collections: IndexedCollection[],
+  items: Map<string, SearchItem>,
+  errors: string[],
+) {
+  const recipesById = new Map(recipes.map((recipe) => [recipe.recipe.id, recipe]))
+  const collectionsById = new Map(collections.map((collection) => [collection.collection.id, collection]))
+  const membershipCounts = new Map(recipes.map(({ recipe }) => [recipe.id, 0]))
+
+  collections.forEach(({ collection, sourceIndex }) => {
+    const collectionPath = `collections[${sourceIndex}]`
+    const memberOutputItemIds = new Set<string>()
+    collection.recipeIds.forEach((recipeId, recipeIndex) => {
+      const recipe = recipesById.get(recipeId)
+      const recipeIdPath = `${collectionPath}.recipe_ids[${recipeIndex}]`
+      if (!recipe) {
+        errors.push(`${recipeIdPath}: references missing recipe ${recipeId}`)
+        return
+      }
+
+      membershipCounts.set(recipeId, (membershipCounts.get(recipeId) ?? 0) + 1)
+      memberOutputItemIds.add(recipe.recipe.outputItemId)
+      if (recipe.recipe.resultCollectionId !== collection.id) {
+        errors.push(`${recipeIdPath}: recipe references collection ${recipe.recipe.resultCollectionId}`)
+      }
+      if (recipe.recipe.recipeBookCategory !== collection.recipeBookCategory) {
+        errors.push(`recipes[${recipe.sourceIndex}].recipe_book_category: disagrees with collection ${collection.id}`)
+      }
+      if (recipe.recipe.recipeGroup !== collection.recipeGroup) {
+        errors.push(`recipes[${recipe.sourceIndex}].recipe_group: disagrees with collection ${collection.id}`)
+      }
+    })
+
+    collection.outputItemIds.forEach((outputItemId, outputIndex) => {
+      if (!items.has(outputItemId)) {
+        errors.push(`${collectionPath}.output_item_ids[${outputIndex}]: references missing item ${outputItemId}`)
+      }
+    })
+    if (
+      collection.outputItemIds.length !== memberOutputItemIds.size
+      || collection.outputItemIds.some((outputItemId) => !memberOutputItemIds.has(outputItemId))
+    ) {
+      errors.push(`${collectionPath}.output_item_ids: does not match member recipe outputs`)
+    }
+  })
+
+  recipes.forEach(({ recipe, sourceIndex }) => {
+    const recipePath = `recipes[${sourceIndex}]`
+    if (!collectionsById.has(recipe.resultCollectionId)) {
+      errors.push(`${recipePath}.result_collection_id: references missing collection ${recipe.resultCollectionId}`)
+    }
+    const membershipCount = membershipCounts.get(recipe.id) ?? 0
+    if (membershipCount === 0) {
+      errors.push(`${recipePath}.id: is not referenced by a collection`)
+    } else if (membershipCount > 1) {
+      errors.push(`${recipePath}.id: is referenced by multiple collections`)
+    }
+  })
+}
+
 export function parseGeneratedData(
   itemsPayload: unknown,
   inventoryItemsPayload: unknown,
   recipesPayload: unknown,
+  collectionsPayload: unknown,
 ): GeneratedData {
   const errors: string[] = []
   const items = parseItems(itemsPayload, errors)
   const inventoryItems = parseInventoryItems(inventoryItemsPayload, errors)
   const indexedRecipes = parseRecipes(recipesPayload, errors)
+  const indexedCollections = parseCollections(collectionsPayload, errors)
   validateRecipeReferences(indexedRecipes, items, inventoryItems, errors)
+  validateCollectionGraph(indexedRecipes, indexedCollections, items, errors)
 
   if (errors.length > 0) {
     throw new GeneratedDataError(errors)
@@ -268,6 +458,7 @@ export function parseGeneratedData(
     items,
     inventoryItems,
     recipes: indexedRecipes.map(({ recipe }) => recipe),
+    collections: new Map(indexedCollections.map(({ collection }) => [collection.id, collection])),
   }
 }
 
@@ -286,10 +477,11 @@ async function fetchJson(url: string): Promise<unknown> {
 
 export async function loadGeneratedData(baseUrl = import.meta.env.BASE_URL): Promise<GeneratedData> {
   const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
-  const [itemsPayload, inventoryItemsPayload, recipesPayload] = await Promise.all([
+  const [itemsPayload, inventoryItemsPayload, recipesPayload, collectionsPayload] = await Promise.all([
     fetchJson(`${base}data/search-items.json`),
     fetchJson(`${base}data/inventory-items.json`),
     fetchJson(`${base}data/crafting-recipes.json`),
+    fetchJson(`${base}data/recipe-result-collections.json`),
   ])
-  return parseGeneratedData(itemsPayload, inventoryItemsPayload, recipesPayload)
+  return parseGeneratedData(itemsPayload, inventoryItemsPayload, recipesPayload, collectionsPayload)
 }

@@ -21,6 +21,9 @@ export interface IngredientSlot {
 
 export interface CraftingRecipe {
   id: string
+  recipeGroup: string | null
+  recipeBookCategory: RecipeBookCategory
+  resultCollectionId: string
   outputItemId: string
   outputCount: number
   ingredientSlots: IngredientSlot[]
@@ -28,11 +31,26 @@ export interface CraftingRecipe {
   fits3x3: boolean
 }
 
+export type RecipeBookCategory =
+  | 'crafting_building_blocks'
+  | 'crafting_equipment'
+  | 'crafting_redstone'
+  | 'crafting_misc'
+
+export interface RecipeResultCollection {
+  id: string
+  recipeBookCategory: RecipeBookCategory
+  recipeGroup: string | null
+  recipeIds: string[]
+  outputItemIds: string[]
+}
+
 export interface GeneratedData {
-  schemaVersion: 2
+  schemaVersion: 3
   items: Map<string, SearchItem>
   inventoryItems: Map<string, InventoryItem>
   recipes: CraftingRecipe[]
+  collections: Map<string, RecipeResultCollection>
 }
 
 export interface InventoryPreset {
