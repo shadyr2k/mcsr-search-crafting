@@ -61,7 +61,11 @@ function getNonEmptyString(value: unknown, path: string, errors: string[]): stri
 
 function getNullableGroup(value: unknown, path: string, errors: string[]): string | null | undefined {
   if (value === null) return null
-  return getNonEmptyString(value, path, errors)
+  if (typeof value !== 'string' || value === '') {
+    errors.push(`${path}: expected a non-empty string`)
+    return undefined
+  }
+  return value
 }
 
 function getRecipeBookCategory(

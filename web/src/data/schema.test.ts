@@ -104,6 +104,19 @@ describe('parseGeneratedData', () => {
     }]]))
   })
 
+  test('preserves a whitespace-only recipe group shared by its collection', () => {
+    const generated = parseGeneratedData(items, inventoryItems, {
+      schema_version: 3,
+      recipes: [{ ...recipe, recipe_group: ' '}],
+    }, {
+      schema_version: 3,
+      collections: [{ ...collections.collections[0], recipe_group: ' '}],
+    })
+
+    expect(generated.recipes[0].recipeGroup).toBe(' ')
+    expect(generated.collections.get(collectionId)?.recipeGroup).toBe(' ')
+  })
+
   test('rejects a schema version 2 payload mixed into a schema version 3 graph', () => {
     expectValidationError(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, {
       ...collections,
