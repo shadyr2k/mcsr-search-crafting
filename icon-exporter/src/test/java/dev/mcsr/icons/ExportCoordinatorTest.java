@@ -3,6 +3,8 @@ package dev.mcsr.icons;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -179,19 +181,131 @@ class ExportCoordinatorTest {
         assertFalse(Files.exists(tempDir.resolve("latest.json")));
     }
 
+    @Test
+    void startsAnIndependentFreshRunAfterCompletion() throws Exception {
+        RecordingEnvironment environment = allowedEnvironment(entry("minecraft:apple", Items.APPLE));
+        RecordingCapture capture = new RecordingCapture("minecraft:apple");
+        ExportCoordinator coordinator = coordinator(environment, capture, 1,
+                identities("first-run", "second-run"));
+
+        assertTrue(coordinator.start());
+        runToCompletion(coordinator);
+        ExportManifest firstManifest = coordinator.manifest();
+        assertEquals(1, firstManifest.failures.size());
+        assertTrue(Files.isRegularFile(exportPath("first-run").resolve("manifest.json")));
+
+        assertTrue(coordinator.start());
+
+        assertEquals(ExportState.RUNNING, coordinator.state());
+        assertEquals(0, coordinator.attemptedCount());
+        assertNotSame(firstManifest, coordinator.manifest());
+        assertTrue(coordinator.manifest().icons.isEmpty());
+        assertTrue(coordinator.manifest().failures.isEmpty());
+        runToCompletion(coordinator);
+
+        assertEquals(ExportState.COMPLETE, coordinator.state());
+        assertTrue(Files.isRegularFile(exportPath("second-run").resolve("manifest.json")));
+        assertEquals(Arrays.asList("minecraft:apple", "minecraft:apple"), capture.attemptedIds());
+        assertTrue(coordinator.manifest().failures.isEmpty());
+        assertTrue(coordinator.manifest().icons.containsKey("minecraft:apple"));
+    }
+
+    @Test
+    void startsFreshRunAfterTechnicalFailureAndLeavesFailedStageForDiagnostics() throws Exception {
+        Files.createDirectories(exportPath("first-failure"));
+        RecordingEnvironment environment = allowedEnvironment(entry("minecraft:apple", Items.APPLE));
+        ExportCoordinator coordinator = coordinator(environment, new RecordingCapture(), 1,
+                identities("first-failure", "second-success"));
+
+        assertTrue(coordinator.start());
+        coordinator.tick();
+
+        Path failedStage = tempDir.resolve("staging/20260831T123456Z-first-failure");
+        assertEquals(ExportState.FAILED, coordinator.state());
+        assertTrue(Files.isDirectory(failedStage));
+        Files.delete(exportPath("first-failure"));
+
+        assertTrue(coordinator.start());
+        assertEquals(ExportState.RUNNING, coordinator.state());
+        assertEquals(0, coordinator.attemptedCount());
+        runToCompletion(coordinator);
+
+        assertEquals(ExportState.COMPLETE, coordinator.state());
+        assertTrue(Files.isDirectory(failedStage));
+        assertTrue(Files.isRegularFile(exportPath("second-success").resolve("manifest.json")));
+    }
+
+    @Test
+    void deniedRestartKeepsCompletedResultUntilAnAcceptedRestart() throws Exception {
+        RecordingEnvironment environment = allowedEnvironment(entry("minecraft:apple", Items.APPLE));
+        ExportCoordinator coordinator = coordinator(environment, new RecordingCapture(), 1,
+                identities("completed", "accepted-retry"));
+
+        assertTrue(coordinator.start());
+        runToCompletion(coordinator);
+        ExportManifest completedManifest = coordinator.manifest();
+        String previousPointer = new String(Files.readAllBytes(tempDir.resolve("latest.json")), UTF_8);
+        environment.result = ExportPreconditions.denied("mcsr_item_icons.export.blocked.resource_packs");
+
+        assertFalse(coordinator.start());
+
+        assertEquals(ExportState.COMPLETE, coordinator.state());
+        assertSame(completedManifest, coordinator.manifest());
+        assertEquals(previousPointer, new String(Files.readAllBytes(tempDir.resolve("latest.json")), UTF_8));
+        assertTrue(Files.isRegularFile(exportPath("completed").resolve("manifest.json")));
+
+        environment.result = ExportPreconditions.allowed();
+        assertTrue(coordinator.start());
+
+        assertEquals(ExportState.RUNNING, coordinator.state());
+        assertNotSame(completedManifest, coordinator.manifest());
+        assertEquals(0, coordinator.attemptedCount());
+        assertTrue(coordinator.manifest().icons.isEmpty());
+    }
+
     private ExportCoordinator coordinator(RecordingEnvironment environment, RecordingCapture capture) {
         return coordinator(environment, capture, ExportCoordinator.DEFAULT_BATCH_SIZE);
     }
 
     private ExportCoordinator coordinator(RecordingEnvironment environment, RecordingCapture capture, int batchSize) {
-        return coordinator(environment, capture, batchSize, new ExportPaths(tempDir));
+        return coordinator(environment, capture, batchSize, new ExportPaths(tempDir), identities(EXPORT_SUFFIX));
     }
 
     private ExportCoordinator coordinator(RecordingEnvironment environment, RecordingCapture capture, int batchSize,
             ExportPaths paths) {
+        return coordinator(environment, capture, batchSize, paths, identities(EXPORT_SUFFIX));
+    }
+
+    private ExportCoordinator coordinator(RecordingEnvironment environment, RecordingCapture capture, int batchSize,
+            RunIdentitySource identities) {
+        return coordinator(environment, capture, batchSize, new ExportPaths(tempDir), identities);
+    }
+
+    private ExportCoordinator coordinator(RecordingEnvironment environment, RecordingCapture capture, int batchSize,
+            ExportPaths paths, RunIdentitySource identities) {
         return new ExportCoordinator(environment, capture, paths,
                 ExportManifest.create("1.16.1", "1.0.0", Collections.singletonList("vanilla")),
-                EXPORT_TIME, EXPORT_SUFFIX, batchSize);
+                identities, batchSize);
+    }
+
+    private RunIdentitySource identities(final String... suffixes) {
+        return new RunIdentitySource() {
+            private int index;
+
+            @Override
+            public RunIdentity next() {
+                String suffix = suffixes[index];
+                Instant time = EXPORT_TIME.plusSeconds(index);
+                index++;
+                return new RunIdentity(time, suffix);
+            }
+        };
+    }
+
+    private Path exportPath(String suffix) {
+        int seconds = "first-run".equals(suffix) || "first-failure".equals(suffix) || "completed".equals(suffix)
+                ? 0 : 1;
+        return tempDir.resolve("exports/20260831T1234" + (seconds == 0 ? "56" : "57") + "Z-" + suffix);
     }
 
     private static RecordingEnvironment allowedEnvironment(ItemEntry... entries) {
@@ -223,7 +337,7 @@ class ExportCoordinatorTest {
     }
 
     private static final class RecordingEnvironment implements ExportEnvironment {
-        final PreconditionResult result;
+        PreconditionResult result;
         final SortedMap<Identifier, Item> items = new TreeMap<Identifier, Item>();
         final List<String> notifications = new ArrayList<String>();
 
@@ -259,7 +373,7 @@ class ExportCoordinatorTest {
         public Path capture(Identifier itemId, ItemStack stack, Path stagingRoot) throws Exception {
             attempts.add(itemId.toString());
             assertEquals(1, stack.getCount());
-            if (failingIds.contains(itemId.toString())) {
+            if (failingIds.remove(itemId.toString())) {
                 throw new IOException("outer", new IllegalStateException("capture failed\r\nhere"));
             }
             Path icon = stagingRoot.resolve("icons").resolve(itemId.getNamespace())

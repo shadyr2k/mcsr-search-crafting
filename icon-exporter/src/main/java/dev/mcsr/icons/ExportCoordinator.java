@@ -28,29 +28,33 @@ public final class ExportCoordinator {
     private final ExportEnvironment environment;
     private final IconCapture capture;
     private final ExportPaths paths;
-    private final ExportManifest manifest;
-    private final Instant exportTime;
-    private final String exportSuffix;
+    private final String minecraftVersion;
+    private final String exporterVersion;
+    private final List<String> resourcePacks;
+    private final RunIdentitySource runIdentities;
     private final int batchSize;
     private final List<ExportItem> items = new ArrayList<ExportItem>();
 
     private ExportState state = ExportState.IDLE;
+    private ExportManifest manifest;
     private Path staging;
     private int attemptedCount;
 
     public ExportCoordinator(ExportEnvironment environment, IconCapture capture, ExportPaths paths,
-            ExportManifest manifest, Instant exportTime, String exportSuffix) {
-        this(environment, capture, paths, manifest, exportTime, exportSuffix, DEFAULT_BATCH_SIZE);
+            ExportManifest manifestTemplate, RunIdentitySource runIdentities) {
+        this(environment, capture, paths, manifestTemplate, runIdentities, DEFAULT_BATCH_SIZE);
     }
 
     public ExportCoordinator(ExportEnvironment environment, IconCapture capture, ExportPaths paths,
-            ExportManifest manifest, Instant exportTime, String exportSuffix, int batchSize) {
+            ExportManifest manifestTemplate, RunIdentitySource runIdentities, int batchSize) {
         this.environment = Objects.requireNonNull(environment, "environment");
         this.capture = Objects.requireNonNull(capture, "capture");
         this.paths = Objects.requireNonNull(paths, "paths");
-        this.manifest = Objects.requireNonNull(manifest, "manifest");
-        this.exportTime = Objects.requireNonNull(exportTime, "exportTime");
-        this.exportSuffix = Objects.requireNonNull(exportSuffix, "exportSuffix");
+        ExportManifest template = Objects.requireNonNull(manifestTemplate, "manifestTemplate");
+        this.minecraftVersion = template.minecraft_version;
+        this.exporterVersion = template.exporter_version;
+        this.resourcePacks = new ArrayList<String>(template.resource_packs);
+        this.runIdentities = Objects.requireNonNull(runIdentities, "runIdentities");
         if (batchSize <= 0) {
             throw new IllegalArgumentException("batchSize must be positive");
         }
@@ -58,7 +62,7 @@ public final class ExportCoordinator {
     }
 
     public boolean start() {
-        if (state != ExportState.IDLE) {
+        if (state == ExportState.RUNNING) {
             return false;
         }
 
@@ -69,7 +73,9 @@ public final class ExportCoordinator {
                 return false;
             }
 
-            staging = paths.createStaging(exportTime, exportSuffix);
+            RunIdentity identity = Objects.requireNonNull(runIdentities.next(), "run identity");
+            beginRun();
+            staging = paths.createStaging(identity.timestamp, identity.suffix);
             addSortedNonAirItems(environment.registeredItems());
             state = ExportState.RUNNING;
             return true;
@@ -110,6 +116,13 @@ public final class ExportCoordinator {
 
     public ExportManifest manifest() {
         return manifest;
+    }
+
+    private void beginRun() {
+        manifest = ExportManifest.create(minecraftVersion, exporterVersion, resourcePacks);
+        items.clear();
+        staging = null;
+        attemptedCount = 0;
     }
 
     private void addSortedNonAirItems(SortedMap<Identifier, Item> registeredItems) {
@@ -208,4 +221,18 @@ enum ExportState {
 
 interface IconCapture {
     Path capture(Identifier itemId, ItemStack stack, Path stagingRoot) throws Exception;
+}
+
+interface RunIdentitySource {
+    RunIdentity next();
+}
+
+final class RunIdentity {
+    final Instant timestamp;
+    final String suffix;
+
+    RunIdentity(Instant timestamp, String suffix) {
+        this.timestamp = Objects.requireNonNull(timestamp, "timestamp");
+        this.suffix = Objects.requireNonNull(suffix, "suffix");
+    }
 }
