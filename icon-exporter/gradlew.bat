@@ -69,6 +69,16 @@ goto fail
 
 set CLASSPATH=%APP_HOME%\gradle\wrapper\gradle-wrapper.jar
 
+@rem Loom 0.5.15 cannot decode the gzip metadata responses that modern Mojang
+@rem endpoints return. Prepare its two cache files as plain JSON when needed.
+if defined GRADLE_USER_HOME (
+    set MCSR_GRADLE_USER_HOME=%GRADLE_USER_HOME%
+) else (
+    set MCSR_GRADLE_USER_HOME=%USERPROFILE%\.gradle
+)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%APP_HOME%\gradle\loom-metadata-compat.ps1" -GradleUserHome "%MCSR_GRADLE_USER_HOME%"
+if not "%ERRORLEVEL%" == "0" goto fail
+
 
 @rem Execute Gradle
 "%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %GRADLE_OPTS% "-Dorg.gradle.appname=%APP_BASE_NAME%" -classpath "%CLASSPATH%" org.gradle.wrapper.GradleWrapperMain %*

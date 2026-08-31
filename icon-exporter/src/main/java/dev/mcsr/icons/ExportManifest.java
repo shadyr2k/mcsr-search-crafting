@@ -16,12 +16,14 @@ public final class ExportManifest {
     public final List<String> resource_packs;
     public final SortedMap<String, IconRecord> icons;
     public final List<FailureRecord> failures;
+    private final SortedMap<String, IconRecord> mutableIcons;
 
     private ExportManifest(String minecraftVersion, String exporterVersion, List<String> resourcePacks) {
         minecraft_version = Objects.requireNonNull(minecraftVersion, "minecraftVersion");
         exporter_version = Objects.requireNonNull(exporterVersion, "exporterVersion");
         resource_packs = Collections.unmodifiableList(new ArrayList<String>(resourcePacks));
-        icons = new TreeMap<String, IconRecord>();
+        mutableIcons = new TreeMap<String, IconRecord>();
+        icons = Collections.unmodifiableSortedMap(mutableIcons);
         failures = new ArrayList<FailureRecord>();
     }
 
@@ -30,15 +32,15 @@ public final class ExportManifest {
     }
 
     public void addIcon(String itemId, String path, String sha256) {
-        if (icons.containsKey(itemId)) {
+        if (mutableIcons.containsKey(itemId)) {
             throw new IllegalArgumentException("Duplicate icon item ID: " + itemId);
         }
-        for (IconRecord icon : icons.values()) {
+        for (IconRecord icon : mutableIcons.values()) {
             if (icon.path.equals(path)) {
                 throw new IllegalArgumentException("Duplicate icon path: " + path);
             }
         }
-        icons.put(itemId, new IconRecord(path, sha256));
+        mutableIcons.put(itemId, new IconRecord(path, sha256));
     }
 
     public void addFailure(String itemId, String exceptionClass, String message) {
@@ -53,7 +55,7 @@ public final class ExportManifest {
                 manifest.icon_width,
                 manifest.icon_height,
                 new ArrayList<String>(manifest.resource_packs),
-                new TreeMap<String, IconRecord>(manifest.icons),
+                new TreeMap<String, IconRecord>(manifest.mutableIcons),
                 new ArrayList<FailureRecord>(manifest.failures)
         );
     }
