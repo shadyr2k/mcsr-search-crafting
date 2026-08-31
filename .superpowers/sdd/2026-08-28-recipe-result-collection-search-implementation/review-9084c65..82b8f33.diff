@@ -1,0 +1,270 @@
+# Review package: 9084c65..82b8f33
+
+## Commits
+82b8f33 fix: validate and atomically publish collections
+
+## Files changed
+ generator/src/mcsr_data/generate.py |  41 +++++++++++++
+ generator/tests/test_generate.py    | 111 ++++++++++++++++++++++++++++++++++++
+ 2 files changed, 152 insertions(+)
+
+## Diff
+diff --git a/generator/src/mcsr_data/generate.py b/generator/src/mcsr_data/generate.py
+index 8776692..bff0ba8 100644
+--- a/generator/src/mcsr_data/generate.py
++++ b/generator/src/mcsr_data/generate.py
+@@ -327,20 +327,32 @@ def _validate_cross_references(
+             report.error(
+                 "duplicate_collection",
+                 collection.collection_id,
+                 "collection ID is not unique",
+             )
+         seen_collection_ids.add(collection.collection_id)
+         if not collection.recipe_ids:
+             report.error("empty_collection", collection.collection_id, "collection has no recipes")
+         if not collection.output_item_ids:
+             report.error("empty_collection_outputs", collection.collection_id, "collection has no outputs")
++        if collection.recipe_ids != tuple(sorted(set(collection.recipe_ids))):
++            report.error(
++                "invalid_collection_recipe_ids",
++                collection.collection_id,
++                "recipe IDs must be sorted and unique",
++            )
++        if collection.output_item_ids != tuple(sorted(set(collection.output_item_ids))):
++            report.error(
++                "invalid_collection_output_item_ids",
++                collection.collection_id,
++                "output item IDs must be sorted and unique",
++            )
+ 
+         member_output_item_ids: set[str] = set()
+         for recipe_id in collection.recipe_ids:
+             recipe = recipes_by_id.get(recipe_id)
+             if recipe is None:
+                 report.error(
+                     "missing_collection_recipe",
+                     collection.collection_id,
+                     recipe_id,
+                 )
+@@ -533,40 +545,69 @@ def _serialize_report(summary: GenerationSummary, *, status: str) -> dict[str, o
+                 "message": diagnostic.message,
+             }
+             for diagnostic in summary.diagnostics
+         ],
+     }
+ 
+ 
+ def _atomic_write_all(output_root: Path, payloads: dict[str, dict[str, object]]) -> None:
+     output_root.mkdir(parents=True, exist_ok=True)
+     temporary_paths: list[tuple[Path, Path]] = []
++    backup_paths: list[tuple[Path, Path]] = []
++    published_paths: list[Path] = []
+     try:
+         for filename, payload in payloads.items():
+             destination = output_root / filename
+             with NamedTemporaryFile(
+                 mode="w",
+                 encoding="utf-8",
+                 dir=output_root,
+                 prefix=f".{filename}.",
+                 suffix=".tmp",
+                 delete=False,
+             ) as temporary:
+                 temporary.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True))
+                 temporary.write("\n")
+                 temporary_path = Path(temporary.name)
+             temporary_paths.append((temporary_path, destination))
++
++        for _, destination in temporary_paths:
++            if destination.exists():
++                with NamedTemporaryFile(
++                    mode="w",
++                    encoding="utf-8",
++                    dir=output_root,
++                    prefix=f".{destination.name}.",
++                    suffix=".backup",
++                    delete=False,
++                ) as backup:
++                    backup_path = Path(backup.name)
++                os.replace(destination, backup_path)
++                backup_paths.append((backup_path, destination))
+         for temporary_path, destination in temporary_paths:
+             os.replace(temporary_path, destination)
++            published_paths.append(destination)
++    except OSError:
++        destinations_with_backups = {
++            destination for _, destination in backup_paths
++        }
++        for backup_path, destination in reversed(backup_paths):
++            os.replace(backup_path, destination)
++        for destination in reversed(published_paths):
++            if destination not in destinations_with_backups:
++                destination.unlink(missing_ok=True)
++        raise
+     finally:
+         for temporary_path, _ in temporary_paths:
+             temporary_path.unlink(missing_ok=True)
++        for backup_path, _ in backup_paths:
++            backup_path.unlink(missing_ok=True)
+ 
+ 
+ def main(argv: Sequence[str] | None = None) -> int:
+     parser = argparse.ArgumentParser(description=__doc__)
+     parser.add_argument("--source", type=Path, default=Path("minecraft-data"))
+     parser.add_argument("--output", type=Path, default=Path("web/public/data"))
+     parser.add_argument(
+         "--allow-non-baseline",
+         action="store_true",
+         help=(
+diff --git a/generator/tests/test_generate.py b/generator/tests/test_generate.py
+index 3a6dccb..f0353f7 100644
+--- a/generator/tests/test_generate.py
++++ b/generator/tests/test_generate.py
+@@ -1,15 +1,17 @@
+ import json
++import os
+ from pathlib import Path
+ 
+ import pytest
+ 
++import mcsr_data.generate as generate_module
+ from mcsr_data.generate import (
+     GenerationFailed,
+     _validate_cross_references,
+     generate,
+     main,
+ )
+ from mcsr_data.models import (
+     IngredientSlot,
+     NormalizedRecipe,
+     RecipeResultCollection,
+@@ -214,20 +216,129 @@ def test_collection_cross_references_report_invalid_graphs():
+         "empty_collection_outputs",
+         "missing_collection_recipe",
+         "missing_collection_output_item",
+         "collection_output_reference_mismatch",
+         "collection_category_mismatch",
+         "collection_group_mismatch",
+         "result_collection_reference_mismatch",
+     }
+ 
+ 
++def test_collection_members_must_be_sorted_and_unique():
++    recipes = [
++        NormalizedRecipe(
++            recipe_id="minecraft:a_recipe",
++            recipe_type="shapeless",
++            recipe_group="group",
++            output_item="minecraft:a_output",
++            output_count=1,
++            ingredient_slots=(),
++            width=1,
++            height=1,
++            fits_2x2=True,
++            fits_3x3=True,
++            recipe_book_category="crafting_building_blocks",
++            result_collection_id="crafting_building_blocks/group/group",
++        ),
++        NormalizedRecipe(
++            recipe_id="minecraft:b_recipe",
++            recipe_type="shapeless",
++            recipe_group="group",
++            output_item="minecraft:b_output",
++            output_count=1,
++            ingredient_slots=(),
++            width=1,
++            height=1,
++            fits_2x2=True,
++            fits_3x3=True,
++            recipe_book_category="crafting_building_blocks",
++            result_collection_id="crafting_building_blocks/group/group",
++        ),
++    ]
++    items = {
++        item_id: SearchItem(
++            item_id=item_id,
++            name=item_id,
++            search_lines=(),
++            generation_method="name_only",
++            confidence="source_reproduced",
++        )
++        for item_id in ("minecraft:a_output", "minecraft:b_output")
++    }
++    malformed_collection = RecipeResultCollection(
++        collection_id="crafting_building_blocks/group/group",
++        recipe_book_category="crafting_building_blocks",
++        recipe_group="group",
++        recipe_ids=("minecraft:b_recipe", "minecraft:a_recipe"),
++        output_item_ids=(
++            "minecraft:b_output",
++            "minecraft:a_output",
++            "minecraft:b_output",
++        ),
++    )
++    report = ValidationReport()
++
++    _validate_cross_references(recipes, items, {}, [malformed_collection], report)
++
++    assert {
++        diagnostic.code for diagnostic in report.diagnostics
++    } >= {
++        "invalid_collection_recipe_ids",
++        "invalid_collection_output_item_ids",
++    }
++
++
++def test_atomic_publish_restores_all_artifacts_after_an_intermediate_replacement_fails(
++    tmp_path,
++    monkeypatch,
++):
++    output = tmp_path / "output"
++    output.mkdir()
++    filenames = (
++        "search-items.json",
++        "inventory-items.json",
++        "crafting-recipes.json",
++        "recipe-result-collections.json",
++        "validation-report.json",
++    )
++    previous = {filename: f"old {filename}".encode("utf-8") for filename in filenames}
++    for filename, contents in previous.items():
++        (output / filename).write_bytes(contents)
++    payloads = {filename: {"version": 3, "filename": filename} for filename in filenames}
++    original_replace = os.replace
++    failed = False
++
++    def fail_after_intermediate_replacement(source, destination):
++        nonlocal failed
++        source_path = Path(source)
++        destination_path = Path(destination)
++        if (
++            not failed
++            and source_path.name.startswith(".crafting-recipes.json.")
++            and destination_path.name == "crafting-recipes.json"
++        ):
++            failed = True
++            raise OSError("injected replacement failure")
++        original_replace(source, destination)
++
++    monkeypatch.setattr(generate_module.os, "replace", fail_after_intermediate_replacement)
++
++    with pytest.raises(OSError, match="injected replacement failure"):
++        generate_module._atomic_write_all(output, payloads)
++
++    assert failed
++    assert {
++        filename: (output / filename).read_bytes()
++        for filename in filenames
++    } == previous
++
++
+ def test_generate_reports_every_missing_required_source_path(tmp_path):
+     source = tmp_path / "missing-source"
+     source.mkdir()
+     output = tmp_path / "output"
+ 
+     with pytest.raises(GenerationFailed) as failure:
+         generate(source, output, baseline=None)
+ 
+     missing_subjects = {
+         diagnostic.subject

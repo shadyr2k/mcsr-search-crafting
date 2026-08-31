@@ -1,0 +1,277 @@
+# Review package: 48d22e2..16e6a16
+
+## Commits
+16e6a16 feat: explain recipe collection aliases
+
+## Files changed
+ web/e2e/app.spec.ts  | 113 +++++++++++++++++++++++++++++++++++++++++++++++----
+ web/src/App.test.tsx |   9 ++--
+ 2 files changed, 112 insertions(+), 10 deletions(-)
+
+## Diff
+diff --git a/web/e2e/app.spec.ts b/web/e2e/app.spec.ts
+index 088f26e..a57830a 100644
+--- a/web/e2e/app.spec.ts
++++ b/web/e2e/app.spec.ts
+@@ -30,25 +30,25 @@ test('scores ranked results, excludes a disabled set, and reloads the ordered wo
+   await oakSearch.fill('oak log')
+   await expect(page.getByRole('button', { name: 'Add Oak Log', exact: true })).toHaveCount(0)
+   await oakSearch.fill('oak slab')
+   await page.getByRole('button', { name: 'Add Oak Slab', exact: true }).click()
+   await oakSearch.fill('oak stairs')
+   await page.getByRole('button', { name: 'Add Oak Stairs', exact: true }).click()
+   await page.getByRole('radio', { name: '3x3 grid' }).check()
+ 
+   const single = page.getByRole('region', { name: 'Single-query results for set 1' })
+   await expect(single.getByRole('heading', { name: 'Best single-query craft' })).toBeVisible()
+-  await expect(single.locator('p').filter({ hasText: 'Query:' }).locator('code')).toHaveText('ak s')
++  await expect(single.locator('p').filter({ hasText: 'Query:' }).locator('code')).toHaveText('a s')
+   await expect(single.getByText(
+     'Targets: Oak Slab (minecraft:oak_slab), Oak Stairs (minecraft:oak_stairs)',
+   )).toBeVisible()
+-  await expect(single.getByText('Total score').locator('..').getByText('4.5', { exact: true })).toBeVisible()
++  await expect(single.getByText('Total score').locator('..').getByText('3.5', { exact: true })).toBeVisible()
+   await expect(page.getByText('Overlap supplies this set’s aggregate contribution.')).toBeVisible()
+ 
+   const overlap = page.getByRole('region', { name: 'Overlap results for set 1' })
+   await expect(overlap.getByRole('heading', { name: 'Best overlap craft' })).toBeVisible()
+   await expect(overlap.getByText(/Sequence:\s+sl\s+→\s+st/)).toBeVisible()
+   await expect(overlap.locator('.result-step h6 code')).toHaveText([' sl', ' st'])
+   await expect(overlap.getByText('New targets: Oak Slab (minecraft:oak_slab)')).toBeVisible()
+   await expect(overlap.getByText('New targets: Oak Stairs (minecraft:oak_stairs)')).toBeVisible()
+   await expect(overlap.getByText('Total score').locator('..').getByText('2', { exact: true })).toBeVisible()
+   await expect(overlap.getByText('No complete overlap sequence.')).toHaveCount(0)
+@@ -82,66 +82,165 @@ test('scores ranked results, excludes a disabled set, and reloads the ordered wo
+   await expect(reloadedFirst.getByRole('checkbox', { name: 'Enable set 1' })).toBeChecked()
+   await expect(reloadedFirst.getByRole('radio', { name: '2x2 grid' })).toBeChecked()
+   await expect(reloadedSecond.getByText('Oak Slab', { exact: true })).toBeVisible()
+   await expect(reloadedSecond.getByText('Oak Stairs', { exact: true })).toBeVisible()
+   await expect(reloadedSecond.getByRole('checkbox', { name: 'Enable set 2' })).not.toBeChecked()
+   await expect(reloadedSecond.getByRole('radio', { name: '3x3 grid' })).toBeChecked()
+ })
+ 
+ test('renders an exact Unicode source line and UTF-16 matched span', async ({ page }) => {
+   const items = {
+-    schema_version: 2,
++    schema_version: 3,
+     items: {
+       'fixture:unicode-target': {
+         name: 'Unicode Target',
+         search_lines: [{ source: 'name', text: '😀İx' }],
+         generation_method: 'fixture',
+         confidence: 'source_reproduced',
+       },
+       'fixture:unicode-junk': {
+         name: 'Unicode Junk',
+         search_lines: [{ source: 'name', text: '😀İ' }],
+         generation_method: 'fixture',
+         confidence: 'source_reproduced',
+       },
+     },
+   }
+   const inventoryItems = {
+-    schema_version: 2,
++    schema_version: 3,
+     items: {
+       'fixture:base': { name: 'Base Ingredient' },
+     },
+   }
+   const recipes = {
+-    schema_version: 2,
++    schema_version: 3,
+     recipes: ['unicode-target', 'unicode-junk'].map((name) => ({
+       id: `fixture:${name}`,
+-      type: 'minecraft:crafting_shapeless',
++      recipe_group: null,
++      recipe_book_category: 'crafting_misc',
++      result_collection_id: `fixture/recipe/${name}`,
+       output_item_id: `fixture:${name}`,
+       output_count: 1,
+       ingredient_slots: [{ accepted_items: ['fixture:base'] }],
+       width: 1,
+       height: 1,
+       fits_2x2: true,
+       fits_3x3: true,
+     })),
+   }
++  const collections = {
++    schema_version: 3,
++    collections: ['unicode-target', 'unicode-junk'].map((name) => ({
++      id: `fixture/recipe/${name}`,
++      recipe_book_category: 'crafting_misc',
++      recipe_group: null,
++      recipe_ids: [`fixture:${name}`],
++      output_item_ids: [`fixture:${name}`],
++    })),
++  }
+ 
+   await page.route('**/data/search-items.json', (route) => route.fulfill({ json: items }))
+   await page.route('**/data/inventory-items.json', (route) => route.fulfill({ json: inventoryItems }))
+   await page.route('**/data/crafting-recipes.json', (route) => route.fulfill({ json: recipes }))
++  await page.route('**/data/recipe-result-collections.json', (route) => route.fulfill({ json: collections }))
+   await page.goto('/')
+ 
+   await page.getByRole('searchbox', { name: 'Search inventory items' }).fill('base ingredient')
+   await page.getByRole('checkbox', { name: 'Base Ingredient fixture:base' }).check()
+   await page.getByRole('button', { name: 'Add target set' }).click()
+   await page.getByRole('searchbox', { name: 'Search targets for set 1' }).fill('unicode target')
+   await page.getByRole('button', { name: 'Add Unicode Target', exact: true }).click()
+ 
+   const single = page.getByRole('region', { name: 'Single-query results for set 1' })
+   await expect(single.getByRole('heading', { name: 'Best single-query craft' })).toBeVisible()
+   await expect(single.locator('p').filter({ hasText: 'Query:' }).locator('code')).toHaveText('x')
+-  await expect(single.getByText('name · fixture:unicode-target · span 3–4')).toBeVisible()
++  await expect(single.getByText(
++    'Unicode Target (fixture:unicode-target) was craftable in isolated collection fixture/recipe/unicode-target.',
++  )).toBeVisible()
++  await expect(single.getByText('Matched Unicode Target (fixture:unicode-target): name · span 3–4')).toBeVisible()
+   const sourceLine = single.locator('.search-line').filter({ hasText: '😀İx' })
+   await expect(sourceLine).toHaveText('😀İx')
+   await expect(sourceLine.locator('mark')).toHaveText('x')
+ })
++
++test('explains a Brown Bed alias while keeping the White Bed output exact', async ({ page }) => {
++  const items = {
++    schema_version: 3,
++    items: {
++      'fixture:white-bed': {
++        name: 'White Bed', confidence: 'source_reproduced',
++        search_lines: [{ source: 'name', text: 'White Bed' }],
++      },
++      'fixture:brown-bed': {
++        name: 'Brown Bed', confidence: 'source_reproduced',
++        search_lines: [{ source: 'name', text: 'Brown Bed' }],
++      },
++      'fixture:junk': {
++        name: 'Fixture Junk', confidence: 'source_reproduced',
++        search_lines: [
++          'b', 'r', 'o', 'w', 'n', ' ', 'e', 'd', 'h', 'i', 't',
++          'br', 'ro', 'ow', 'n ', ' b', 'be', 'ed', 'wh', 'hi', 'it', 'te', 'e ',
++        ].map((text) => ({ source: 'fixture', text })),
++      },
++    },
++  }
++  const inventoryItems = {
++    schema_version: 3,
++    items: {
++      'fixture:white-bed': { name: 'White Bed Ingredient' },
++    },
++  }
++  const recipes = {
++    schema_version: 3,
++    recipes: [
++      {
++        id: 'fixture:white-bed', recipe_group: 'bed', recipe_book_category: 'crafting_building_blocks',
++        result_collection_id: 'fixture/bed', output_item_id: 'fixture:white-bed', output_count: 1,
++        ingredient_slots: [{ accepted_items: ['fixture:white-bed'] }], fits_2x2: true, fits_3x3: true,
++      },
++      {
++        id: 'fixture:brown-bed', recipe_group: 'bed', recipe_book_category: 'crafting_building_blocks',
++        result_collection_id: 'fixture/bed', output_item_id: 'fixture:brown-bed', output_count: 1,
++        ingredient_slots: [{ accepted_items: ['fixture:unavailable'] }], fits_2x2: true, fits_3x3: true,
++      },
++      {
++        id: 'fixture:junk', recipe_group: null, recipe_book_category: 'crafting_misc',
++        result_collection_id: 'fixture/junk', output_item_id: 'fixture:junk', output_count: 1,
++        ingredient_slots: [{ accepted_items: ['fixture:white-bed'] }], fits_2x2: true, fits_3x3: true,
++      },
++    ],
++  }
++  const collections = {
++    schema_version: 3,
++    collections: [
++      {
++        id: 'fixture/bed', recipe_book_category: 'crafting_building_blocks', recipe_group: 'bed',
++        recipe_ids: ['fixture:brown-bed', 'fixture:white-bed'],
++        output_item_ids: ['fixture:brown-bed', 'fixture:white-bed'],
++      },
++      {
++        id: 'fixture/junk', recipe_book_category: 'crafting_misc', recipe_group: null,
++        recipe_ids: ['fixture:junk'], output_item_ids: ['fixture:junk'],
++      },
++    ],
++  }
++
++  await page.route('**/data/search-items.json', (route) => route.fulfill({ json: items }))
++  await page.route('**/data/inventory-items.json', (route) => route.fulfill({ json: inventoryItems }))
++  await page.route('**/data/crafting-recipes.json', (route) => route.fulfill({ json: recipes }))
++  await page.route('**/data/recipe-result-collections.json', (route) => route.fulfill({ json: collections }))
++  await page.goto('/')
++
++  await page.getByRole('searchbox', { name: 'Search inventory items' }).fill('white bed ingredient')
++  await page.getByRole('checkbox', { name: 'White Bed Ingredient fixture:white-bed' }).check()
++  await page.getByRole('button', { name: 'Add target set' }).click()
++  await page.getByRole('searchbox', { name: 'Search targets for set 1' }).fill('white bed')
++  await page.getByRole('button', { name: 'Add White Bed', exact: true }).click()
++
++  const single = page.getByRole('region', { name: 'Single-query results for set 1' })
++  await expect(single.getByRole('heading', { name: 'Best single-query craft' })).toBeVisible()
++  await expect(single.locator('p').filter({ hasText: 'Query:' }).locator('code')).toHaveText('wn')
++  await expect(single.getByText('Targets: White Bed (fixture:white-bed)')).toBeVisible()
++  await expect(single.getByText('Junk: none')).toBeVisible()
++  await expect(single.getByText('White Bed (fixture:white-bed) was craftable in collection bed.')).toBeVisible()
++  await expect(single.getByText('Matched Brown Bed (fixture:brown-bed): name · span 3–5')).toBeVisible()
++})
+diff --git a/web/src/App.test.tsx b/web/src/App.test.tsx
+index 6d7bfee..09977e8 100644
+--- a/web/src/App.test.tsx
++++ b/web/src/App.test.tsx
+@@ -67,52 +67,55 @@ const collectionsPayload = {
+     },
+   ],
+ }
+ 
+ const stickOnlyCollectionsPayload = {
+   schema_version: 3,
+   collections: [collectionsPayload.collections[0]],
+ }
+ 
+ function stubGeneratedData(recipes: unknown = recipesPayload, collections: unknown = collectionsPayload) {
+-  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
++  const fetchMock = vi.fn(async (url: string) => ({
+     ok: true,
+     json: async () => url.includes('search-items')
+       ? itemsPayload
+       : url.includes('inventory-items')
+         ? inventoryItemsPayload
+         : url.includes('crafting-recipes')
+           ? recipes
+           : collections,
+-  })))
++  }))
++  vi.stubGlobal('fetch', fetchMock)
++  return fetchMock
+ }
+ 
+ afterEach(() => {
+   cleanup()
+   vi.unstubAllGlobals()
+   vi.restoreAllMocks()
+   saveTargetWorkspace({ entries: [] })
+   localStorage.clear()
+   optimizerControl.implementation = undefined
+ })
+ 
+ describe('App persistence', () => {
+   test('keeps an enabled empty set in the editor while excluding it from the aggregate', async () => {
+     localStorage.setItem(targetWorkspaceKey, JSON.stringify({
+       schemaVersion: 1,
+       entries: [{ id: 'empty', targetIds: [], enabled: true, gridSize: 3, order: 0 }],
+     }))
+-    stubGeneratedData()
++    const fetchMock = stubGeneratedData()
+ 
+     render(<App />)
+ 
+     expect(await screen.findByRole('article', { name: 'Target set 1' })).toBeTruthy()
++    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('recipe-result-collections.json'))
+     await waitFor(() => expect(screen.getByText('Aggregate score: 0')).toBeTruthy())
+     expect(screen.getByText('1 enabled empty target set is saved but not scored.')).toBeTruthy()
+     expect(screen.queryByText(/Maximum failure score:/)).toBeNull()
+   })
+ 
+   test('retains editor changes and surfaces a warning when localStorage writes fail', async () => {
+     stubGeneratedData()
+     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+       throw new DOMException('Storage quota exceeded.', 'QuotaExceededError')
+     })

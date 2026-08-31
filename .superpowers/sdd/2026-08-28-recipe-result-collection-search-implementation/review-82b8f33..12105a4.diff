@@ -1,0 +1,1077 @@
+# Review package: 82b8f33..12105a4
+
+## Commits
+12105a4 test: migrate schema v3 fixtures
+769c020 feat: load recipe collection schema
+
+## Files changed
+ web/src/App.test.tsx                      |  37 ++++-
+ web/src/components/TargetSetList.test.tsx |   6 +-
+ web/src/data/schema.test.ts               | 180 ++++++++++++++++++-----
+ web/src/data/schema.ts                    | 234 +++++++++++++++++++++++++++---
+ web/src/domain/types.ts                   |  20 ++-
+ web/src/engine/craftability.test.ts       |   3 +
+ web/src/engine/optimizeWorkspace.test.ts  |  34 +++--
+ 7 files changed, 434 insertions(+), 80 deletions(-)
+
+## Diff
+diff --git a/web/src/App.test.tsx b/web/src/App.test.tsx
+index 06e3f0b..ba7e8a6 100644
+--- a/web/src/App.test.tsx
++++ b/web/src/App.test.tsx
+@@ -16,59 +16,80 @@ vi.mock('./engine/optimizeWorkspace', async (importOriginal) => {
+   }
+ })
+ 
+ import App from './App'
+ import { saveTargetWorkspace } from './persistence/storage'
+ 
+ const inventorySlotsKey = 'mcsr.inventory-slots.v1'
+ const targetWorkspaceKey = 'mcsr.target-workspace.v1'
+ 
+ const itemsPayload = {
+-  schema_version: 2,
++  schema_version: 3,
+   items: {
+     'minecraft:stick': { name: 'Stick', confidence: 'exact', search_lines: [{ source: 'name', text: 'Stick' }] },
+     'minecraft:iron_sword': { name: 'Iron Sword', confidence: 'exact', search_lines: [{ source: 'name', text: 'Iron Sword' }] },
+   },
+ }
+ 
+ const inventoryItemsPayload = {
+-  schema_version: 2,
++  schema_version: 3,
+   items: {
+     'minecraft:oak_log': { name: 'Oak Log' },
+     'minecraft:oak_planks': { name: 'Oak Planks' },
+     'minecraft:iron_ingot': { name: 'Iron Ingot' },
+     'minecraft:stick': { name: 'Stick' },
+   },
+ }
+ 
+ const recipesPayload = {
+-  schema_version: 2,
++  schema_version: 3,
+   recipes: [
+     {
+-      id: 'stick', output_item_id: 'minecraft:stick', output_count: 4,
++      id: 'stick', recipe_group: null, recipe_book_category: 'crafting_misc', result_collection_id: 'crafting_misc/recipe/stick', output_item_id: 'minecraft:stick', output_count: 4,
+       ingredient_slots: [{ accepted_items: ['minecraft:oak_planks'] }], fits_2x2: true, fits_3x3: true,
+     },
+     {
+-      id: 'sword', output_item_id: 'minecraft:iron_sword', output_count: 1,
++      id: 'sword', recipe_group: null, recipe_book_category: 'crafting_equipment', result_collection_id: 'crafting_equipment/recipe/sword', output_item_id: 'minecraft:iron_sword', output_count: 1,
+       ingredient_slots: [{ accepted_items: ['minecraft:iron_ingot'] }], fits_2x2: false, fits_3x3: true,
+     },
+   ],
+ }
+ 
+-function stubGeneratedData(recipes: unknown = recipesPayload) {
++const collectionsPayload = {
++  schema_version: 3,
++  collections: [
++    {
++      id: 'crafting_misc/recipe/stick', recipe_book_category: 'crafting_misc', recipe_group: null,
++      recipe_ids: ['stick'], output_item_ids: ['minecraft:stick'],
++    },
++    {
++      id: 'crafting_equipment/recipe/sword', recipe_book_category: 'crafting_equipment', recipe_group: null,
++      recipe_ids: ['sword'], output_item_ids: ['minecraft:iron_sword'],
++    },
++  ],
++}
++
++const stickOnlyCollectionsPayload = {
++  schema_version: 3,
++  collections: [collectionsPayload.collections[0]],
++}
++
++function stubGeneratedData(recipes: unknown = recipesPayload, collections: unknown = collectionsPayload) {
+   vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+     ok: true,
+     json: async () => url.includes('search-items')
+       ? itemsPayload
+       : url.includes('inventory-items')
+         ? inventoryItemsPayload
+-        : recipes,
++        : url.includes('crafting-recipes')
++          ? recipes
++          : collections,
+   })))
+ }
+ 
+ afterEach(() => {
+   cleanup()
+   vi.unstubAllGlobals()
+   vi.restoreAllMocks()
+   saveTargetWorkspace({ entries: [] })
+   localStorage.clear()
+   optimizerControl.implementation = undefined
+@@ -145,21 +166,21 @@ describe('App persistence', () => {
+       entries: [{
+         id: 'saved-set', targetIds: ['minecraft:stick'], enabled: true, gridSize: 3, order: 0,
+       }],
+     }))
+     stubGeneratedData({
+       ...recipesPayload,
+       recipes: [{
+         ...recipesPayload.recipes[0],
+         ingredient_slots: [{ accepted_items: ['minecraft:stick'] }],
+       }],
+-    })
++    }, stickOnlyCollectionsPayload)
+ 
+     render(<App />)
+ 
+     expect(await screen.findByText(/Maximum failure score:/)).toBeTruthy()
+     fireEvent.change(screen.getByRole('searchbox', { name: 'Search inventory items' }), {
+       target: { value: 'stick' },
+     })
+     fireEvent.click(screen.getByRole('checkbox', { name: /stick/i }))
+ 
+     await waitFor(() => expect(screen.getByText('Aggregate score: 0')).toBeTruthy())
+diff --git a/web/src/components/TargetSetList.test.tsx b/web/src/components/TargetSetList.test.tsx
+index b1e41d6..00c2d7f 100644
+--- a/web/src/components/TargetSetList.test.tsx
++++ b/web/src/components/TargetSetList.test.tsx
+@@ -7,23 +7,23 @@ import { TargetSetList } from './TargetSetList'
+ 
+ afterEach(cleanup)
+ 
+ const items = new Map<string, SearchItem>([
+   ['minecraft:stick', { id: 'minecraft:stick', name: 'Stick', confidence: 'exact', searchLines: [] }],
+   ['minecraft:crafting_table', { id: 'minecraft:crafting_table', name: 'Crafting Table', confidence: 'exact', searchLines: [] }],
+   ['minecraft:iron_sword', { id: 'minecraft:iron_sword', name: 'Iron Sword', confidence: 'exact', searchLines: [] }],
+ ])
+ 
+ const recipes: CraftingRecipe[] = [
+-  { id: 'stick', outputItemId: 'minecraft:stick', outputCount: 4, ingredientSlots: [{ acceptedItems: ['minecraft:oak_planks'] }], fits2x2: true, fits3x3: true },
+-  { id: 'table', outputItemId: 'minecraft:crafting_table', outputCount: 1, ingredientSlots: [{ acceptedItems: ['minecraft:oak_planks'] }], fits2x2: true, fits3x3: true },
+-  { id: 'sword', outputItemId: 'minecraft:iron_sword', outputCount: 1, ingredientSlots: [{ acceptedItems: ['minecraft:iron_ingot'] }], fits2x2: false, fits3x3: true },
++  { id: 'stick', recipeGroup: null, recipeBookCategory: 'crafting_misc', resultCollectionId: 'crafting_misc/recipe/stick', outputItemId: 'minecraft:stick', outputCount: 4, ingredientSlots: [{ acceptedItems: ['minecraft:oak_planks'] }], fits2x2: true, fits3x3: true },
++  { id: 'table', recipeGroup: null, recipeBookCategory: 'crafting_misc', resultCollectionId: 'crafting_misc/recipe/table', outputItemId: 'minecraft:crafting_table', outputCount: 1, ingredientSlots: [{ acceptedItems: ['minecraft:oak_planks'] }], fits2x2: true, fits3x3: true },
++  { id: 'sword', recipeGroup: null, recipeBookCategory: 'crafting_equipment', resultCollectionId: 'crafting_equipment/recipe/sword', outputItemId: 'minecraft:iron_sword', outputCount: 1, ingredientSlots: [{ acceptedItems: ['minecraft:iron_ingot'] }], fits2x2: false, fits3x3: true },
+ ]
+ 
+ function ListHarness({ onPersist = vi.fn() }: { onPersist?: (workspace: TargetWorkspace) => void }) {
+   const [workspace, setWorkspace] = useState<TargetWorkspace>({ entries: [] })
+   const onWorkspaceChange = (next: TargetWorkspace) => {
+     setWorkspace(next)
+     onPersist(next)
+   }
+ 
+   return <TargetSetList items={items} recipes={recipes} workspace={workspace} onWorkspaceChange={onWorkspaceChange} />
+diff --git a/web/src/data/schema.test.ts b/web/src/data/schema.test.ts
+index ea6c702..8cc1bd3 100644
+--- a/web/src/data/schema.test.ts
++++ b/web/src/data/schema.test.ts
+@@ -1,153 +1,261 @@
+ import { afterEach, describe, expect, test, vi } from 'vitest'
+ 
+ import { GeneratedDataError, loadGeneratedData, parseGeneratedData } from './schema'
+ 
++const collectionId = 'crafting_misc/recipe/minecraft%3Atorch'
++
+ const items = {
+-  schema_version: 2,
++  schema_version: 3,
+   items: {
+     'minecraft:stick': {
+       name: 'Stick',
+       confidence: 'source_reproduced',
+       search_lines: [{ source: 'name', text: 'Stick' }],
+     },
+   },
+ }
+ 
+ const inventoryItems = {
+-  schema_version: 2,
++  schema_version: 3,
+   items: {
+     'minecraft:oak_log': { name: 'Oak Log' },
+     'minecraft:stick': { name: 'Stick' },
+   },
+ }
+ 
+ const recipe = {
+   id: 'minecraft:torch',
++  recipe_group: null,
++  recipe_book_category: 'crafting_misc',
++  result_collection_id: collectionId,
+   output_item_id: 'minecraft:stick',
+   output_count: 4,
+   ingredient_slots: [{ accepted_items: ['minecraft:stick'] }],
+   fits_2x2: true,
+   fits_3x3: true,
+ }
+ 
++const collections = {
++  schema_version: 3,
++  collections: [{
++    id: collectionId,
++    recipe_book_category: 'crafting_misc',
++    recipe_group: null,
++    recipe_ids: ['minecraft:torch'],
++    output_item_ids: ['minecraft:stick'],
++  }],
++}
++
+ function expectValidationError(
+   itemsData: unknown,
+   inventoryItemsData: unknown,
+   recipesData: unknown,
++  collectionsData: unknown,
+   path: string,
+ ) {
+-  expect(() => parseGeneratedData(itemsData, inventoryItemsData, recipesData)).toThrow(GeneratedDataError)
+-  expect(() => parseGeneratedData(itemsData, inventoryItemsData, recipesData)).toThrow(path)
++  try {
++    parseGeneratedData(itemsData, inventoryItemsData, recipesData, collectionsData)
++    throw new Error('Expected generated data validation to fail')
++  } catch (error) {
++    expect(error).toBeInstanceOf(GeneratedDataError)
++    expect((error as GeneratedDataError).errors).toEqual(expect.arrayContaining([
++      expect.stringContaining(path),
++    ]))
++  }
+ }
+ 
+ afterEach(() => {
+   vi.unstubAllGlobals()
+ })
+ 
+ describe('parseGeneratedData', () => {
+-  test('converts valid generated records into the shared map-based domain data', () => {
+-    const generated = parseGeneratedData(items, inventoryItems, { schema_version: 2, recipes: [recipe] })
++  test('converts a complete valid graph into shared map-based domain data', () => {
++    const generated = parseGeneratedData(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, collections)
+ 
+-    expect(generated.schemaVersion).toBe(2)
++    expect(generated.schemaVersion).toBe(3)
+     expect(generated.items).toBeInstanceOf(Map)
+     expect(generated.items.get('minecraft:stick')).toEqual({
+       id: 'minecraft:stick',
+       name: 'Stick',
+       confidence: 'source_reproduced',
+       searchLines: [{ source: 'name', text: 'Stick' }],
+     })
+     expect(generated.inventoryItems.get('minecraft:oak_log')).toEqual({
+       id: 'minecraft:oak_log',
+       name: 'Oak Log',
+     })
+     expect(generated.recipes).toEqual([{
+       id: 'minecraft:torch',
++      recipeGroup: null,
++      recipeBookCategory: 'crafting_misc',
++      resultCollectionId: collectionId,
+       outputItemId: 'minecraft:stick',
+       outputCount: 4,
+       ingredientSlots: [{ acceptedItems: ['minecraft:stick'] }],
+       fits2x2: true,
+       fits3x3: true,
+     }])
++    expect(generated.collections).toEqual(new Map([[collectionId, {
++      id: collectionId,
++      recipeBookCategory: 'crafting_misc',
++      recipeGroup: null,
++      recipeIds: ['minecraft:torch'],
++      outputItemIds: ['minecraft:stick'],
++    }]]))
++  })
++
++  test('rejects a schema version 2 payload mixed into a schema version 3 graph', () => {
++    expectValidationError(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, {
++      ...collections,
++      schema_version: 2,
++    }, 'collections.schema_version')
++  })
++
++  test('rejects an invalid recipe book category', () => {
++    expectValidationError(items, inventoryItems, {
++      schema_version: 3,
++      recipes: [{ ...recipe, recipe_book_category: 'crafting_unknown' }],
++    }, collections, 'recipes[0].recipe_book_category')
++  })
++
++  test('rejects duplicate collection IDs', () => {
++    expectValidationError(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, {
++      schema_version: 3,
++      collections: [...collections.collections, collections.collections[0]],
++    }, 'collections[1].id')
++  })
++
++  test('rejects duplicate recipe IDs within a collection', () => {
++    expectValidationError(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, {
++      schema_version: 3,
++      collections: [{ ...collections.collections[0], recipe_ids: ['minecraft:torch', 'minecraft:torch'] }],
++    }, 'collections[0].recipe_ids[1]')
++  })
++
++  test('rejects a collection recipe reference that is absent from recipes', () => {
++    expectValidationError(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, {
++      schema_version: 3,
++      collections: [{ ...collections.collections[0], recipe_ids: ['minecraft:missing'] }],
++    }, 'collections[0].recipe_ids[0]')
++  })
++
++  test('rejects a collection output reference that is absent from searchable items', () => {
++    expectValidationError(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, {
++      schema_version: 3,
++      collections: [{ ...collections.collections[0], output_item_ids: ['minecraft:missing'] }],
++    }, 'collections[0].output_item_ids[0]')
++  })
++
++  test('rejects a recipe result collection reference that is absent from collections', () => {
++    expectValidationError(items, inventoryItems, {
++      schema_version: 3,
++      recipes: [{ ...recipe, result_collection_id: 'crafting_misc/recipe/minecraft%3Amissing' }],
++    }, collections, 'recipes[0].result_collection_id')
++  })
++
++  test('rejects a recipe category that disagrees with its collection', () => {
++    expectValidationError(items, inventoryItems, {
++      schema_version: 3,
++      recipes: [{ ...recipe, recipe_book_category: 'crafting_equipment' }],
++    }, collections, 'recipes[0].recipe_book_category')
+   })
+ 
+-  test('rejects an unsupported schema version', () => {
+-    expectValidationError(
+-      { ...items, schema_version: 1 },
+-      inventoryItems,
+-      { schema_version: 2, recipes: [recipe] },
+-      'items.schema_version',
+-    )
++  test('rejects a recipe group that disagrees with its collection', () => {
++    expectValidationError(items, inventoryItems, {
++      schema_version: 3,
++      recipes: [{ ...recipe, recipe_group: 'tools' }],
++    }, collections, 'recipes[0].recipe_group')
++  })
++
++  test('rejects a recipe with no collection membership', () => {
++    expectValidationError(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, {
++      schema_version: 3,
++      collections: [{ ...collections.collections[0], recipe_ids: [] }],
++    }, 'recipes[0].id')
++  })
++
++  test('rejects a recipe with two collection memberships', () => {
++    expectValidationError(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, {
++      schema_version: 3,
++      collections: [
++        collections.collections[0],
++        { ...collections.collections[0], id: 'crafting_misc/recipe/minecraft%3Atorch-copy' },
++      ],
++    }, 'recipes[0].id')
++  })
++
++  test('rejects collection outputs that omit their member recipe output', () => {
++    expectValidationError(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, {
++      schema_version: 3,
++      collections: [{ ...collections.collections[0], output_item_ids: [] }],
++    }, 'collections[0].output_item_ids')
+   })
+ 
+   test('rejects an item reference absent from the item records', () => {
+-    expectValidationError(items, {
+-      ...inventoryItems,
+-    }, {
+-      schema_version: 2,
++    expectValidationError(items, inventoryItems, {
++      schema_version: 3,
+       recipes: [{ ...recipe, output_item_id: 'minecraft:coal' }],
+-    }, 'recipes[0].output_item_id')
++    }, collections, 'recipes[0].output_item_id')
+   })
+ 
+   test('rejects an ingredient reference absent from the inventory item catalog', () => {
+     expectValidationError(items, {
+-      schema_version: 2,
++      schema_version: 3,
+       items: { 'minecraft:oak_log': { name: 'Oak Log' } },
+     }, {
+-      schema_version: 2,
++      schema_version: 3,
+       recipes: [recipe],
+-    }, 'recipes[0].ingredient_slots[0].accepted_items[0]')
++    }, collections, 'recipes[0].ingredient_slots[0].accepted_items[0]')
+   })
+ 
+   test('preserves source recipe indexes in missing-output diagnostics after malformed entries', () => {
+-    expectValidationError(items, {
+-      ...inventoryItems,
+-    }, {
+-      schema_version: 2,
++    expectValidationError(items, inventoryItems, {
++      schema_version: 3,
+       recipes: [
+         { ...recipe, output_count: 0 },
+         { ...recipe, id: 'minecraft:missing-output', output_item_id: 'minecraft:coal' },
+       ],
+-    }, 'recipes[1].output_item_id')
++    }, collections, 'recipes[1].output_item_id')
+   })
+ 
+   test('rejects duplicate recipe IDs', () => {
+-    expectValidationError(items, inventoryItems, { schema_version: 2, recipes: [recipe, recipe] }, 'recipes[1].id')
++    expectValidationError(items, inventoryItems, { schema_version: 3, recipes: [recipe, recipe] }, collections, 'recipes[1].id')
+   })
+ 
+   test('rejects empty search-line text', () => {
+     expectValidationError({
+-      schema_version: 2,
++      schema_version: 3,
+       items: {
+         'minecraft:stick': { ...items.items['minecraft:stick'], search_lines: [{ source: 'name', text: '' }] },
+       },
+-    }, inventoryItems, { schema_version: 2, recipes: [recipe] }, 'items.items.minecraft:stick.search_lines[0].text')
++    }, inventoryItems, { schema_version: 3, recipes: [recipe] }, collections, 'items.items.minecraft:stick.search_lines[0].text')
+   })
+ 
+   test('rejects recipes that fit no crafting grid', () => {
+-    expectValidationError(items, {
+-      ...inventoryItems,
+-    }, {
+-      schema_version: 2,
++    expectValidationError(items, inventoryItems, {
++      schema_version: 3,
+       recipes: [{ ...recipe, fits_2x2: false, fits_3x3: false }],
+-    }, 'recipes[0]')
++    }, collections, 'recipes[0]')
+   })
+ })
+ 
+ describe('loadGeneratedData', () => {
+   test('fetches all generated JSON files relative to the configured Vite base URL', async () => {
+     const fetchMock = vi.fn()
+     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => items })
+     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => inventoryItems })
+-    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ schema_version: 2, recipes: [recipe] }) })
++    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ schema_version: 3, recipes: [recipe] }) })
++    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => collections })
+     vi.stubGlobal('fetch', fetchMock)
+ 
+     await loadGeneratedData()
+ 
+     const base = import.meta.env.BASE_URL.endsWith('/')
+       ? import.meta.env.BASE_URL
+       : `${import.meta.env.BASE_URL}/`
+     expect(fetchMock).toHaveBeenNthCalledWith(1, `${base}data/search-items.json`)
+     expect(fetchMock).toHaveBeenNthCalledWith(2, `${base}data/inventory-items.json`)
+     expect(fetchMock).toHaveBeenNthCalledWith(3, `${base}data/crafting-recipes.json`)
++    expect(fetchMock).toHaveBeenNthCalledWith(4, `${base}data/recipe-result-collections.json`)
+   })
+ })
+diff --git a/web/src/data/schema.ts b/web/src/data/schema.ts
+index 2b56aaf..d546ae0 100644
+--- a/web/src/data/schema.ts
++++ b/web/src/data/schema.ts
+@@ -1,73 +1,127 @@
+ import type {
+   CraftingRecipe,
+   GeneratedData,
+   IngredientSlot,
+   InventoryItem,
++  RecipeBookCategory,
++  RecipeResultCollection,
+   SearchItem,
+   SearchLine,
+ } from '../domain/types'
+ 
+ type JsonRecord = Record<string, unknown>
+-const GENERATED_SCHEMA_VERSION = 2
++const GENERATED_SCHEMA_VERSION = 3
+ 
+ interface IndexedRecipe {
+   recipe: CraftingRecipe
+   sourceIndex: number
+ }
+ 
++interface IndexedCollection {
++  collection: RecipeResultCollection
++  sourceIndex: number
++}
++
+ export class GeneratedDataError extends Error {
+   readonly errors: readonly string[]
+ 
+   constructor(errors: readonly string[]) {
+     super(`Generated data validation failed:\n${errors.map((error) => `- ${error}`).join('\n')}`)
+     this.name = 'GeneratedDataError'
+     this.errors = errors
+   }
+ }
+ 
+ function isRecord(value: unknown): value is JsonRecord {
+   return typeof value === 'object' && value !== null && !Array.isArray(value)
+ }
+ 
++function isRecipeBookCategory(value: unknown): value is RecipeBookCategory {
++  return value === 'crafting_building_blocks'
++    || value === 'crafting_equipment'
++    || value === 'crafting_redstone'
++    || value === 'crafting_misc'
++}
++
+ function getRecord(value: unknown, path: string, errors: string[]): JsonRecord | undefined {
+   if (!isRecord(value)) {
+     errors.push(`${path}: expected an object`)
+     return undefined
+   }
+   return value
+ }
+ 
+ function getNonEmptyString(value: unknown, path: string, errors: string[]): string | undefined {
+   if (typeof value !== 'string' || value.trim() === '') {
+     errors.push(`${path}: expected a non-empty string`)
+     return undefined
+   }
+   return value
+ }
+ 
++function getNullableGroup(value: unknown, path: string, errors: string[]): string | null | undefined {
++  if (value === null) return null
++  return getNonEmptyString(value, path, errors)
++}
++
++function getRecipeBookCategory(
++  value: unknown,
++  path: string,
++  errors: string[],
++): RecipeBookCategory | undefined {
++  if (!isRecipeBookCategory(value)) {
++    errors.push(`${path}: expected a valid recipe book category`)
++    return undefined
++  }
++  return value
++}
++
+ function getPositiveInteger(value: unknown, path: string, errors: string[]): number | undefined {
+   if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+     errors.push(`${path}: expected a positive integer`)
+     return undefined
+   }
+   return value
+ }
+ 
+ function getBoolean(value: unknown, path: string, errors: string[]): boolean | undefined {
+   if (typeof value !== 'boolean') {
+     errors.push(`${path}: expected a boolean`)
+     return undefined
+   }
+   return value
+ }
+ 
++function parseUniqueStringArray(value: unknown, path: string, errors: string[]): string[] | undefined {
++  if (!Array.isArray(value)) {
++    errors.push(`${path}: expected an array`)
++    return undefined
++  }
++
++  const strings: string[] = []
++  const seen = new Set<string>()
++  value.forEach((entry, index) => {
++    const entryPath = `${path}[${index}]`
++    const string = getNonEmptyString(entry, entryPath, errors)
++    if (string === undefined) return
++    if (seen.has(string)) {
++      errors.push(`${entryPath}: duplicate value ${string}`)
++      return
++    }
++    seen.add(string)
++    strings.push(string)
++  })
++
++  return strings.length === value.length ? strings : undefined
++}
++
+ function parseSearchLines(value: unknown, path: string, errors: string[]): SearchLine[] | undefined {
+   if (!Array.isArray(value) || value.length === 0) {
+     errors.push(`${path}: expected a non-empty array`)
+     return undefined
+   }
+ 
+   const lines: SearchLine[] = []
+   value.forEach((line, index) => {
+     const linePath = `${path}[${index}]`
+     const record = getRecord(line, linePath, errors)
+@@ -142,33 +196,28 @@ function parseIngredientSlots(value: unknown, path: string, errors: string[]): I
+     errors.push(`${path}: expected a non-empty array`)
+     return undefined
+   }
+ 
+   const slots: IngredientSlot[] = []
+   value.forEach((slot, index) => {
+     const slotPath = `${path}[${index}]`
+     const record = getRecord(slot, slotPath, errors)
+     if (!record) return
+ 
+-    if (!Array.isArray(record.accepted_items) || record.accepted_items.length === 0) {
+-      errors.push(`${slotPath}.accepted_items: expected a non-empty array`)
++    const acceptedItems = parseUniqueStringArray(record.accepted_items, `${slotPath}.accepted_items`, errors)
++    if (acceptedItems === undefined || acceptedItems.length === 0) {
++      if (acceptedItems !== undefined) {
++        errors.push(`${slotPath}.accepted_items: expected a non-empty array`)
++      }
+       return
+     }
+-
+-    const acceptedItems: string[] = []
+-    record.accepted_items.forEach((item, itemIndex) => {
+-      const itemId = getNonEmptyString(item, `${slotPath}.accepted_items[${itemIndex}]`, errors)
+-      if (itemId !== undefined) acceptedItems.push(itemId)
+-    })
+-    if (acceptedItems.length === record.accepted_items.length) {
+-      slots.push({ acceptedItems })
+-    }
++    slots.push({ acceptedItems })
+   })
+ 
+   return slots.length === value.length ? slots : undefined
+ }
+ 
+ function parseRecipes(value: unknown, errors: string[]): IndexedRecipe[] {
+   const root = getRecord(value, 'recipes', errors)
+   if (!root) return []
+ 
+   if (root.schema_version !== GENERATED_SCHEMA_VERSION) {
+@@ -187,48 +236,125 @@ function parseRecipes(value: unknown, errors: string[]): IndexedRecipe[] {
+     if (!record) return
+ 
+     const id = getNonEmptyString(record.id, `${recipePath}.id`, errors)
+     if (id !== undefined) {
+       if (recipeIds.has(id)) {
+         errors.push(`${recipePath}.id: duplicate recipe ID ${id}`)
+       }
+       recipeIds.add(id)
+     }
+ 
++    const recipeGroup = getNullableGroup(record.recipe_group, `${recipePath}.recipe_group`, errors)
++    const recipeBookCategory = getRecipeBookCategory(
++      record.recipe_book_category,
++      `${recipePath}.recipe_book_category`,
++      errors,
++    )
++    const resultCollectionId = getNonEmptyString(
++      record.result_collection_id,
++      `${recipePath}.result_collection_id`,
++      errors,
++    )
+     const outputItemId = getNonEmptyString(record.output_item_id, `${recipePath}.output_item_id`, errors)
+     const outputCount = getPositiveInteger(record.output_count, `${recipePath}.output_count`, errors)
+     const ingredientSlots = parseIngredientSlots(record.ingredient_slots, `${recipePath}.ingredient_slots`, errors)
+     const fits2x2 = getBoolean(record.fits_2x2, `${recipePath}.fits_2x2`, errors)
+     const fits3x3 = getBoolean(record.fits_3x3, `${recipePath}.fits_3x3`, errors)
+ 
+     if (fits2x2 === false && fits3x3 === false) {
+       errors.push(`${recipePath}: must fit at least one crafting grid`)
+     }
+ 
+     if (
+-      id !== undefined &&
+-      outputItemId !== undefined &&
+-      outputCount !== undefined &&
+-      ingredientSlots !== undefined &&
+-      fits2x2 !== undefined &&
+-      fits3x3 !== undefined
++      id !== undefined
++      && recipeGroup !== undefined
++      && recipeBookCategory !== undefined
++      && resultCollectionId !== undefined
++      && outputItemId !== undefined
++      && outputCount !== undefined
++      && ingredientSlots !== undefined
++      && fits2x2 !== undefined
++      && fits3x3 !== undefined
+     ) {
+       recipes.push({
+-        recipe: { id, outputItemId, outputCount, ingredientSlots, fits2x2, fits3x3 },
++        recipe: {
++          id,
++          recipeGroup,
++          recipeBookCategory,
++          resultCollectionId,
++          outputItemId,
++          outputCount,
++          ingredientSlots,
++          fits2x2,
++          fits3x3,
++        },
+         sourceIndex: index,
+       })
+     }
+   })
+ 
+   return recipes
+ }
+ 
++function parseCollections(value: unknown, errors: string[]): IndexedCollection[] {
++  const root = getRecord(value, 'collections', errors)
++  if (!root) return []
++
++  if (root.schema_version !== GENERATED_SCHEMA_VERSION) {
++    errors.push(`collections.schema_version: expected ${GENERATED_SCHEMA_VERSION}`)
++  }
++  if (!Array.isArray(root.collections)) {
++    errors.push('collections.collections: expected an array')
++    return []
++  }
++
++  const collections: IndexedCollection[] = []
++  const collectionIds = new Set<string>()
++  root.collections.forEach((rawCollection, index) => {
++    const collectionPath = `collections[${index}]`
++    const record = getRecord(rawCollection, collectionPath, errors)
++    if (!record) return
++
++    const id = getNonEmptyString(record.id, `${collectionPath}.id`, errors)
++    if (id !== undefined) {
++      if (collectionIds.has(id)) {
++        errors.push(`${collectionPath}.id: duplicate collection ID ${id}`)
++      }
++      collectionIds.add(id)
++    }
++
++    const recipeBookCategory = getRecipeBookCategory(
++      record.recipe_book_category,
++      `${collectionPath}.recipe_book_category`,
++      errors,
++    )
++    const recipeGroup = getNullableGroup(record.recipe_group, `${collectionPath}.recipe_group`, errors)
++    const recipeIds = parseUniqueStringArray(record.recipe_ids, `${collectionPath}.recipe_ids`, errors)
++    const outputItemIds = parseUniqueStringArray(record.output_item_ids, `${collectionPath}.output_item_ids`, errors)
++
++    if (
++      id !== undefined
++      && recipeBookCategory !== undefined
++      && recipeGroup !== undefined
++      && recipeIds !== undefined
++      && outputItemIds !== undefined
++    ) {
++      collections.push({
++        collection: { id, recipeBookCategory, recipeGroup, recipeIds, outputItemIds },
++        sourceIndex: index,
++      })
++    }
++  })
++
++  return collections
++}
++
+ function validateRecipeReferences(
+   recipes: IndexedRecipe[],
+   items: Map<string, SearchItem>,
+   inventoryItems: Map<string, InventoryItem>,
+   errors: string[],
+ ) {
+   recipes.forEach(({ recipe, sourceIndex }) => {
+     const recipePath = `recipes[${sourceIndex}]`
+     // Search-item records are generated for recipe outputs. Ingredient IDs can be
+     // valid Minecraft items without an independently searchable output record.
+@@ -241,55 +367,121 @@ function validateRecipeReferences(
+           errors.push(
+             `${recipePath}.ingredient_slots[${slotIndex}].accepted_items[${itemIndex}]: `
+             + `references missing inventory item ${itemId}`,
+           )
+         }
+       })
+     })
+   })
+ }
+ 
++function validateCollectionGraph(
++  recipes: IndexedRecipe[],
++  collections: IndexedCollection[],
++  items: Map<string, SearchItem>,
++  errors: string[],
++) {
++  const recipesById = new Map(recipes.map((recipe) => [recipe.recipe.id, recipe]))
++  const collectionsById = new Map(collections.map((collection) => [collection.collection.id, collection]))
++  const membershipCounts = new Map(recipes.map(({ recipe }) => [recipe.id, 0]))
++
++  collections.forEach(({ collection, sourceIndex }) => {
++    const collectionPath = `collections[${sourceIndex}]`
++    const memberOutputItemIds = new Set<string>()
++    collection.recipeIds.forEach((recipeId, recipeIndex) => {
++      const recipe = recipesById.get(recipeId)
++      const recipeIdPath = `${collectionPath}.recipe_ids[${recipeIndex}]`
++      if (!recipe) {
++        errors.push(`${recipeIdPath}: references missing recipe ${recipeId}`)
++        return
++      }
++
++      membershipCounts.set(recipeId, (membershipCounts.get(recipeId) ?? 0) + 1)
++      memberOutputItemIds.add(recipe.recipe.outputItemId)
++      if (recipe.recipe.resultCollectionId !== collection.id) {
++        errors.push(`${recipeIdPath}: recipe references collection ${recipe.recipe.resultCollectionId}`)
++      }
++      if (recipe.recipe.recipeBookCategory !== collection.recipeBookCategory) {
++        errors.push(`recipes[${recipe.sourceIndex}].recipe_book_category: disagrees with collection ${collection.id}`)
++      }
++      if (recipe.recipe.recipeGroup !== collection.recipeGroup) {
++        errors.push(`recipes[${recipe.sourceIndex}].recipe_group: disagrees with collection ${collection.id}`)
++      }
++    })
++
++    collection.outputItemIds.forEach((outputItemId, outputIndex) => {
++      if (!items.has(outputItemId)) {
++        errors.push(`${collectionPath}.output_item_ids[${outputIndex}]: references missing item ${outputItemId}`)
++      }
++    })
++    if (
++      collection.outputItemIds.length !== memberOutputItemIds.size
++      || collection.outputItemIds.some((outputItemId) => !memberOutputItemIds.has(outputItemId))
++    ) {
++      errors.push(`${collectionPath}.output_item_ids: does not match member recipe outputs`)
++    }
++  })
++
++  recipes.forEach(({ recipe, sourceIndex }) => {
++    const recipePath = `recipes[${sourceIndex}]`
++    if (!collectionsById.has(recipe.resultCollectionId)) {
++      errors.push(`${recipePath}.result_collection_id: references missing collection ${recipe.resultCollectionId}`)
++    }
++    const membershipCount = membershipCounts.get(recipe.id) ?? 0
++    if (membershipCount === 0) {
++      errors.push(`${recipePath}.id: is not referenced by a collection`)
++    } else if (membershipCount > 1) {
++      errors.push(`${recipePath}.id: is referenced by multiple collections`)
++    }
++  })
++}
++
+ export function parseGeneratedData(
+   itemsPayload: unknown,
+   inventoryItemsPayload: unknown,
+   recipesPayload: unknown,
++  collectionsPayload: unknown,
+ ): GeneratedData {
+   const errors: string[] = []
+   const items = parseItems(itemsPayload, errors)
+   const inventoryItems = parseInventoryItems(inventoryItemsPayload, errors)
+   const indexedRecipes = parseRecipes(recipesPayload, errors)
++  const indexedCollections = parseCollections(collectionsPayload, errors)
+   validateRecipeReferences(indexedRecipes, items, inventoryItems, errors)
++  validateCollectionGraph(indexedRecipes, indexedCollections, items, errors)
+ 
+   if (errors.length > 0) {
+     throw new GeneratedDataError(errors)
+   }
+ 
+   return {
+     schemaVersion: GENERATED_SCHEMA_VERSION,
+     items,
+     inventoryItems,
+     recipes: indexedRecipes.map(({ recipe }) => recipe),
++    collections: new Map(indexedCollections.map(({ collection }) => [collection.id, collection])),
+   }
+ }
+ 
+ async function fetchJson(url: string): Promise<unknown> {
+   const response = await fetch(url)
+   if (!response.ok) {
+     throw new GeneratedDataError([`${url}: fetch failed with ${response.status} ${response.statusText}`])
+   }
+ 
+   try {
+     return await response.json()
+   } catch {
+     throw new GeneratedDataError([`${url}: response is not valid JSON`])
+   }
+ }
+ 
+ export async function loadGeneratedData(baseUrl = import.meta.env.BASE_URL): Promise<GeneratedData> {
+   const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
+-  const [itemsPayload, inventoryItemsPayload, recipesPayload] = await Promise.all([
++  const [itemsPayload, inventoryItemsPayload, recipesPayload, collectionsPayload] = await Promise.all([
+     fetchJson(`${base}data/search-items.json`),
+     fetchJson(`${base}data/inventory-items.json`),
+     fetchJson(`${base}data/crafting-recipes.json`),
++    fetchJson(`${base}data/recipe-result-collections.json`),
+   ])
+-  return parseGeneratedData(itemsPayload, inventoryItemsPayload, recipesPayload)
++  return parseGeneratedData(itemsPayload, inventoryItemsPayload, recipesPayload, collectionsPayload)
+ }
+diff --git a/web/src/domain/types.ts b/web/src/domain/types.ts
+index e32bd10..84e2dfa 100644
+--- a/web/src/domain/types.ts
++++ b/web/src/domain/types.ts
+@@ -14,32 +14,50 @@ export interface InventoryItem {
+   id: string
+   name: string
+ }
+ 
+ export interface IngredientSlot {
+   acceptedItems: string[]
+ }
+ 
+ export interface CraftingRecipe {
+   id: string
++  recipeGroup: string | null
++  recipeBookCategory: RecipeBookCategory
++  resultCollectionId: string
+   outputItemId: string
+   outputCount: number
+   ingredientSlots: IngredientSlot[]
+   fits2x2: boolean
+   fits3x3: boolean
+ }
+ 
++export type RecipeBookCategory =
++  | 'crafting_building_blocks'
++  | 'crafting_equipment'
++  | 'crafting_redstone'
++  | 'crafting_misc'
++
++export interface RecipeResultCollection {
++  id: string
++  recipeBookCategory: RecipeBookCategory
++  recipeGroup: string | null
++  recipeIds: string[]
++  outputItemIds: string[]
++}
++
+ export interface GeneratedData {
+-  schemaVersion: 2
++  schemaVersion: 3
+   items: Map<string, SearchItem>
+   inventoryItems: Map<string, InventoryItem>
+   recipes: CraftingRecipe[]
++  collections: Map<string, RecipeResultCollection>
+ }
+ 
+ export interface InventoryPreset {
+   id: string
+   name: string
+   itemIds: string[]
+ }
+ 
+ export interface CustomInventoryPreset {
+   name: string
+diff --git a/web/src/engine/craftability.test.ts b/web/src/engine/craftability.test.ts
+index 3682280..49f39f9 100644
+--- a/web/src/engine/craftability.test.ts
++++ b/web/src/engine/craftability.test.ts
+@@ -1,18 +1,21 @@
+ import { describe, expect, test } from 'vitest'
+ 
+ import type { CraftingRecipe } from '../domain/types'
+ import { isRecipeCraftable, targetSupports2x2, visibleOutputIds } from './craftability'
+ 
+ function recipe(overrides: Partial<CraftingRecipe> = {}): CraftingRecipe {
+   return {
+     id: 'minecraft:test_recipe',
++    recipeGroup: null,
++    recipeBookCategory: 'crafting_misc',
++    resultCollectionId: 'crafting_misc/recipe/minecraft%3Atest_recipe',
+     outputItemId: 'minecraft:test_output',
+     outputCount: 1,
+     ingredientSlots: [{ acceptedItems: ['minecraft:stick'] }],
+     fits2x2: true,
+     fits3x3: true,
+     ...overrides,
+   }
+ }
+ 
+ describe('isRecipeCraftable', () => {
+diff --git a/web/src/engine/optimizeWorkspace.test.ts b/web/src/engine/optimizeWorkspace.test.ts
+index e5bb522..a86f2a5 100644
+--- a/web/src/engine/optimizeWorkspace.test.ts
++++ b/web/src/engine/optimizeWorkspace.test.ts
+@@ -9,45 +9,59 @@ function item(id: string, text: string): SearchItem {
+     id,
+     name: text,
+     confidence: 'source_reproduced',
+     searchLines: [{ source: 'name', text }],
+   }
+ }
+ 
+ function recipe(outputItemId: string, fits2x2: boolean): CraftingRecipe {
+   return {
+     id: `recipe:${outputItemId}`,
++    recipeGroup: null,
++    recipeBookCategory: 'crafting_misc',
++    resultCollectionId: `crafting_misc/recipe/${encodeURIComponent(outputItemId)}`,
+     outputItemId,
+     outputCount: 1,
+     ingredientSlots: [{ acceptedItems: ['ingredient:shared'] }],
+     fits2x2,
+     fits3x3: true,
+   }
+ }
+ 
+ function entry(
+   id: string,
+   targetIds: string[],
+   overrides: Partial<TargetWorkspaceEntry> = {},
+ ): TargetWorkspaceEntry {
+   return { id, targetIds, enabled: true, gridSize: 3, order: 0, ...overrides }
+ }
+ 
+ const alpha = item('target:alpha', 'ax')
+ const beta = item('target:beta', 'by')
+ const hidden = item('target:hidden', 'qz')
+-const data: GeneratedData = {
+-  schemaVersion: 2,
+-  items: new Map([alpha, beta, hidden].map((searchItem) => [searchItem.id, searchItem])),
+-  inventoryItems: new Map([['ingredient:shared', { id: 'ingredient:shared', name: 'Shared ingredient' }]]),
+-  recipes: [recipe(alpha.id, true), recipe(beta.id, false)],
++function generatedData(items: SearchItem[], recipes: CraftingRecipe[]): GeneratedData {
++  return {
++    schemaVersion: 3,
++    items: new Map(items.map((searchItem) => [searchItem.id, searchItem])),
++    inventoryItems: new Map([['ingredient:shared', { id: 'ingredient:shared', name: 'Shared ingredient' }]]),
++    recipes,
++    collections: new Map(recipes.map((craftingRecipe) => [craftingRecipe.resultCollectionId, {
++      id: craftingRecipe.resultCollectionId,
++      recipeBookCategory: craftingRecipe.recipeBookCategory,
++      recipeGroup: craftingRecipe.recipeGroup,
++      recipeIds: [craftingRecipe.id],
++      outputItemIds: [craftingRecipe.outputItemId],
++    }])),
++  }
+ }
++
++const data = generatedData([alpha, beta, hidden], [recipe(alpha.id, true), recipe(beta.id, false)])
+ const inventory = new Set(['ingredient:shared'])
+ 
+ describe('optimizeWorkspace', () => {
+   test('preserves enabled empty sets as non-scoring editor state', async () => {
+     const result = await optimizeWorkspace(data, inventory, [
+       entry('empty', [], { order: 0 }),
+       entry('scored', [alpha.id], { order: 1 }),
+     ])
+ 
+     expect(result.entries.map(({ entryId }) => entryId)).toEqual(['scored'])
+@@ -119,26 +133,24 @@ describe('optimizeWorkspace', () => {
+     const contributions = result.entries.map(({ bestScore }) => bestScore)
+ 
+     expect(result.aggregateScore).toBe(contributions[0] + contributions[1] + incompleteScore(1, 2))
+     expect(result.aggregateScore).toBe(contributions.reduce((sum, score) => sum + score, 0))
+   })
+ 
+   test('uses the lower overlap score when both complete categories exist at different scores', async () => {
+     const first = item('target:first', 'ax')
+     const second = item('target:second', 'ay')
+     const junk = item('junk:common-a', 'a')
+-    const competingData: GeneratedData = {
+-      schemaVersion: 2,
+-      items: new Map([first, second, junk].map((searchItem) => [searchItem.id, searchItem])),
+-      inventoryItems: data.inventoryItems,
+-      recipes: [recipe(first.id, true), recipe(second.id, true), recipe(junk.id, true)],
+-    }
++    const competingData = generatedData(
++      [first, second, junk],
++      [recipe(first.id, true), recipe(second.id, true), recipe(junk.id, true)],
++    )
+ 
+     const result = await optimizeWorkspace(competingData, inventory, [
+       entry('competing', [first.id, second.id]),
+     ])
+     const optimized = result.entries[0]
+ 
+     expect(optimized.single[0].score.total).toBe(2.5)
+     expect(optimized.overlap[0].score.total).toBe(1)
+     expect(optimized.availableCompleteMethod).toBe('overlap')
+     expect(optimized.bestScore).toBe(1)

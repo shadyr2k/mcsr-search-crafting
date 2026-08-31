@@ -1,0 +1,47 @@
+# Review package: 16e6a16..5768bb5
+
+## Commits
+5768bb5 test: fix Brown Bed browser fixture
+
+## Files changed
+ web/e2e/app.spec.ts | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/web/e2e/app.spec.ts b/web/e2e/app.spec.ts
+index a57830a..1f1087d 100644
+--- a/web/e2e/app.spec.ts
++++ b/web/e2e/app.spec.ts
+@@ -170,30 +170,31 @@ test('explains a Brown Bed alias while keeping the White Bed output exact', asyn
+         name: 'White Bed', confidence: 'source_reproduced',
+         search_lines: [{ source: 'name', text: 'White Bed' }],
+       },
+       'fixture:brown-bed': {
+         name: 'Brown Bed', confidence: 'source_reproduced',
+         search_lines: [{ source: 'name', text: 'Brown Bed' }],
+       },
+       'fixture:junk': {
+         name: 'Fixture Junk', confidence: 'source_reproduced',
+         search_lines: [
+-          'b', 'r', 'o', 'w', 'n', ' ', 'e', 'd', 'h', 'i', 't',
++          'b', 'r', 'o', 'w', 'n', ' x', 'e', 'd', 'h', 'i', 't',
+           'br', 'ro', 'ow', 'n ', ' b', 'be', 'ed', 'wh', 'hi', 'it', 'te', 'e ',
+         ].map((text) => ({ source: 'fixture', text })),
+       },
+     },
+   }
+   const inventoryItems = {
+     schema_version: 3,
+     items: {
+       'fixture:white-bed': { name: 'White Bed Ingredient' },
++      'fixture:unavailable': { name: 'Unavailable Ingredient' },
+     },
+   }
+   const recipes = {
+     schema_version: 3,
+     recipes: [
+       {
+         id: 'fixture:white-bed', recipe_group: 'bed', recipe_book_category: 'crafting_building_blocks',
+         result_collection_id: 'fixture/bed', output_item_id: 'fixture:white-bed', output_count: 1,
+         ingredient_slots: [{ accepted_items: ['fixture:white-bed'] }], fits_2x2: true, fits_3x3: true,
+       },

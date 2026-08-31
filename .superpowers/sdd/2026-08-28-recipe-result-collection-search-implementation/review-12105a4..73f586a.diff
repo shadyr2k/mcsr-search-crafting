@@ -1,0 +1,80 @@
+# Review package: 12105a4..73f586a
+
+## Commits
+73f586a fix: preserve exact recipe groups
+
+## Files changed
+ web/src/data/schema.test.ts | 13 +++++++++++++
+ web/src/data/schema.ts      |  6 +++++-
+ 2 files changed, 18 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/web/src/data/schema.test.ts b/web/src/data/schema.test.ts
+index 8cc1bd3..39f0c4a 100644
+--- a/web/src/data/schema.test.ts
++++ b/web/src/data/schema.test.ts
+@@ -97,20 +97,33 @@ describe('parseGeneratedData', () => {
+     }])
+     expect(generated.collections).toEqual(new Map([[collectionId, {
+       id: collectionId,
+       recipeBookCategory: 'crafting_misc',
+       recipeGroup: null,
+       recipeIds: ['minecraft:torch'],
+       outputItemIds: ['minecraft:stick'],
+     }]]))
+   })
+ 
++  test('preserves a whitespace-only recipe group shared by its collection', () => {
++    const generated = parseGeneratedData(items, inventoryItems, {
++      schema_version: 3,
++      recipes: [{ ...recipe, recipe_group: ' '}],
++    }, {
++      schema_version: 3,
++      collections: [{ ...collections.collections[0], recipe_group: ' '}],
++    })
++
++    expect(generated.recipes[0].recipeGroup).toBe(' ')
++    expect(generated.collections.get(collectionId)?.recipeGroup).toBe(' ')
++  })
++
+   test('rejects a schema version 2 payload mixed into a schema version 3 graph', () => {
+     expectValidationError(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, {
+       ...collections,
+       schema_version: 2,
+     }, 'collections.schema_version')
+   })
+ 
+   test('rejects an invalid recipe book category', () => {
+     expectValidationError(items, inventoryItems, {
+       schema_version: 3,
+diff --git a/web/src/data/schema.ts b/web/src/data/schema.ts
+index d546ae0..f235f2e 100644
+--- a/web/src/data/schema.ts
++++ b/web/src/data/schema.ts
+@@ -54,21 +54,25 @@ function getRecord(value: unknown, path: string, errors: string[]): JsonRecord |
+ function getNonEmptyString(value: unknown, path: string, errors: string[]): string | undefined {
+   if (typeof value !== 'string' || value.trim() === '') {
+     errors.push(`${path}: expected a non-empty string`)
+     return undefined
+   }
+   return value
+ }
+ 
+ function getNullableGroup(value: unknown, path: string, errors: string[]): string | null | undefined {
+   if (value === null) return null
+-  return getNonEmptyString(value, path, errors)
++  if (typeof value !== 'string' || value === '') {
++    errors.push(`${path}: expected a non-empty string`)
++    return undefined
++  }
++  return value
+ }
+ 
+ function getRecipeBookCategory(
+   value: unknown,
+   path: string,
+   errors: string[],
+ ): RecipeBookCategory | undefined {
+   if (!isRecipeBookCategory(value)) {
+     errors.push(`${path}: expected a valid recipe book category`)
+     return undefined

@@ -1,0 +1,198 @@
+# Review package: 7b544ad..e1c0e98
+
+## Commits
+e1c0e98 fix: validate collection construction
+
+## Files changed
+ web/src/data/schema.test.ts | 113 ++++++++++++++++++++++++++++++++++++++++++++
+ web/src/data/schema.ts      |  20 ++++++++
+ 2 files changed, 133 insertions(+)
+
+## Diff
+diff --git a/web/src/data/schema.test.ts b/web/src/data/schema.test.ts
+index 39f0c4a..0b275c6 100644
+--- a/web/src/data/schema.test.ts
++++ b/web/src/data/schema.test.ts
+@@ -190,20 +190,133 @@ describe('parseGeneratedData', () => {
+   test('rejects a recipe with two collection memberships', () => {
+     expectValidationError(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, {
+       schema_version: 3,
+       collections: [
+         collections.collections[0],
+         { ...collections.collections[0], id: 'crafting_misc/recipe/minecraft%3Atorch-copy' },
+       ],
+     }, 'recipes[0].id')
+   })
+ 
++  test('rejects an empty orphan collection', () => {
++    try {
++      parseGeneratedData(items, inventoryItems, { schema_version: 3, recipes: [] }, {
++        schema_version: 3,
++        collections: [{
++          ...collections.collections[0],
++          recipe_ids: [],
++          output_item_ids: [],
++        }],
++      })
++      throw new Error('Expected generated data validation to fail')
++    } catch (error) {
++      expect(error).toBeInstanceOf(GeneratedDataError)
++      expect((error as GeneratedDataError).errors).toEqual(expect.arrayContaining([
++        expect.stringContaining('collections[0].recipe_ids'),
++        expect.stringContaining('collections[0].output_item_ids'),
++      ]))
++    }
++  })
++
++  test('rejects an internally consistent merged null-group collection', () => {
++    const alternateRecipe = {
++      ...recipe,
++      id: 'minecraft:torch_alt',
++    }
++    expectValidationError(items, inventoryItems, {
++      schema_version: 3,
++      recipes: [recipe, alternateRecipe],
++    }, {
++      schema_version: 3,
++      collections: [{
++        ...collections.collections[0],
++        recipe_ids: [recipe.id, alternateRecipe.id],
++      }],
++    }, 'collections[0].recipe_ids')
++  })
++
++  test('rejects internally consistent split collections sharing a grouped semantic key', () => {
++    const firstCollectionId = 'crafting_misc/group/tools-one'
++    const secondCollectionId = 'crafting_misc/group/tools-two'
++    const firstRecipe = {
++      ...recipe,
++      id: 'minecraft:torch_one',
++      recipe_group: 'tools',
++      result_collection_id: firstCollectionId,
++    }
++    const secondRecipe = {
++      ...recipe,
++      id: 'minecraft:torch_two',
++      recipe_group: 'tools',
++      result_collection_id: secondCollectionId,
++    }
++    expectValidationError(items, inventoryItems, {
++      schema_version: 3,
++      recipes: [firstRecipe, secondRecipe],
++    }, {
++      schema_version: 3,
++      collections: [
++        {
++          ...collections.collections[0],
++          id: firstCollectionId,
++          recipe_group: 'tools',
++          recipe_ids: [firstRecipe.id],
++        },
++        {
++          ...collections.collections[0],
++          id: secondCollectionId,
++          recipe_group: 'tools',
++          recipe_ids: [secondRecipe.id],
++        },
++      ],
++    }, 'collections[1].recipe_group')
++  })
++
++  test('treats distinct untrimmed recipe groups as distinct semantic keys', () => {
++    const firstCollectionId = 'crafting_misc/group/leading-space'
++    const secondCollectionId = 'crafting_misc/group/plain'
++    const firstRecipe = {
++      ...recipe,
++      id: 'minecraft:torch_leading_space',
++      recipe_group: ' tools',
++      result_collection_id: firstCollectionId,
++    }
++    const secondRecipe = {
++      ...recipe,
++      id: 'minecraft:torch_plain',
++      recipe_group: 'tools',
++      result_collection_id: secondCollectionId,
++    }
++    const generated = parseGeneratedData(items, inventoryItems, {
++      schema_version: 3,
++      recipes: [firstRecipe, secondRecipe],
++    }, {
++      schema_version: 3,
++      collections: [
++        {
++          ...collections.collections[0],
++          id: firstCollectionId,
++          recipe_group: firstRecipe.recipe_group,
++          recipe_ids: [firstRecipe.id],
++        },
++        {
++          ...collections.collections[0],
++          id: secondCollectionId,
++          recipe_group: secondRecipe.recipe_group,
++          recipe_ids: [secondRecipe.id],
++        },
++      ],
++    })
++
++    expect(generated.collections.size).toBe(2)
++  })
++
+   test('rejects collection outputs that omit their member recipe output', () => {
+     expectValidationError(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, {
+       schema_version: 3,
+       collections: [{ ...collections.collections[0], output_item_ids: [] }],
+     }, 'collections[0].output_item_ids')
+   })
+ 
+   test('rejects an item reference absent from the item records', () => {
+     expectValidationError(items, inventoryItems, {
+       schema_version: 3,
+diff --git a/web/src/data/schema.ts b/web/src/data/schema.ts
+index f235f2e..243f91a 100644
+--- a/web/src/data/schema.ts
++++ b/web/src/data/schema.ts
+@@ -380,24 +380,44 @@ function validateRecipeReferences(
+ 
+ function validateCollectionGraph(
+   recipes: IndexedRecipe[],
+   collections: IndexedCollection[],
+   items: Map<string, SearchItem>,
+   errors: string[],
+ ) {
+   const recipesById = new Map(recipes.map((recipe) => [recipe.recipe.id, recipe]))
+   const collectionsById = new Map(collections.map((collection) => [collection.collection.id, collection]))
+   const membershipCounts = new Map(recipes.map(({ recipe }) => [recipe.id, 0]))
++  const groupedCollectionPaths = new Map<string, string>()
+ 
+   collections.forEach(({ collection, sourceIndex }) => {
+     const collectionPath = `collections[${sourceIndex}]`
+     const memberOutputItemIds = new Set<string>()
++    if (collection.recipeIds.length === 0) {
++      errors.push(`${collectionPath}.recipe_ids: expected a non-empty array`)
++    }
++    if (collection.outputItemIds.length === 0) {
++      errors.push(`${collectionPath}.output_item_ids: expected a non-empty array`)
++    }
++    if (collection.recipeGroup === null) {
++      if (collection.recipeIds.length !== 1) {
++        errors.push(`${collectionPath}.recipe_ids: null-group collections must contain exactly one recipe`)
++      }
++    } else {
++      const groupKey = `${collection.recipeBookCategory}\u0000${collection.recipeGroup}`
++      const priorCollectionPath = groupedCollectionPaths.get(groupKey)
++      if (priorCollectionPath) {
++        errors.push(`${collectionPath}.recipe_group: duplicates category/group collection at ${priorCollectionPath}`)
++      } else {
++        groupedCollectionPaths.set(groupKey, collectionPath)
++      }
++    }
+     collection.recipeIds.forEach((recipeId, recipeIndex) => {
+       const recipe = recipesById.get(recipeId)
+       const recipeIdPath = `${collectionPath}.recipe_ids[${recipeIndex}]`
+       if (!recipe) {
+         errors.push(`${recipeIdPath}: references missing recipe ${recipeId}`)
+         return
+       }
+ 
+       membershipCounts.set(recipeId, (membershipCounts.get(recipeId) ?? 0) + 1)
+       memberOutputItemIds.add(recipe.recipe.outputItemId)

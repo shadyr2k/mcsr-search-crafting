@@ -1,0 +1,458 @@
+# Review package: 44f7a81..48d22e2
+
+## Commits
+48d22e2 fix: yield during collection member matching
+
+## Files changed
+ web/src/engine/collectionSearch.ts       | 201 +++++++++++++++++++++++--------
+ web/src/engine/optimizeWorkspace.test.ts |   6 +-
+ web/src/engine/singleOptimizer.test.ts   |  19 ++-
+ web/src/engine/singleOptimizer.ts        |  39 ++++--
+ 4 files changed, 204 insertions(+), 61 deletions(-)
+
+## Diff
+diff --git a/web/src/engine/collectionSearch.ts b/web/src/engine/collectionSearch.ts
+index 3354f53..2d1b8df 100644
+--- a/web/src/engine/collectionSearch.ts
++++ b/web/src/engine/collectionSearch.ts
+@@ -1,13 +1,17 @@
+ import type { CraftingRecipe, RecipeResultCollection, SearchItem } from '../domain/types'
+ 
+-import { type CollectionMatchExplanation, matchItem } from './search'
++import {
++  type CollectionMatchExplanation,
++  type MatchExplanation,
++  matchItem,
++} from './search'
+ 
+ function compareExplanations(
+   left: CollectionMatchExplanation,
+   right: CollectionMatchExplanation,
+ ): number {
+   const comparisons = [
+     [left.collectionId, right.collectionId],
+     [left.visibleOutputItemId, right.visibleOutputItemId],
+     [left.matchedMemberItemId, right.matchedMemberItemId],
+     [left.source, right.source],
+@@ -44,74 +48,173 @@ function getItem(
+   collectionId: string,
+   items: ReadonlyMap<string, SearchItem>,
+ ): SearchItem {
+   const item = items.get(itemId)
+   if (!item) {
+     throw new Error(`${collectionId}: references missing item ${itemId}`)
+   }
+   return item
+ }
+ 
+-export function matchEligibleCollectionOutputs(
+-  query: string,
++interface MemberMatch {
++  member: SearchItem
++  match: MatchExplanation
++}
++
++interface MatchAccumulator {
++  explanationsByOutput: Map<string, CollectionMatchExplanation[]>
++  seenByOutput: Map<string, Set<string>>
++}
++
++function groupEligibleRecipes(
+   eligible: readonly CraftingRecipe[],
+-  collections: ReadonlyMap<string, RecipeResultCollection>,
+-  items: ReadonlyMap<string, SearchItem>,
+-): Map<string, CollectionMatchExplanation[]> {
++): Map<string, CraftingRecipe[]> {
+   const eligibleByCollection = new Map<string, CraftingRecipe[]>()
+   for (const recipe of eligible) {
+     const recipes = eligibleByCollection.get(recipe.resultCollectionId) ?? []
+     recipes.push(recipe)
+     eligibleByCollection.set(recipe.resultCollectionId, recipes)
+   }
++  return eligibleByCollection
++}
+ 
+-  const explanationsByOutput = new Map<string, CollectionMatchExplanation[]>()
+-  const seenByOutput = new Map<string, Set<string>>()
++function matchCollectionMembers(
++  query: string,
++  collection: RecipeResultCollection,
++  items: ReadonlyMap<string, SearchItem>,
++): MemberMatch[] {
++  return collection.outputItemIds
++    .slice()
++    .sort()
++    .flatMap((memberItemId) => {
++      const member = getItem(memberItemId, collection.id, items)
++      return matchItem(member, query).map((match) => ({ member, match }))
++    })
++}
+ 
+-  for (const collectionId of [...eligibleByCollection.keys()].sort()) {
+-    const collection = getCollection(collectionId, collections)
+-    const memberMatches = collection.outputItemIds
+-      .slice()
+-      .sort()
+-      .flatMap((memberItemId) => {
+-        const member = getItem(memberItemId, collectionId, items)
+-        return matchItem(member, query).map((match) => ({ member, match }))
+-      })
+-    if (memberMatches.length === 0) continue
+-
+-    const outputIds = [...new Set(eligibleByCollection.get(collectionId)!.map(
+-      (recipe) => recipe.outputItemId,
+-    ))].sort()
+-    for (const outputItemId of outputIds) {
+-      const visibleOutput = getItem(outputItemId, collectionId, items)
+-      const explanations = explanationsByOutput.get(outputItemId) ?? []
+-      const seen = seenByOutput.get(outputItemId) ?? new Set<string>()
+-
+-      for (const { member, match } of memberMatches) {
+-        const explanation: CollectionMatchExplanation = {
+-          query,
+-          collectionId,
+-          recipeGroup: collection.recipeGroup,
+-          matchedMemberItemId: member.id,
+-          matchedMemberName: member.name,
+-          visibleOutputItemId: outputItemId,
+-          visibleOutputName: visibleOutput.name,
+-          source: match.source,
+-          line: match.line,
+-          matchedSpan: match.matchedSpan,
+-        }
+-        const key = explanationKey(explanation)
+-        if (!seen.has(key)) {
+-          seen.add(key)
+-          explanations.push(explanation)
+-        }
+-      }
++async function matchCollectionMembersCooperatively(
++  query: string,
++  collection: RecipeResultCollection,
++  items: ReadonlyMap<string, SearchItem>,
++  checkpointBetweenMembers: () => Promise<void>,
++): Promise<MemberMatch[]> {
++  const memberItemIds = collection.outputItemIds.slice().sort()
++  const memberMatches: MemberMatch[] = []
++
++  for (const [index, memberItemId] of memberItemIds.entries()) {
++    const member = getItem(memberItemId, collection.id, items)
++    memberMatches.push(...matchItem(member, query).map((match) => ({ member, match })))
++    if (index < memberItemIds.length - 1) await checkpointBetweenMembers()
++  }
++
++  return memberMatches
++}
+ 
+-      explanationsByOutput.set(outputItemId, explanations)
+-      seenByOutput.set(outputItemId, seen)
++function addCollectionOutputs(
++  query: string,
++  collection: RecipeResultCollection,
++  eligible: readonly CraftingRecipe[],
++  memberMatches: readonly MemberMatch[],
++  items: ReadonlyMap<string, SearchItem>,
++  accumulator: MatchAccumulator,
++): void {
++  if (memberMatches.length === 0) return
++
++  const outputIds = [...new Set(eligible.map((recipe) => recipe.outputItemId))].sort()
++  for (const outputItemId of outputIds) {
++    const visibleOutput = getItem(outputItemId, collection.id, items)
++    const explanations = accumulator.explanationsByOutput.get(outputItemId) ?? []
++    const seen = accumulator.seenByOutput.get(outputItemId) ?? new Set<string>()
++
++    for (const { member, match } of memberMatches) {
++      const explanation: CollectionMatchExplanation = {
++        query,
++        collectionId: collection.id,
++        recipeGroup: collection.recipeGroup,
++        matchedMemberItemId: member.id,
++        matchedMemberName: member.name,
++        visibleOutputItemId: outputItemId,
++        visibleOutputName: visibleOutput.name,
++        source: match.source,
++        line: match.line,
++        matchedSpan: match.matchedSpan,
++      }
++      const key = explanationKey(explanation)
++      if (!seen.has(key)) {
++        seen.add(key)
++        explanations.push(explanation)
++      }
+     }
++
++    accumulator.explanationsByOutput.set(outputItemId, explanations)
++    accumulator.seenByOutput.set(outputItemId, seen)
+   }
++}
+ 
+-  return new Map([...explanationsByOutput.entries()]
++function finishMatches(
++  accumulator: MatchAccumulator,
++): Map<string, CollectionMatchExplanation[]> {
++  return new Map([...accumulator.explanationsByOutput.entries()]
+     .sort(([left], [right]) => left.localeCompare(right))
+     .map(([outputId, explanations]) => [outputId, explanations.sort(compareExplanations)]))
+ }
++
++function matchAccumulator(): MatchAccumulator {
++  return {
++    explanationsByOutput: new Map<string, CollectionMatchExplanation[]>(),
++    seenByOutput: new Map<string, Set<string>>(),
++  }
++}
++
++export function matchEligibleCollectionOutputs(
++  query: string,
++  eligible: readonly CraftingRecipe[],
++  collections: ReadonlyMap<string, RecipeResultCollection>,
++  items: ReadonlyMap<string, SearchItem>,
++): Map<string, CollectionMatchExplanation[]> {
++  const eligibleByCollection = groupEligibleRecipes(eligible)
++  const accumulator = matchAccumulator()
++
++  for (const collectionId of [...eligibleByCollection.keys()].sort()) {
++    const collection = getCollection(collectionId, collections)
++    addCollectionOutputs(
++      query,
++      collection,
++      eligibleByCollection.get(collectionId)!,
++      matchCollectionMembers(query, collection, items),
++      items,
++      accumulator,
++    )
++  }
++
++  return finishMatches(accumulator)
++}
++
++export async function matchEligibleCollectionOutputsCooperatively(
++  query: string,
++  eligible: readonly CraftingRecipe[],
++  collections: ReadonlyMap<string, RecipeResultCollection>,
++  items: ReadonlyMap<string, SearchItem>,
++  checkpointBetweenMembers: () => Promise<void>,
++): Promise<Map<string, CollectionMatchExplanation[]>> {
++  const eligibleByCollection = groupEligibleRecipes(eligible)
++  const accumulator = matchAccumulator()
++
++  for (const collectionId of [...eligibleByCollection.keys()].sort()) {
++    const collection = getCollection(collectionId, collections)
++    addCollectionOutputs(
++      query,
++      collection,
++      eligibleByCollection.get(collectionId)!,
++      await matchCollectionMembersCooperatively(
++        query,
++        collection,
++        items,
++        checkpointBetweenMembers,
++      ),
++      items,
++      accumulator,
++    )
++  }
++
++  return finishMatches(accumulator)
++}
+diff --git a/web/src/engine/optimizeWorkspace.test.ts b/web/src/engine/optimizeWorkspace.test.ts
+index 9aff752..3003e40 100644
+--- a/web/src/engine/optimizeWorkspace.test.ts
++++ b/web/src/engine/optimizeWorkspace.test.ts
+@@ -298,21 +298,21 @@ describe('optimizeWorkspace', () => {
+         yieldCount += 1
+         controller.abort()
+       },
+     })
+ 
+     await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+     expect(yieldCount).toBeGreaterThan(0)
+     expect(phases).toContain('matching')
+   })
+ 
+-  test('cancels after matching one eligible collection with many member aliases', async () => {
++  test('cancels during member matching before the eligible collection reports completion', async () => {
+     const targetItem = item('target:visible', 'Ivory Rest')
+     const aliases = Array.from(
+       { length: 100 },
+       (_, index) => item(`alias:${index.toString().padStart(3, '0')}`, `Alias ${index} target`),
+     )
+     const targetRecipe = {
+       ...recipe(targetItem.id, true),
+       id: 'recipe:visible',
+       resultCollectionId: 'collection:large',
+     }
+@@ -345,23 +345,23 @@ describe('optimizeWorkspace', () => {
+         signal: controller.signal,
+         workChunkSize: 1,
+         onProgress: ({ phase, completed, total }) => {
+           if (phase === 'matching') matchingProgress.push([completed, total])
+         },
+         yieldControl: async () => { controller.abort() },
+       },
+     )
+ 
+     await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+-    expect(matchingProgress[0][0]).toBe(0)
++    expect(matchingProgress.length).toBeGreaterThan(1)
+     expect(matchingProgress[0][1]).toBeGreaterThan(1)
+-    expect(matchingProgress.at(-1)?.[0]).toBe(1)
++    expect(new Set(matchingProgress.map(([completed]) => completed))).toEqual(new Set([0]))
+   })
+ 
+   test('is deterministic across repeated and differently ordered equivalent inputs', async () => {
+     const alias = aliasFixture()
+     const entries = [entry('aliases', [alias.whiteBedId, alias.whiteCarpetId])]
+     const expected = await optimizeWorkspace(alias.data, alias.inventory, entries)
+     const reversedCollections = new Map([...alias.data.collections].reverse())
+     const reversedMembers = new Map([...alias.data.collections].map(([collectionId, value]) => [
+       collectionId,
+       { ...value, recipeIds: [...value.recipeIds].reverse(), outputItemIds: [...value.outputItemIds].reverse() },
+diff --git a/web/src/engine/singleOptimizer.test.ts b/web/src/engine/singleOptimizer.test.ts
+index de04056..87f9930 100644
+--- a/web/src/engine/singleOptimizer.test.ts
++++ b/web/src/engine/singleOptimizer.test.ts
+@@ -190,25 +190,40 @@ describe('optimizeSingle', () => {
+     expect(result?.junkItemIds).not.toContain(brownCarpet.id)
+     expect(result?.explanations).toContainEqual(expect.objectContaining({
+       query: 'wn',
+       collectionId: bedCollectionId,
+       matchedMemberItemId: brownBed.id,
+       visibleOutputItemId: whiteBed.id,
+     }))
+   })
+ 
+   test('prepares deeply equal synchronous and cooperative candidates per eligible collection', async () => {
+-    const input = isolatedInput([item('target:a', 'a')], [item('junk:b', 'b')])
++    const visible = item('target:visible', 'x')
++    const alias = item('alias:member', 'a')
++    const collectionId = 'collection:alias'
++    const visibleRecipe = recipe('recipe:visible', visible.id, collectionId)
++    const aliasRecipe = recipe('recipe:alias', alias.id, collectionId)
++    const input: OptimizeInput = {
++      targetIds: new Set([visible.id]),
++      eligibleRecipes: [visibleRecipe],
++      recipes: [aliasRecipe, visibleRecipe],
++      collections: new Map([[collectionId, collection(
++        collectionId,
++        [aliasRecipe.id, visibleRecipe.id],
++        [alias.id, visible.id],
++      )]]),
++      items: new Map([alias, visible].map((searchItem) => [searchItem.id, searchItem])),
++    }
+     const progress: Array<[number, number]> = []
+     let yieldCount = 0
+ 
+     const cooperative = await prepareOptimizationCooperatively(input, {
+       workChunkSize: 1,
+       yieldControl: async () => { yieldCount += 1 },
+       onProgress: (completed, total) => progress.push([completed, total]),
+     })
+ 
+     expect(cooperative).toEqual(prepareOptimization(input))
+     expect(progress.at(-1)).toEqual([2, 2])
+-    expect(yieldCount).toBe(2)
++    expect(yieldCount).toBe(4)
+   })
+ })
+diff --git a/web/src/engine/singleOptimizer.ts b/web/src/engine/singleOptimizer.ts
+index dd77d0f..2f8c84d 100644
+--- a/web/src/engine/singleOptimizer.ts
++++ b/web/src/engine/singleOptimizer.ts
+@@ -1,14 +1,17 @@
+ import type { CraftingRecipe, RecipeResultCollection, SearchItem } from '../domain/types'
+ 
+ import { candidateQueriesForTargets } from './candidates'
+-import { matchEligibleCollectionOutputs } from './collectionSearch'
++import {
++  matchEligibleCollectionOutputs,
++  matchEligibleCollectionOutputsCooperatively,
++} from './collectionSearch'
+ import type { CollectionMatchExplanation } from './search'
+ import { type ScoreBreakdown, scoreStep } from './scoring'
+ 
+ export interface OptimizeInput {
+   targetIds: ReadonlySet<string>
+   eligibleRecipes: readonly CraftingRecipe[]
+   recipes: readonly CraftingRecipe[]
+   collections: ReadonlyMap<string, RecipeResultCollection>
+   items: ReadonlyMap<string, SearchItem>
+ }
+@@ -75,26 +78,32 @@ function preparationContext(input: OptimizeInput) {
+   return { targetIds, targetIdSet, targetIndexes, eligibleCollections, queries }
+ }
+ 
+ function addCollectionMatches(
+   input: OptimizeInput,
+   query: string,
+   eligibleRecipes: readonly CraftingRecipe[],
+   matchedItemIds: Set<string>,
+   explanations: CollectionMatchExplanation[],
+ ): void {
+-  const matches = matchEligibleCollectionOutputs(
+-    query,
+-    eligibleRecipes,
+-    input.collections,
+-    input.items,
++  addMatches(
++    matchEligibleCollectionOutputs(query, eligibleRecipes, input.collections, input.items),
++    matchedItemIds,
++    explanations,
+   )
++}
++
++function addMatches(
++  matches: ReadonlyMap<string, CollectionMatchExplanation[]>,
++  matchedItemIds: Set<string>,
++  explanations: CollectionMatchExplanation[],
++): void {
+   for (const [outputItemId, outputExplanations] of matches) {
+     matchedItemIds.add(outputItemId)
+     explanations.push(...outputExplanations)
+   }
+ }
+ 
+ function preparedCandidateFromMatches(
+   context: ReturnType<typeof preparationContext>,
+   query: string,
+   matchedItemIds: ReadonlySet<string>,
+@@ -145,21 +154,37 @@ export async function prepareOptimizationCooperatively(
+   let completed = 0
+   let workSinceYield = 0
+ 
+   throwIfAborted(options.signal)
+   options.onProgress?.(completed, total)
+   for (const query of context.queries) {
+     const matchedItemIds = new Set<string>()
+     const explanations: CollectionMatchExplanation[] = []
+ 
+     for (const { recipes } of context.eligibleCollections) {
+-      addCollectionMatches(input, query, recipes, matchedItemIds, explanations)
++      let membersSinceYield = 0
++      const matches = await matchEligibleCollectionOutputsCooperatively(
++        query,
++        recipes,
++        input.collections,
++        input.items,
++        async () => {
++          throwIfAborted(options.signal)
++          membersSinceYield += 1
++          if (membersSinceYield < boundedChunkSize) return
++          options.onProgress?.(completed, total)
++          await options.yieldControl()
++          throwIfAborted(options.signal)
++          membersSinceYield = 0
++        },
++      )
++      addMatches(matches, matchedItemIds, explanations)
+ 
+       completed += 1
+       workSinceYield += 1
+       if (workSinceYield >= boundedChunkSize) {
+         options.onProgress?.(completed, total)
+         throwIfAborted(options.signal)
+         await options.yieldControl()
+         throwIfAborted(options.signal)
+         workSinceYield = 0
+       }

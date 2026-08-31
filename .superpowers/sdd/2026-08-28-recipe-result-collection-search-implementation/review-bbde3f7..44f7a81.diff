@@ -1,0 +1,1338 @@
+# Review package: bbde3f7..44f7a81
+
+## Commits
+44f7a81 feat: optimize collection search queries
+
+## Files changed
+ web/src/App.test.tsx                     |   9 +-
+ web/src/components/ResultPanel.test.tsx  | 113 ++++++++++++------
+ web/src/components/ResultPanel.tsx       |  14 ++-
+ web/src/engine/optimizeWorkspace.test.ts | 192 +++++++++++++++++++++++++++----
+ web/src/engine/optimizeWorkspace.ts      |   9 +-
+ web/src/engine/overlapOptimizer.test.ts  | 110 +++++++++++++++++-
+ web/src/engine/overlapOptimizer.ts       |   4 +-
+ web/src/engine/singleOptimizer.test.ts   | 150 ++++++++++++++++++++++--
+ web/src/engine/singleOptimizer.ts        | 121 +++++++++----------
+ 9 files changed, 583 insertions(+), 139 deletions(-)
+
+## Diff
+diff --git a/web/src/App.test.tsx b/web/src/App.test.tsx
+index ba7e8a6..6d7bfee 100644
+--- a/web/src/App.test.tsx
++++ b/web/src/App.test.tsx
+@@ -230,21 +230,28 @@ describe('App persistence', () => {
+     const fresh: WorkspaceResult = {
+       aggregateScore: 0,
+       skippedEmptyEntryCount: 0,
+       entries: [{
+         entryId: 'saved-set', displayIndex: 0, targetIds: ['minecraft:stick'], gridSize: 3,
+         visibleItemIds: ['minecraft:stick'], overlap: [], availableCompleteMethod: 'single', bestScore: 0,
+         incomplete: null,
+         single: [{
+           query: 's', coveredTargetIds: ['minecraft:stick'], junkItemIds: [],
+           explanations: [{
+-            itemId: 'minecraft:stick', source: 'name', line: 'Stick',
++            query: 's',
++            collectionId: 'crafting_misc/recipe/minecraft%3Astick',
++            recipeGroup: null,
++            matchedMemberItemId: 'minecraft:stick',
++            matchedMemberName: 'Stick',
++            visibleOutputItemId: 'minecraft:stick',
++            visibleOutputName: 'Stick',
++            source: 'name', line: 'Stick',
+             matchedSpan: { start: 0, end: 1, text: 'S' },
+           }],
+           score: { lengthPenalty: 0, junkPresencePenalty: 0, junkCountPenalty: 0, total: 0 },
+         }],
+       }],
+     }
+     let resolveStale!: (result: WorkspaceResult) => void
+     let markFirstStarted!: () => void
+     const firstStarted = new Promise<void>((resolve) => { markFirstStarted = resolve })
+     const stalePromise = new Promise<WorkspaceResult>((resolve) => { resolveStale = resolve })
+diff --git a/web/src/components/ResultPanel.test.tsx b/web/src/components/ResultPanel.test.tsx
+index 23fec10..9dee4ce 100644
+--- a/web/src/components/ResultPanel.test.tsx
++++ b/web/src/components/ResultPanel.test.tsx
+@@ -1,15 +1,16 @@
+ import { cleanup, render, screen, within } from '@testing-library/react'
+ import { afterEach, describe, expect, test } from 'vitest'
+ 
+ import type { SearchItem } from '../domain/types'
+ import type { WorkspaceResult } from '../engine/optimizeWorkspace'
++import type { CollectionMatchExplanation } from '../engine/search'
+ import { ResultPanel } from './ResultPanel'
+ 
+ const items = new Map<string, SearchItem>([
+   ['target:bed', {
+     id: 'target:bed', name: 'Bed', confidence: 'source_reproduced',
+     searchLines: [{ source: 'name', text: 'Red Bed' }],
+   }],
+   ['target:bow', {
+     id: 'target:bow', name: 'Bow', confidence: 'source_reproduced',
+     searchLines: [{ source: 'name', text: 'Brown Bow' }],
+@@ -21,77 +22,87 @@ const items = new Map<string, SearchItem>([
+   ['junk:first', {
+     id: 'junk:first', name: 'First-step junk', confidence: 'source_reproduced',
+     searchLines: [{ source: 'name', text: 'Bed' }],
+   }],
+   ['target:unicode', {
+     id: 'target:unicode', name: 'Unicode target', confidence: 'source_reproduced',
+     searchLines: [{ source: 'name', text: '😀İx' }],
+   }],
+ ])
+ 
++function directExplanation(
++  itemId: string,
++  query: string,
++  line: string,
++  start: number,
++  end: number,
++  text: string,
++): CollectionMatchExplanation {
++  const name = items.get(itemId)?.name ?? itemId
++  return {
++    query,
++    collectionId: `collection:${itemId}`,
++    recipeGroup: null,
++    matchedMemberItemId: itemId,
++    matchedMemberName: name,
++    visibleOutputItemId: itemId,
++    visibleOutputName: name,
++    source: 'name',
++    line,
++    matchedSpan: { start, end, text },
++  }
++}
++
+ const result: WorkspaceResult = {
+   aggregateScore: 2.5,
+   skippedEmptyEntryCount: 0,
+   entries: [{
+     entryId: 'set-one',
+     displayIndex: 0,
+     targetIds: ['target:bed', 'target:bow'],
+     gridSize: 3,
+     visibleItemIds: ['junk:first', 'junk:shared', 'target:bed', 'target:bow'],
+     availableCompleteMethod: 'single',
+     bestScore: 2.5,
+     incomplete: null,
+     single: [{
+       query: ' ',
+       coveredTargetIds: ['target:bed', 'target:bow'],
+       junkItemIds: ['junk:shared'],
+-      explanations: [{
+-        itemId: 'target:bed', source: 'name', line: 'Red Bed',
+-        matchedSpan: { start: 3, end: 4, text: ' ' },
+-      }, {
+-        itemId: 'target:bow', source: 'name', line: 'Brown Bow',
+-        matchedSpan: { start: 5, end: 6, text: ' ' },
+-      }, {
+-        itemId: 'junk:shared', source: 'name', line: 'Bed Bow',
+-        matchedSpan: { start: 3, end: 4, text: ' ' },
+-      }],
++      explanations: [
++        directExplanation('target:bed', ' ', 'Red Bed', 3, 4, ' '),
++        directExplanation('target:bow', ' ', 'Brown Bow', 5, 6, ' '),
++        directExplanation('junk:shared', ' ', 'Bed Bow', 3, 4, ' '),
++      ],
+       score: { lengthPenalty: 0, junkPresencePenalty: 2, junkCountPenalty: 0.5, total: 2.5 },
+     }],
+     overlap: [{
+       steps: [{
+         query: 'bed',
+         coveredTargetIds: ['target:bed'],
+         newTargetIds: ['target:bed'],
+         junkItemIds: ['junk:first', 'junk:shared'],
+-        explanations: [{
+-          itemId: 'target:bed', source: 'name', line: 'Red Bed',
+-          matchedSpan: { start: 4, end: 7, text: 'Bed' },
+-        }, {
+-          itemId: 'junk:first', source: 'name', line: 'Bed',
+-          matchedSpan: { start: 0, end: 3, text: 'Bed' },
+-        }, {
+-          itemId: 'junk:shared', source: 'name', line: 'Bed Bow',
+-          matchedSpan: { start: 0, end: 3, text: 'Bed' },
+-        }],
++        explanations: [
++          directExplanation('target:bed', 'bed', 'Red Bed', 4, 7, 'Bed'),
++          directExplanation('junk:first', 'bed', 'Bed', 0, 3, 'Bed'),
++          directExplanation('junk:shared', 'bed', 'Bed Bow', 0, 3, 'Bed'),
++        ],
+         retainedPrefix: '', freeBackspaceCount: 0, typedSuffix: 'bed',
+       }, {
+         query: 'bow',
+         coveredTargetIds: ['target:bow'],
+         newTargetIds: ['target:bow'],
+         junkItemIds: ['junk:shared'],
+-        explanations: [{
+-          itemId: 'target:bow', source: 'name', line: 'Brown Bow',
+-          matchedSpan: { start: 6, end: 9, text: 'Bow' },
+-        }, {
+-          itemId: 'junk:shared', source: 'name', line: 'Bed Bow',
+-          matchedSpan: { start: 4, end: 7, text: 'Bow' },
+-        }],
++        explanations: [
++          directExplanation('target:bow', 'bow', 'Brown Bow', 6, 9, 'Bow'),
++          directExplanation('junk:shared', 'bow', 'Bed Bow', 4, 7, 'Bow'),
++        ],
+         retainedPrefix: 'b', freeBackspaceCount: 2, typedSuffix: 'ow',
+       }],
+       coveredTargetIds: ['target:bed', 'target:bow'],
+       junkItemIds: ['junk:first', 'junk:shared'],
+       totalJunkAppearances: 3,
+       newCharacterCount: 5,
+       score: {
+         initialLengthPenalty: 1,
+         transitionTypingPenalty: 2,
+         junkPresencePenalty: 4,
+@@ -143,21 +154,60 @@ describe('ResultPanel', () => {
+     expect(within(overlap).getByText('Combined junk: First-step junk (junk:first), Shared junk (junk:shared)')).toBeTruthy()
+     expect(within(steps[1]).getByText('Retained prefix: “b”')).toBeTruthy()
+     expect(within(steps[1]).getByText('Free backspaces: 2')).toBeTruthy()
+     expect(within(steps[1]).getByText('Typed suffix: “ow”')).toBeTruthy()
+ 
+     const exactLine = within(steps[0]).getByText((_, element) =>
+       element?.classList.contains('search-line') === true && element.textContent === 'Red Bed',
+     )
+     expect(exactLine.textContent).toBe('Red Bed')
+     expect(within(exactLine).getByText('Bed').tagName).toBe('MARK')
+-    expect(within(steps[0]).getByText('name · target:bed · span 4–7')).toBeTruthy()
++    expect(within(steps[0]).getByText('Matched Bed (target:bed): name · span 4–7')).toBeTruthy()
++  })
++
++  test('distinguishes an alias member from the visible craftable output', () => {
++    const aliasResult: WorkspaceResult = {
++      ...result,
++      entries: [{
++        ...result.entries[0],
++        targetIds: ['minecraft:white_bed'],
++        visibleItemIds: ['minecraft:white_bed'],
++        overlap: [],
++        single: [{
++          query: 'wn',
++          coveredTargetIds: ['minecraft:white_bed'],
++          junkItemIds: [],
++          explanations: [{
++            query: 'wn',
++            collectionId: 'collection:bed',
++            recipeGroup: 'bed',
++            matchedMemberItemId: 'minecraft:brown_bed',
++            matchedMemberName: 'Brown Bed',
++            visibleOutputItemId: 'minecraft:white_bed',
++            visibleOutputName: 'White Bed',
++            source: 'name',
++            line: 'Brown Bed',
++            matchedSpan: { start: 3, end: 5, text: 'wn' },
++          }],
++          score: { lengthPenalty: 0, junkPresencePenalty: 0, junkCountPenalty: 0, total: 0 },
++        }],
++      }],
++    }
++
++    render(<ResultPanel items={items} result={aliasResult} />)
++
++    expect(screen.getByText('White Bed (minecraft:white_bed) was craftable in collection bed.')).toBeTruthy()
++    expect(screen.getByText('Matched Brown Bed (minecraft:brown_bed): name · span 3–5')).toBeTruthy()
++    const line = screen.getByText((_, element) =>
++      element?.classList.contains('search-line') === true && element.textContent === 'Brown Bed',
++    )
++    expect(within(line).getByText('wn').tagName).toBe('MARK')
+   })
+ 
+   test('promotes overlap and renders unmatched diagnostics with the maximum failure score', () => {
+     const promoted: WorkspaceResult = {
+       ...result,
+       aggregateScore: 8.5,
+       entries: [{ ...result.entries[0], single: [], bestScore: 8.5, availableCompleteMethod: 'overlap' }],
+     }
+     const incomplete: WorkspaceResult = {
+       aggregateScore: 13,
+@@ -227,29 +277,26 @@ describe('ResultPanel', () => {
+ 
+   test('highlights a UTF-16 span after astral and lowercase-expanding characters exactly', () => {
+     const unicodeResult: WorkspaceResult = {
+       aggregateScore: 0,
+       skippedEmptyEntryCount: 0,
+       entries: [{
+         ...result.entries[0],
+         targetIds: ['target:unicode'], visibleItemIds: ['target:unicode'], overlap: [], bestScore: 0,
+         single: [{
+           query: 'x', coveredTargetIds: ['target:unicode'], junkItemIds: [],
+-          explanations: [{
+-            itemId: 'target:unicode', source: 'name', line: '😀İx',
+-            matchedSpan: { start: 3, end: 4, text: 'x' },
+-          }],
++          explanations: [directExplanation('target:unicode', 'x', '😀İx', 3, 4, 'x')],
+           score: { lengthPenalty: 0, junkPresencePenalty: 0, junkCountPenalty: 0, total: 0 },
+         }],
+       }],
+     }
+ 
+     render(<ResultPanel items={items} result={unicodeResult} />)
+ 
+     const line = screen.getByText((_, element) =>
+       element?.classList.contains('search-line') === true && element.textContent === '😀İx',
+     )
+     expect(line.textContent).toBe('😀İx')
+     expect(within(line).getByText('x').tagName).toBe('MARK')
+-    expect(screen.getByText('name · target:unicode · span 3–4')).toBeTruthy()
++    expect(screen.getByText('Matched Unicode target (target:unicode): name · span 3–4')).toBeTruthy()
+   })
+ })
+diff --git a/web/src/components/ResultPanel.tsx b/web/src/components/ResultPanel.tsx
+index 2bffa35..6d694b4 100644
+--- a/web/src/components/ResultPanel.tsx
++++ b/web/src/components/ResultPanel.tsx
+@@ -1,12 +1,12 @@
+ import type { SearchItem } from '../domain/types'
+-import type { MatchExplanation } from '../engine/search'
++import type { CollectionMatchExplanation } from '../engine/search'
+ import type {
+   WorkspaceEntryResult,
+   WorkspaceOptimizationProgress,
+   WorkspaceResult,
+ } from '../engine/optimizeWorkspace'
+ 
+ interface ResultPanelProps {
+   items: ReadonlyMap<string, SearchItem>
+   result?: WorkspaceResult
+   pending?: boolean
+@@ -24,45 +24,49 @@ function progressMessage(progress: WorkspaceOptimizationProgress): string {
+ }
+ 
+ function itemLabel(itemId: string, items: ReadonlyMap<string, SearchItem>): string {
+   return `${items.get(itemId)?.name ?? itemId} (${itemId})`
+ }
+ 
+ function itemList(itemIds: readonly string[], items: ReadonlyMap<string, SearchItem>): string {
+   return itemIds.length === 0 ? 'none' : itemIds.map((itemId) => itemLabel(itemId, items)).join(', ')
+ }
+ 
+-function ExactMatch({ explanation }: { explanation: MatchExplanation }) {
++function ExactMatch({ explanation }: { explanation: CollectionMatchExplanation }) {
+   const { line, matchedSpan } = explanation
++  const collectionLabel = explanation.recipeGroup === null
++    ? `isolated collection ${explanation.collectionId}`
++    : `collection ${explanation.recipeGroup}`
+   const validSpan = Number.isInteger(matchedSpan.start)
+     && Number.isInteger(matchedSpan.end)
+     && matchedSpan.start >= 0
+     && matchedSpan.end > matchedSpan.start
+     && matchedSpan.end <= line.length
+     && line.slice(matchedSpan.start, matchedSpan.end) === matchedSpan.text
+ 
+   return <li className="match-explanation">
+-    <span>{explanation.source} · {explanation.itemId} · span {matchedSpan.start}–{matchedSpan.end}</span>
++    <span>{explanation.visibleOutputName} ({explanation.visibleOutputItemId}) was craftable in {collectionLabel}.</span>
++    <span>Matched {explanation.matchedMemberName} ({explanation.matchedMemberItemId}): {explanation.source} · span {matchedSpan.start}–{matchedSpan.end}</span>
+     {validSpan ? <span className="search-line">
+       {line.slice(0, matchedSpan.start)}
+       <mark>{line.slice(matchedSpan.start, matchedSpan.end)}</mark>
+       {line.slice(matchedSpan.end)}
+     </span> : <span className="result-data-error" role="alert">
+       Invalid match span for “{line}”.
+     </span>}
+   </li>
+ }
+ 
+-function Explanations({ explanations }: { explanations: readonly MatchExplanation[] }) {
++function Explanations({ explanations }: { explanations: readonly CollectionMatchExplanation[] }) {
+   return <ul className="match-explanations">
+     {explanations.map((explanation, index) => <ExactMatch
+-      key={`${explanation.itemId}-${explanation.source}-${explanation.matchedSpan.start}-${index}`}
++      key={`${explanation.collectionId}-${explanation.visibleOutputItemId}-${explanation.matchedMemberItemId}-${explanation.source}-${explanation.matchedSpan.start}-${index}`}
+       explanation={explanation}
+     />)}
+   </ul>
+ }
+ 
+ function SingleResults({
+   entry,
+   entryNumber,
+   items,
+ }: {
+diff --git a/web/src/engine/optimizeWorkspace.test.ts b/web/src/engine/optimizeWorkspace.test.ts
+index a86f2a5..9aff752 100644
+--- a/web/src/engine/optimizeWorkspace.test.ts
++++ b/web/src/engine/optimizeWorkspace.test.ts
+@@ -1,13 +1,19 @@
+ import { describe, expect, test } from 'vitest'
+ 
+-import type { CraftingRecipe, GeneratedData, SearchItem, TargetWorkspaceEntry } from '../domain/types'
++import type {
++  CraftingRecipe,
++  GeneratedData,
++  RecipeResultCollection,
++  SearchItem,
++  TargetWorkspaceEntry,
++} from '../domain/types'
+ import { incompleteScore } from './scoring'
+ import { optimizeWorkspace } from './optimizeWorkspace'
+ 
+ function item(id: string, text: string): SearchItem {
+   return {
+     id,
+     name: text,
+     confidence: 'source_reproduced',
+     searchLines: [{ source: 'name', text }],
+   }
+@@ -47,20 +53,88 @@ function generatedData(items: SearchItem[], recipes: CraftingRecipe[]): Generate
+     collections: new Map(recipes.map((craftingRecipe) => [craftingRecipe.resultCollectionId, {
+       id: craftingRecipe.resultCollectionId,
+       recipeBookCategory: craftingRecipe.recipeBookCategory,
+       recipeGroup: craftingRecipe.recipeGroup,
+       recipeIds: [craftingRecipe.id],
+       outputItemIds: [craftingRecipe.outputItemId],
+     }])),
+   }
+ }
+ 
++function groupedCollection(
++  id: string,
++  recipes: CraftingRecipe[],
++  outputItemIds: string[],
++  recipeGroup: string,
++): RecipeResultCollection {
++  return {
++    id,
++    recipeBookCategory: 'crafting_misc',
++    recipeGroup,
++    recipeIds: recipes.map(({ id: recipeId }) => recipeId),
++    outputItemIds,
++  }
++}
++
++function aliasFixture(): {
++  data: GeneratedData
++  inventory: Set<string>
++  whiteBedId: string
++  whiteCarpetId: string
++} {
++  const brownBed = item('minecraft:brown_bed', 'Brown Bed')
++  const whiteBed = item('minecraft:white_bed', 'Ivory Rest')
++  const brownCarpet = item('minecraft:brown_carpet', 'Brown Carpet')
++  const whiteCarpet = item('minecraft:white_carpet', 'Ivory Rug')
++  const bedRecipes = [
++    { ...recipe(brownBed.id, true), id: 'recipe:brown_bed', resultCollectionId: 'collection:bed', ingredientSlots: [{ acceptedItems: ['ingredient:missing'] }] },
++    { ...recipe(whiteBed.id, true), id: 'recipe:white_bed', resultCollectionId: 'collection:bed', ingredientSlots: [{ acceptedItems: ['ingredient:bed'] }] },
++  ]
++  const carpetRecipes = [
++    { ...recipe(brownCarpet.id, true), id: 'recipe:brown_carpet', resultCollectionId: 'collection:carpet', ingredientSlots: [{ acceptedItems: ['ingredient:missing'] }] },
++    { ...recipe(whiteCarpet.id, true), id: 'recipe:white_carpet', resultCollectionId: 'collection:carpet', ingredientSlots: [{ acceptedItems: ['ingredient:carpet'] }] },
++  ]
++  const recipes = [...bedRecipes, ...carpetRecipes]
++
++  return {
++    data: {
++      schemaVersion: 3,
++      items: new Map([brownBed, whiteBed, brownCarpet, whiteCarpet].map((searchItem) => [
++        searchItem.id,
++        searchItem,
++      ])),
++      inventoryItems: new Map([
++        ['ingredient:bed', { id: 'ingredient:bed', name: 'Bed ingredient' }],
++        ['ingredient:carpet', { id: 'ingredient:carpet', name: 'Carpet ingredient' }],
++      ]),
++      recipes,
++      collections: new Map([
++        ['collection:bed', groupedCollection(
++          'collection:bed',
++          bedRecipes,
++          [brownBed.id, whiteBed.id],
++          'bed',
++        )],
++        ['collection:carpet', groupedCollection(
++          'collection:carpet',
++          carpetRecipes,
++          [brownCarpet.id, whiteCarpet.id],
++          'carpet',
++        )],
++      ]),
++    },
++    inventory: new Set(['ingredient:bed', 'ingredient:carpet']),
++    whiteBedId: whiteBed.id,
++    whiteCarpetId: whiteCarpet.id,
++  }
++}
++
+ const data = generatedData([alpha, beta, hidden], [recipe(alpha.id, true), recipe(beta.id, false)])
+ const inventory = new Set(['ingredient:shared'])
+ 
+ describe('optimizeWorkspace', () => {
+   test('preserves enabled empty sets as non-scoring editor state', async () => {
+     const result = await optimizeWorkspace(data, inventory, [
+       entry('empty', [], { order: 0 }),
+       entry('scored', [alpha.id], { order: 1 }),
+     ])
+ 
+@@ -150,20 +224,41 @@ describe('optimizeWorkspace', () => {
+     ])
+     const optimized = result.entries[0]
+ 
+     expect(optimized.single[0].score.total).toBe(2.5)
+     expect(optimized.overlap[0].score.total).toBe(1)
+     expect(optimized.availableCompleteMethod).toBe('overlap')
+     expect(optimized.bestScore).toBe(1)
+     expect(result.aggregateScore).toBe(1)
+   })
+ 
++  test('optimizes collection aliases while keeping visible output and junk IDs exact', async () => {
++    const alias = aliasFixture()
++
++    const result = await optimizeWorkspace(
++      alias.data,
++      alias.inventory,
++      [entry('bed', [alias.whiteBedId])],
++    )
++    const aliasResult = result.entries[0].single.find(({ query }) => query === 'wn')
++
++    expect(aliasResult).toMatchObject({
++      coveredTargetIds: [alias.whiteBedId],
++      junkItemIds: [alias.whiteCarpetId],
++    })
++    expect(aliasResult?.explanations).toContainEqual(expect.objectContaining({
++      matchedMemberItemId: 'minecraft:brown_bed',
++      visibleOutputItemId: alias.whiteBedId,
++    }))
++    expect(result.entries[0].visibleItemIds).toEqual([alias.whiteBedId, alias.whiteCarpetId])
++  })
++
+   test('honors an aborted optimization request before publishing results', async () => {
+     const controller = new AbortController()
+     controller.abort()
+ 
+     await expect(optimizeWorkspace(data, inventory, [entry('cancelled', [alpha.id])], {
+       signal: controller.signal,
+     })).rejects.toMatchObject({ name: 'AbortError' })
+   })
+ 
+   test('aborts a superseded request while it is yielding between entries', async () => {
+@@ -203,36 +298,89 @@ describe('optimizeWorkspace', () => {
+         yieldCount += 1
+         controller.abort()
+       },
+     })
+ 
+     await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+     expect(yieldCount).toBeGreaterThan(0)
+     expect(phases).toContain('matching')
+   })
+ 
+-  test('is deterministic across repeated and differently ordered equivalent inputs', async () => {
+-    const entries = [
+-      entry('second', [beta.id, alpha.id], { order: 1 }),
+-      entry('first', [alpha.id], { order: 0 }),
+-    ]
+-    const reorderedData: GeneratedData = {
+-      ...data,
+-      items: new Map([...data.items].reverse()),
+-      recipes: [...data.recipes].reverse(),
++  test('cancels after matching one eligible collection with many member aliases', async () => {
++    const targetItem = item('target:visible', 'Ivory Rest')
++    const aliases = Array.from(
++      { length: 100 },
++      (_, index) => item(`alias:${index.toString().padStart(3, '0')}`, `Alias ${index} target`),
++    )
++    const targetRecipe = {
++      ...recipe(targetItem.id, true),
++      id: 'recipe:visible',
++      resultCollectionId: 'collection:large',
+     }
+-
+-    const first = await optimizeWorkspace(data, new Set([...inventory]), entries)
+-    const repeated = await optimizeWorkspace(data, new Set([...inventory]), entries)
+-    const reordered = await optimizeWorkspace(
+-      reorderedData,
+-      new Set([...inventory].reverse()),
+-      [...entries].reverse().map((workspaceEntry) => ({
+-        ...workspaceEntry,
+-        targetIds: [...workspaceEntry.targetIds].reverse(),
+-      })),
++    const aliasRecipes = aliases.map((alias, index) => ({
++      ...recipe(alias.id, true),
++      id: `recipe:alias:${index.toString().padStart(3, '0')}`,
++      resultCollectionId: 'collection:large',
++      ingredientSlots: [{ acceptedItems: ['ingredient:missing'] }],
++    }))
++    const largeData: GeneratedData = {
++      schemaVersion: 3,
++      items: new Map([targetItem, ...aliases].map((searchItem) => [searchItem.id, searchItem])),
++      inventoryItems: data.inventoryItems,
++      recipes: [targetRecipe, ...aliasRecipes],
++      collections: new Map([['collection:large', groupedCollection(
++        'collection:large',
++        [targetRecipe, ...aliasRecipes],
++        [targetItem.id, ...aliases.map(({ id }) => id)],
++        'large',
++      )]]),
++    }
++    const controller = new AbortController()
++    const matchingProgress: Array<[number, number | undefined]> = []
++
++    const pending = optimizeWorkspace(
++      largeData,
++      inventory,
++      [entry('large-collection', [targetItem.id])],
++      {
++        signal: controller.signal,
++        workChunkSize: 1,
++        onProgress: ({ phase, completed, total }) => {
++          if (phase === 'matching') matchingProgress.push([completed, total])
++        },
++        yieldControl: async () => { controller.abort() },
++      },
+     )
+ 
+-    expect(repeated).toEqual(first)
+-    expect(reordered).toEqual(first)
++    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
++    expect(matchingProgress[0][0]).toBe(0)
++    expect(matchingProgress[0][1]).toBeGreaterThan(1)
++    expect(matchingProgress.at(-1)?.[0]).toBe(1)
++  })
++
++  test('is deterministic across repeated and differently ordered equivalent inputs', async () => {
++    const alias = aliasFixture()
++    const entries = [entry('aliases', [alias.whiteBedId, alias.whiteCarpetId])]
++    const expected = await optimizeWorkspace(alias.data, alias.inventory, entries)
++    const reversedCollections = new Map([...alias.data.collections].reverse())
++    const reversedMembers = new Map([...alias.data.collections].map(([collectionId, value]) => [
++      collectionId,
++      { ...value, recipeIds: [...value.recipeIds].reverse(), outputItemIds: [...value.outputItemIds].reverse() },
++    ]))
++    const variants: Array<{
++      data: GeneratedData
++      inventory: Set<string>
++      entries: TargetWorkspaceEntry[]
++    }> = [
++      { data: { ...alias.data, recipes: [...alias.data.recipes].reverse() }, inventory: alias.inventory, entries },
++      { data: { ...alias.data, collections: reversedCollections }, inventory: alias.inventory, entries },
++      { data: { ...alias.data, collections: reversedMembers }, inventory: alias.inventory, entries },
++      { data: alias.data, inventory: alias.inventory, entries: [entry('aliases', [...entries[0].targetIds].reverse())] },
++      { data: alias.data, inventory: new Set([...alias.inventory].reverse()), entries },
++    ]
++
++    expect(await optimizeWorkspace(alias.data, alias.inventory, entries)).toEqual(expected)
++    for (const variant of variants) {
++      expect(await optimizeWorkspace(variant.data, variant.inventory, variant.entries)).toEqual(expected)
++    }
+   })
+ })
+diff --git a/web/src/engine/optimizeWorkspace.ts b/web/src/engine/optimizeWorkspace.ts
+index 42a6317..8efdeb3 100644
+--- a/web/src/engine/optimizeWorkspace.ts
++++ b/web/src/engine/optimizeWorkspace.ts
+@@ -1,13 +1,13 @@
+ import type { GeneratedData, TargetWorkspaceEntry } from '../domain/types'
+ 
+-import { visibleOutputIds } from './craftability'
++import { eligibleRecipes } from './craftability'
+ import { optimizeOverlapPreparedCooperatively, type OverlapResult } from './overlapOptimizer'
+ import { incompleteScore } from './scoring'
+ import {
+   optimizeSinglePrepared,
+   prepareOptimizationCooperatively,
+   type SingleResult,
+ } from './singleOptimizer'
+ 
+ export interface IncompleteAttempt {
+   matchedTargetIds: string[]
+@@ -62,25 +62,28 @@ function yieldToBrowser(): Promise<void> {
+ 
+ async function optimizeEntry(
+   data: GeneratedData,
+   inventory: ReadonlySet<string>,
+   entry: TargetWorkspaceEntry,
+   displayIndex: number,
+   entryIndex: number,
+   entryCount: number,
+   options: Required<Pick<OptimizeWorkspaceOptions, 'yieldControl'>> & OptimizeWorkspaceOptions,
+ ): Promise<WorkspaceEntryResult> {
+-  const visibleIds = visibleOutputIds(data.recipes, new Set(inventory), entry.gridSize)
++  const eligible = eligibleRecipes(data.recipes, inventory, entry.gridSize)
++  const visibleIds = new Set(eligible.map(({ outputItemId }) => outputItemId))
+   const targetIds = [...new Set(entry.targetIds)].sort()
+   const input = {
+     targetIds: new Set(targetIds),
+-    visibleItemIds: visibleIds,
++    eligibleRecipes: eligible,
++    recipes: data.recipes,
++    collections: data.collections,
+     items: data.items,
+   }
+   const prepared = await prepareOptimizationCooperatively(input, {
+     signal: options.signal,
+     yieldControl: options.yieldControl,
+     workChunkSize: options.workChunkSize,
+     onProgress: (completed, total) => options.onProgress?.({
+       entryId: entry.id,
+       entryIndex,
+       entryCount,
+diff --git a/web/src/engine/overlapOptimizer.test.ts b/web/src/engine/overlapOptimizer.test.ts
+index 46ef5a4..c5ffc7e 100644
+--- a/web/src/engine/overlapOptimizer.test.ts
++++ b/web/src/engine/overlapOptimizer.test.ts
+@@ -1,31 +1,72 @@
+ import { describe, expect, test } from 'vitest'
+ 
+-import type { SearchItem } from '../domain/types'
++import type { CraftingRecipe, RecipeResultCollection, SearchItem } from '../domain/types'
+ import { optimizeOverlap, type OverlapResult } from './overlapOptimizer'
+ import type { OptimizeInput } from './singleOptimizer'
+ 
+ function item(id: string, text: string): SearchItem {
+   return {
+     id,
+     name: id,
+     confidence: 'source_reproduced',
+     searchLines: [{ source: 'name', text }],
+   }
+ }
+ 
++function recipe(
++  id: string,
++  outputItemId: string,
++  resultCollectionId: string,
++): CraftingRecipe {
++  return {
++    id,
++    recipeGroup: null,
++    recipeBookCategory: 'crafting_misc',
++    resultCollectionId,
++    outputItemId,
++    outputCount: 1,
++    ingredientSlots: [{ acceptedItems: ['ingredient:shared'] }],
++    fits2x2: true,
++    fits3x3: true,
++  }
++}
++
++function collection(
++  id: string,
++  recipeIds: string[],
++  outputItemIds: string[],
++  recipeGroup: string | null = null,
++): RecipeResultCollection {
++  return { id, recipeBookCategory: 'crafting_misc', recipeGroup, recipeIds, outputItemIds }
++}
++
+ function fixture(targets: SearchItem[], junk: SearchItem[] = []): OptimizeInput {
+   const visibleItems = [...targets, ...junk]
++  const recipes = visibleItems.map((searchItem) => recipe(
++    `recipe:${searchItem.id}`,
++    searchItem.id,
++    `collection:${searchItem.id}`,
++  ))
+ 
+   return {
+     targetIds: new Set(targets.map(({ id }) => id)),
+-    visibleItemIds: new Set(visibleItems.map(({ id }) => id)),
++    eligibleRecipes: recipes,
++    recipes,
++    collections: new Map(recipes.map((craftingRecipe) => [
++      craftingRecipe.resultCollectionId,
++      collection(
++        craftingRecipe.resultCollectionId,
++        [craftingRecipe.id],
++        [craftingRecipe.outputItemId],
++      ),
++    ])),
+     items: new Map(visibleItems.map((searchItem) => [searchItem.id, searchItem])),
+   }
+ }
+ 
+ function sequence(result: OverlapResult): string[] {
+   return result.steps.map(({ query }) => query)
+ }
+ 
+ function findSequence(results: OverlapResult[], queries: string[]): OverlapResult {
+   const result = results.find((candidate) => sequence(candidate).join('\0') === queries.join('\0'))
+@@ -54,21 +95,22 @@ describe('optimizeOverlap', () => {
+     })
+     expect(result.steps[1]).toMatchObject({
+       query: 'bow',
+       newTargetIds: ['target:bow'],
+       retainedPrefix: 'b',
+       freeBackspaceCount: 2,
+       typedSuffix: 'ow',
+       junkItemIds: [],
+     })
+     expect(result.steps[1].explanations).toContainEqual(expect.objectContaining({
+-      itemId: 'target:bow',
++      matchedMemberItemId: 'target:bow',
++      visibleOutputItemId: 'target:bow',
+       line: 'bow',
+       matchedSpan: { start: 0, end: 3, text: 'bow' },
+     }))
+     expect(result.score).toEqual({
+       initialLengthPenalty: 1,
+       transitionTypingPenalty: 2,
+       junkPresencePenalty: 0,
+       junkCountPenalty: 0,
+       total: 3,
+     })
+@@ -125,11 +167,73 @@ describe('optimizeOverlap', () => {
+     const results = optimizeOverlap(fixture([item('target:ab', 'ab'), item('target:cd', 'cd')]))
+ 
+     expect(results.slice(0, 4).map(sequence)).toEqual([
+       ['a', 'c'],
+       ['a', 'd'],
+       ['c', 'a'],
+       ['c', 'b'],
+     ])
+     expect(results.find((result) => result.steps.at(-1)?.query === 'a')?.steps[0].query).toBe('c')
+   })
++
++  test('carries alias-aware explanations through every overlap step', () => {
++    const brownBed = item('minecraft:brown_bed', 'Brown Bed')
++    const whiteBed = item('minecraft:white_bed', 'Ivory Rest')
++    const brownCarpet = item('minecraft:brown_carpet', 'Brown Carpet')
++    const whiteCarpet = item('minecraft:white_carpet', 'Ivory Rug')
++    const bedCollectionId = 'collection:bed'
++    const carpetCollectionId = 'collection:carpet'
++    const brownBedRecipe = recipe('recipe:brown_bed', brownBed.id, bedCollectionId)
++    const whiteBedRecipe = recipe('recipe:white_bed', whiteBed.id, bedCollectionId)
++    const brownCarpetRecipe = recipe('recipe:brown_carpet', brownCarpet.id, carpetCollectionId)
++    const whiteCarpetRecipe = recipe('recipe:white_carpet', whiteCarpet.id, carpetCollectionId)
++    const input: OptimizeInput = {
++      targetIds: new Set([whiteBed.id, whiteCarpet.id]),
++      eligibleRecipes: [whiteBedRecipe, whiteCarpetRecipe],
++      recipes: [brownBedRecipe, whiteBedRecipe, brownCarpetRecipe, whiteCarpetRecipe],
++      collections: new Map([
++        [bedCollectionId, collection(
++          bedCollectionId,
++          [brownBedRecipe.id, whiteBedRecipe.id],
++          [brownBed.id, whiteBed.id],
++          'bed',
++        )],
++        [carpetCollectionId, collection(
++          carpetCollectionId,
++          [brownCarpetRecipe.id, whiteCarpetRecipe.id],
++          [brownCarpet.id, whiteCarpet.id],
++          'carpet',
++        )],
++      ]),
++      items: new Map([brownBed, whiteBed, brownCarpet, whiteCarpet].map((searchItem) => [
++        searchItem.id,
++        searchItem,
++      ])),
++    }
++
++    const hasBedAlias = (step: OverlapResult['steps'][number]) => step.explanations.some(
++      (explanation) => explanation.matchedMemberItemId === brownBed.id
++        && explanation.visibleOutputItemId === whiteBed.id,
++    )
++    const hasCarpetAlias = (step: OverlapResult['steps'][number]) => step.explanations.some(
++      (explanation) => explanation.matchedMemberItemId === brownCarpet.id
++        && explanation.visibleOutputItemId === whiteCarpet.id,
++    )
++    const result = optimizeOverlap(input).find(({ steps }) =>
++      steps.length === 2
++      && steps.every((step) => hasBedAlias(step) || hasCarpetAlias(step))
++      && steps.some(hasBedAlias)
++      && steps.some(hasCarpetAlias),
++    )
++
++    expect(result).toBeDefined()
++
++    expect(result!.steps.flatMap(({ explanations }) => explanations)).toContainEqual(expect.objectContaining({
++      matchedMemberItemId: brownBed.id,
++      visibleOutputItemId: whiteBed.id,
++    }))
++    expect(result!.steps.flatMap(({ explanations }) => explanations)).toContainEqual(expect.objectContaining({
++      matchedMemberItemId: brownCarpet.id,
++      visibleOutputItemId: whiteCarpet.id,
++    }))
++  })
+ })
+diff --git a/web/src/engine/overlapOptimizer.ts b/web/src/engine/overlapOptimizer.ts
+index 06c0ac9..cbf5a50 100644
+--- a/web/src/engine/overlapOptimizer.ts
++++ b/web/src/engine/overlapOptimizer.ts
+@@ -1,25 +1,25 @@
+-import type { MatchExplanation } from './search'
++import type { CollectionMatchExplanation } from './search'
+ import { scoreStep, transitionTypingCost } from './scoring'
+ import {
+   prepareOptimization,
+   type OptimizeInput,
+   type PreparedCandidate,
+   type PreparedOptimization,
+ } from './singleOptimizer'
+ 
+ export interface OverlapStep {
+   query: string
+   coveredTargetIds: string[]
+   newTargetIds: string[]
+   junkItemIds: string[]
+-  explanations: MatchExplanation[]
++  explanations: CollectionMatchExplanation[]
+   retainedPrefix: string
+   freeBackspaceCount: number
+   typedSuffix: string
+ }
+ 
+ export interface OverlapScoreBreakdown {
+   initialLengthPenalty: number
+   transitionTypingPenalty: number
+   junkPresencePenalty: number
+   junkCountPenalty: number
+diff --git a/web/src/engine/singleOptimizer.test.ts b/web/src/engine/singleOptimizer.test.ts
+index 687ec3e..de04056 100644
+--- a/web/src/engine/singleOptimizer.test.ts
++++ b/web/src/engine/singleOptimizer.test.ts
+@@ -1,38 +1,95 @@
+ import { describe, expect, test } from 'vitest'
+ 
+-import type { SearchItem } from '../domain/types'
+-import { optimizeSingle, type OptimizeInput } from './singleOptimizer'
++import type { CraftingRecipe, RecipeResultCollection, SearchItem } from '../domain/types'
++import {
++  optimizeSingle,
++  prepareOptimization,
++  prepareOptimizationCooperatively,
++  type OptimizeInput,
++} from './singleOptimizer'
+ 
+ function item(id: string, text: string): SearchItem {
+   return {
+     id,
+     name: id,
+     confidence: 'source_reproduced',
+     searchLines: [{ source: 'name', text }],
+   }
+ }
+ 
++function recipe(
++  id: string,
++  outputItemId: string,
++  resultCollectionId: string,
++): CraftingRecipe {
++  return {
++    id,
++    recipeGroup: null,
++    recipeBookCategory: 'crafting_misc',
++    resultCollectionId,
++    outputItemId,
++    outputCount: 1,
++    ingredientSlots: [{ acceptedItems: ['ingredient:shared'] }],
++    fits2x2: true,
++    fits3x3: true,
++  }
++}
++
++function collection(
++  id: string,
++  recipeIds: string[],
++  outputItemIds: string[],
++  recipeGroup: string | null = null,
++): RecipeResultCollection {
++  return {
++    id,
++    recipeBookCategory: 'crafting_misc',
++    recipeGroup,
++    recipeIds,
++    outputItemIds,
++  }
++}
++
++function isolatedInput(targets: SearchItem[], junk: SearchItem[] = []): OptimizeInput {
++  const visibleItems = [...targets, ...junk]
++  const recipes = visibleItems.map((searchItem) => recipe(
++    `recipe:${searchItem.id}`,
++    searchItem.id,
++    `collection:${searchItem.id}`,
++  ))
++
++  return {
++    targetIds: new Set(targets.map(({ id }) => id)),
++    eligibleRecipes: recipes,
++    recipes,
++    collections: new Map(recipes.map((craftingRecipe) => [
++      craftingRecipe.resultCollectionId,
++      collection(
++        craftingRecipe.resultCollectionId,
++        [craftingRecipe.id],
++        [craftingRecipe.outputItemId],
++      ),
++    ])),
++    items: new Map(visibleItems.map((searchItem) => [searchItem.id, searchItem])),
++  }
++}
++
+ function fixture(): OptimizeInput {
+   const targets = [
+     item('minecraft:iron_sword', 'Sword 4 z ab cd ef İx 1'),
+     item('minecraft:diamond_sword', 'Sword 4 z ab cd ef İx 2'),
+   ]
+   const sharedJunk = item('minecraft:shared_junk', 'Axe 4')
+   const secondJunk = item('minecraft:second_junk', 'Pick 4')
+ 
+-  return {
+-    targetIds: new Set(targets.map(({ id }) => id)),
+-    // The recipe layer has already collapsed two recipes for shared_junk into one visible output.
+-    visibleItemIds: new Set([...targets, sharedJunk, secondJunk].map(({ id }) => id)),
+-    items: new Map([...targets, sharedJunk, secondJunk].map((searchItem) => [searchItem.id, searchItem])),
+-  }
++  return isolatedInput(targets, [sharedJunk, secondJunk])
+ }
+ 
+ function resultIndex(results: ReturnType<typeof optimizeSingle>, query: string): number {
+   const index = results.findIndex((result) => result.query === query)
+   expect(index).toBeGreaterThanOrEqual(0)
+   return index
+ }
+ 
+ describe('optimizeSingle', () => {
+   test('keeps only complete queries and reports distinct visible junk with match explanations', () => {
+@@ -45,27 +102,28 @@ describe('optimizeSingle', () => {
+       junkItemIds: ['minecraft:second_junk', 'minecraft:shared_junk'],
+       score: {
+         lengthPenalty: 0,
+         junkPresencePenalty: 2,
+         junkCountPenalty: 1,
+         total: 3,
+       },
+     })
+     expect(dirty?.explanations).toEqual(expect.arrayContaining([
+       expect.objectContaining({
+-        itemId: 'minecraft:iron_sword',
++        matchedMemberItemId: 'minecraft:iron_sword',
++        visibleOutputItemId: 'minecraft:iron_sword',
+         source: 'name',
+         line: 'Sword 4 z ab cd ef İx 1',
+         matchedSpan: { start: 6, end: 7, text: '4' },
+       }),
+-      expect.objectContaining({ itemId: 'minecraft:shared_junk' }),
+-      expect.objectContaining({ itemId: 'minecraft:second_junk' }),
++      expect.objectContaining({ visibleOutputItemId: 'minecraft:shared_junk' }),
++      expect.objectContaining({ visibleOutputItemId: 'minecraft:second_junk' }),
+     ]))
+     expect(results.map((result) => result.query)).not.toContain('1')
+     expect(dirty?.junkItemIds).not.toContain('minecraft:iron_sword')
+   })
+ 
+   test('ranks by score, junk appearances, fixed step count, typed characters, then query text', () => {
+     const results = optimizeSingle(fixture())
+ 
+     // A clean three-character query outranks the dirty one-character query on score.
+     expect(resultIndex(results, 'swo')).toBeLessThan(resultIndex(results, '4'))
+@@ -74,15 +132,83 @@ describe('optimizeSingle', () => {
+     // Single-query results all take one step; fewer newly typed characters breaks this tie.
+     expect(resultIndex(results, 'z')).toBeLessThan(resultIndex(results, 'ab'))
+     // Equal score, junk, step count, and typing cost fall back to alphabetical query text.
+     expect(resultIndex(results, 'cd')).toBeLessThan(resultIndex(results, 'ef'))
+   })
+ 
+   test('forwards original Unicode-safe match spans in explanations', () => {
+     const result = optimizeSingle(fixture()).find((candidate) => candidate.query === 'x')
+ 
+     expect(result?.explanations).toContainEqual(expect.objectContaining({
+-      itemId: 'minecraft:iron_sword',
++      matchedMemberItemId: 'minecraft:iron_sword',
++      visibleOutputItemId: 'minecraft:iron_sword',
+       matchedSpan: { start: 20, end: 21, text: 'x' },
+     }))
+   })
++
++  test('covers an exact target through an uncraftable alias and charges only eligible exact junk', () => {
++    const brownBed = item('minecraft:brown_bed', 'Brown Bed')
++    const whiteBed = item('minecraft:white_bed', 'Ivory Rest')
++    const brownCarpet = item('minecraft:brown_carpet', 'Brown Carpet')
++    const whiteCarpet = item('minecraft:white_carpet', 'Ivory Rug')
++    const bedCollectionId = 'collection:bed'
++    const carpetCollectionId = 'collection:carpet'
++    const brownBedRecipe = recipe('recipe:brown_bed', brownBed.id, bedCollectionId)
++    const whiteBedRecipe = recipe('recipe:white_bed', whiteBed.id, bedCollectionId)
++    const brownCarpetRecipe = recipe('recipe:brown_carpet', brownCarpet.id, carpetCollectionId)
++    const whiteCarpetRecipe = recipe('recipe:white_carpet', whiteCarpet.id, carpetCollectionId)
++    const input: OptimizeInput = {
++      targetIds: new Set([whiteBed.id]),
++      eligibleRecipes: [whiteBedRecipe, whiteCarpetRecipe],
++      recipes: [brownBedRecipe, whiteBedRecipe, brownCarpetRecipe, whiteCarpetRecipe],
++      collections: new Map([
++        [bedCollectionId, collection(
++          bedCollectionId,
++          [brownBedRecipe.id, whiteBedRecipe.id],
++          [brownBed.id, whiteBed.id],
++          'bed',
++        )],
++        [carpetCollectionId, collection(
++          carpetCollectionId,
++          [brownCarpetRecipe.id, whiteCarpetRecipe.id],
++          [brownCarpet.id, whiteCarpet.id],
++          'carpet',
++        )],
++      ]),
++      items: new Map([brownBed, whiteBed, brownCarpet, whiteCarpet].map((searchItem) => [
++        searchItem.id,
++        searchItem,
++      ])),
++    }
++
++    const result = optimizeSingle(input).find(({ query }) => query === 'wn')
++
++    expect(result).toMatchObject({
++      coveredTargetIds: [whiteBed.id],
++      junkItemIds: [whiteCarpet.id],
++    })
++    expect(result?.junkItemIds).not.toContain(brownBed.id)
++    expect(result?.junkItemIds).not.toContain(brownCarpet.id)
++    expect(result?.explanations).toContainEqual(expect.objectContaining({
++      query: 'wn',
++      collectionId: bedCollectionId,
++      matchedMemberItemId: brownBed.id,
++      visibleOutputItemId: whiteBed.id,
++    }))
++  })
++
++  test('prepares deeply equal synchronous and cooperative candidates per eligible collection', async () => {
++    const input = isolatedInput([item('target:a', 'a')], [item('junk:b', 'b')])
++    const progress: Array<[number, number]> = []
++    let yieldCount = 0
++
++    const cooperative = await prepareOptimizationCooperatively(input, {
++      workChunkSize: 1,
++      yieldControl: async () => { yieldCount += 1 },
++      onProgress: (completed, total) => progress.push([completed, total]),
++    })
++
++    expect(cooperative).toEqual(prepareOptimization(input))
++    expect(progress.at(-1)).toEqual([2, 2])
++    expect(yieldCount).toBe(2)
++  })
+ })
+diff --git a/web/src/engine/singleOptimizer.ts b/web/src/engine/singleOptimizer.ts
+index 8c527bc..dd77d0f 100644
+--- a/web/src/engine/singleOptimizer.ts
++++ b/web/src/engine/singleOptimizer.ts
+@@ -1,36 +1,39 @@
+-import type { SearchItem } from '../domain/types'
++import type { CraftingRecipe, RecipeResultCollection, SearchItem } from '../domain/types'
+ 
+-import { candidateQueries } from './candidates'
+-import { type MatchExplanation, matchItem } from './search'
++import { candidateQueriesForTargets } from './candidates'
++import { matchEligibleCollectionOutputs } from './collectionSearch'
++import type { CollectionMatchExplanation } from './search'
+ import { type ScoreBreakdown, scoreStep } from './scoring'
+ 
+ export interface OptimizeInput {
+   targetIds: ReadonlySet<string>
+-  visibleItemIds: ReadonlySet<string>
++  eligibleRecipes: readonly CraftingRecipe[]
++  recipes: readonly CraftingRecipe[]
++  collections: ReadonlyMap<string, RecipeResultCollection>
+   items: ReadonlyMap<string, SearchItem>
+ }
+ 
+ export interface SingleResult {
+   query: string
+   coveredTargetIds: string[]
+   junkItemIds: string[]
+-  explanations: MatchExplanation[]
++  explanations: CollectionMatchExplanation[]
+   score: ScoreBreakdown
+ }
+ 
+ export interface PreparedCandidate {
+   query: string
+   targetMask: bigint
+   coveredTargetIds: string[]
+   junkItemIds: string[]
+-  explanations: MatchExplanation[]
++  explanations: CollectionMatchExplanation[]
+ }
+ 
+ export interface PreparedOptimization {
+   targetIds: string[]
+   candidates: PreparedCandidate[]
+ }
+ 
+ export interface CooperativePreparationOptions {
+   signal?: AbortSignal
+   yieldControl: () => Promise<void>
+@@ -47,47 +50,63 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
+ }
+ 
+ function chunkSize(value: number | undefined): number {
+   return Number.isInteger(value) && (value ?? 0) > 0 ? value! : 4096
+ }
+ 
+ function preparationContext(input: OptimizeInput) {
+   const targetIds = [...input.targetIds].sort(compareText)
+   const targetIdSet = new Set(targetIds)
+   const targetIndexes = new Map(targetIds.map((targetId, index) => [targetId, index]))
+-  const targetItems = targetIds
+-    .map((targetId) => input.items.get(targetId))
+-    .filter((target): target is SearchItem => target !== undefined)
+-  const visibleItemIds = [...input.visibleItemIds].sort(compareText)
+-  const queries = candidateQueries(targetItems)
+-  return { targetIds, targetIdSet, targetIndexes, visibleItemIds, queries }
++  const eligibleCollectionIds = [...new Set(
++    input.eligibleRecipes.map(({ resultCollectionId }) => resultCollectionId),
++  )].sort(compareText)
++  const eligibleCollections = eligibleCollectionIds.map((collectionId) => ({
++    collectionId,
++    recipes: input.eligibleRecipes.filter(
++      ({ resultCollectionId }) => resultCollectionId === collectionId,
++    ),
++  }))
++  const queries = candidateQueriesForTargets(
++    input.targetIds,
++    input.recipes,
++    input.collections,
++    input.items,
++  )
++  return { targetIds, targetIdSet, targetIndexes, eligibleCollections, queries }
+ }
+ 
+-function preparedCandidate(
++function addCollectionMatches(
+   input: OptimizeInput,
+-  context: ReturnType<typeof preparationContext>,
+   query: string,
+-): PreparedCandidate | undefined {
+-  const matchedItemIds = new Set<string>()
+-  const explanations: MatchExplanation[] = []
+-
+-  for (const itemId of context.visibleItemIds) {
+-    const item = input.items.get(itemId)
+-    if (item === undefined) continue
+-
+-    const itemExplanations = matchItem(item, query)
+-    if (itemExplanations.length === 0) continue
+-
+-    matchedItemIds.add(itemId)
+-    explanations.push(...itemExplanations)
++  eligibleRecipes: readonly CraftingRecipe[],
++  matchedItemIds: Set<string>,
++  explanations: CollectionMatchExplanation[],
++): void {
++  const matches = matchEligibleCollectionOutputs(
++    query,
++    eligibleRecipes,
++    input.collections,
++    input.items,
++  )
++  for (const [outputItemId, outputExplanations] of matches) {
++    matchedItemIds.add(outputItemId)
++    explanations.push(...outputExplanations)
+   }
++}
+ 
++function preparedCandidateFromMatches(
++  context: ReturnType<typeof preparationContext>,
++  query: string,
++  matchedItemIds: ReadonlySet<string>,
++  explanations: CollectionMatchExplanation[],
++): PreparedCandidate | undefined {
+   const coveredTargetIds = context.targetIds.filter((targetId) => matchedItemIds.has(targetId))
+   if (coveredTargetIds.length === 0) return undefined
+ 
+   let targetMask = 0n
+   for (const targetId of coveredTargetIds) {
+     targetMask |= 1n << BigInt(context.targetIndexes.get(targetId)!)
+   }
+ 
+   return {
+     query,
+@@ -95,80 +114,66 @@ function preparedCandidate(
+     coveredTargetIds,
+     junkItemIds: [...matchedItemIds]
+       .filter((itemId) => !context.targetIdSet.has(itemId))
+       .sort(compareText),
+     explanations,
+   }
+ }
+ 
+ export function prepareOptimization(input: OptimizeInput): PreparedOptimization {
+   const context = preparationContext(input)
+-  const candidates = context.queries
+-    .map((query) => preparedCandidate(input, context, query))
+-    .filter((candidate): candidate is PreparedCandidate => candidate !== undefined)
++  const candidates: PreparedCandidate[] = []
++  for (const query of context.queries) {
++    const matchedItemIds = new Set<string>()
++    const explanations: CollectionMatchExplanation[] = []
++    for (const { recipes } of context.eligibleCollections) {
++      addCollectionMatches(input, query, recipes, matchedItemIds, explanations)
++    }
++    const candidate = preparedCandidateFromMatches(context, query, matchedItemIds, explanations)
++    if (candidate !== undefined) candidates.push(candidate)
++  }
+   return { targetIds: context.targetIds, candidates }
+ }
+ 
+ export async function prepareOptimizationCooperatively(
+   input: OptimizeInput,
+   options: CooperativePreparationOptions,
+ ): Promise<PreparedOptimization> {
+   const context = preparationContext(input)
+   const candidates: PreparedCandidate[] = []
+-  const total = context.queries.length * context.visibleItemIds.length
++  const total = context.queries.length * context.eligibleCollections.length
+   const boundedChunkSize = chunkSize(options.workChunkSize)
+   let completed = 0
+   let workSinceYield = 0
+ 
+   throwIfAborted(options.signal)
+   options.onProgress?.(completed, total)
+   for (const query of context.queries) {
+     const matchedItemIds = new Set<string>()
+-    const explanations: MatchExplanation[] = []
+-
+-    for (const itemId of context.visibleItemIds) {
+-      const item = input.items.get(itemId)
+-      if (item !== undefined) {
+-        const itemExplanations = matchItem(item, query)
+-        if (itemExplanations.length > 0) {
+-          matchedItemIds.add(itemId)
+-          explanations.push(...itemExplanations)
+-        }
+-      }
++    const explanations: CollectionMatchExplanation[] = []
++
++    for (const { recipes } of context.eligibleCollections) {
++      addCollectionMatches(input, query, recipes, matchedItemIds, explanations)
+ 
+       completed += 1
+       workSinceYield += 1
+       if (workSinceYield >= boundedChunkSize) {
+         options.onProgress?.(completed, total)
+         throwIfAborted(options.signal)
+         await options.yieldControl()
+         throwIfAborted(options.signal)
+         workSinceYield = 0
+       }
+     }
+ 
+-    const coveredTargetIds = context.targetIds.filter((targetId) => matchedItemIds.has(targetId))
+-    if (coveredTargetIds.length === 0) continue
+-
+-    let targetMask = 0n
+-    for (const targetId of coveredTargetIds) {
+-      targetMask |= 1n << BigInt(context.targetIndexes.get(targetId)!)
+-    }
+-    candidates.push({
+-      query,
+-      targetMask,
+-      coveredTargetIds,
+-      junkItemIds: [...matchedItemIds]
+-        .filter((itemId) => !context.targetIdSet.has(itemId))
+-        .sort(compareText),
+-      explanations,
+-    })
++    const candidate = preparedCandidateFromMatches(context, query, matchedItemIds, explanations)
++    if (candidate !== undefined) candidates.push(candidate)
+   }
+ 
+   throwIfAborted(options.signal)
+   options.onProgress?.(completed, total)
+   return { targetIds: context.targetIds, candidates }
+ }
+ 
+ export function optimizeSinglePrepared(prepared: PreparedOptimization): SingleResult[] {
+   if (prepared.targetIds.length === 0) return []
+   const completeMask = (1n << BigInt(prepared.targetIds.length)) - 1n

@@ -1,0 +1,202 @@
+# Review package: 5768bb5..7b544ad
+
+## Commits
+7b544ad test: lock recipe collection search behavior
+
+## Files changed
+ README.md                                 | 19 +++++---
+ web/src/engine/realDataAcceptance.test.ts | 81 +++++++++++++++++++++++++++++++
+ 2 files changed, 93 insertions(+), 7 deletions(-)
+
+## Diff
+diff --git a/README.md b/README.md
+index 4dfd45c..67009bf 100644
+--- a/README.md
++++ b/README.md
+@@ -31,28 +31,29 @@ pnpm --dir web exec playwright install chromium
+ Use `./.venv/bin/python` for the Python commands below. The Playwright browser download is a one-time setup for the end-to-end suite.
+ 
+ ## Generate, develop, and verify
+ 
+ Generate the browser data from the pinned source tree:
+ 
+ ```powershell
+ .\.venv\Scripts\python.exe -m mcsr_data.generate --source minecraft-data --output web/public/data
+ ```
+ 
+-The production command requires `recipes/`, `tags/items/`, and `lang/en_us.json`, then enforces the clean Minecraft 1.16.1 English baseline of exactly 634 recipes and 562 output items. The current baseline also contains 281 concrete inventory ingredients and 0 validation errors. It atomically writes schema-version-2 artifacts:
++The production command requires `recipes/`, `tags/items/`, and `lang/en_us.json`, then enforces the clean Minecraft 1.16.1 English baseline of exactly 634 recipes, 562 output items, 281 concrete inventory ingredients, 354 recipe-result collections, and 0 validation errors. It atomically writes five mutually consistent schema-version-3 artifacts:
+ 
+ - `web/public/data/search-items.json`: output item names, line-bounded searchable text, provenance, and confidence.
+ - `web/public/data/inventory-items.json`: every concrete recipe ingredient ID and its English name for the inventory picker.
+-- `web/public/data/crafting-recipes.json`: normalized recipes, resolved ingredient alternatives, output counts, and grid compatibility.
++- `web/public/data/crafting-recipes.json`: normalized recipes, resolved ingredient alternatives, output counts, grid compatibility, exact recipe groups, recipe-book categories, and result-collection IDs.
++- `web/public/data/recipe-result-collections.json`: deterministic category-plus-group collections with their exact recipe and output members.
+ - `web/public/data/validation-report.json`: generation counts and machine-readable diagnostics.
+ 
+-If validation fails, the generator prints every diagnostic and atomically writes `validation-failure-report.json` while leaving all last-valid browser artifacts untouched. Small fixture generation is intentionally opt-in:
++If validation fails, the generator prints every diagnostic and atomically writes `validation-failure-report.json` while leaving all five last-valid browser artifacts untouched. Small fixture generation is intentionally opt-in:
+ 
+ ```powershell
+ .\.venv\Scripts\python.exe -m mcsr_data.generate --source path/to/fixture --output path/to/output --allow-non-baseline
+ ```
+ 
+ Do not use `--allow-non-baseline` for production browser data.
+ 
+ Run the development server:
+ 
+ ```powershell
+@@ -65,31 +66,31 @@ Run the complete verification workflow from the repository root:
+ 
+ ```powershell
+ .\.venv\Scripts\python.exe -m pytest -v
+ .\.venv\Scripts\python.exe -m mcsr_data.generate --source minecraft-data --output web/public/data
+ pnpm --dir web test --run
+ pnpm --dir web run typecheck
+ pnpm --dir web run build
+ pnpm --dir web run e2e
+ ```
+ 
+-The two browser tests start Vite on `127.0.0.1` and run Chromium at an explicit 1440×1000 desktop viewport. The real-data path uses accessible roles and labels, verifies keyboard focus order, selects ingredient-only `minecraft:oak_log` and `minecraft:cobblestone` from the real catalog, confirms ingredient-only IDs are not target choices, checks representative queries, target coverage, and scores in both ranked categories, excludes a disabled set from the aggregate, then reloads to verify target membership, enabled state, grid size, and set order persisted. A deterministic routed data fixture passes through the real App and `ResultPanel` boundary to verify that `😀İx` renders unchanged, reports its `name` source and UTF-16 span 3–4, and marks only `x`.
++The browser tests start Vite on `127.0.0.1` and run Chromium at an explicit 1440×1000 desktop viewport. The real-data path uses accessible roles and labels, verifies keyboard focus order, selects ingredient-only `minecraft:oak_log` and `minecraft:cobblestone` from the real catalog, confirms ingredient-only IDs are not target choices, checks representative queries, target coverage, and scores in both ranked categories, excludes a disabled set from the aggregate, then reloads to verify target membership, enabled state, grid size, and set order persisted. A deterministic routed data fixture passes through the real App and `ResultPanel` boundary to verify both Unicode-safe UTF-16 spans and collection alias explanations that distinguish the matched member from the visible craftable output. The generated-data acceptance suite locks the confirmed `wn`, `wn `, `re`, `ngo`, `ro`, and `oe` queries, including White Wool isolation and White Bed candidate generation.
+ 
+ The production build is emitted to the ignored `web/dist/` directory. Its files use relative asset paths and can be hosted by an ordinary static-file server.
+ 
+ ## Architecture
+ 
+-The build-time generator under `generator/src/mcsr_data/` parses the extracted 1.16.1 recipes, resolves item tags, applies English translations and source-reproduced tooltip rules, validates cross-references, and publishes deterministic JSON. Generator tests live in `generator/tests/`; tooltip-source provenance is recorded in `generator/references/minecraft-1.16.1-tooltip-sources.md`.
++The build-time generator under `generator/src/mcsr_data/` parses the extracted 1.16.1 recipes, resolves item tags, applies English translations and source-reproduced tooltip rules, constructs recipe-result collections, validates cross-references, and publishes deterministic JSON. Generator tests live in `generator/tests/`; source provenance is recorded in `generator/references/minecraft-1.16.1-tooltip-sources.md` and `generator/references/minecraft-1.16.1-recipe-collection-sources.md`.
+ 
+ The runtime application under `web/src/` has explicit module boundaries:
+ 
+-- `data/` validates and loads the generated schemas.
++- `data/` fetches the four runtime payloads (search items, inventory items, recipes, and result collections), rejects mixed schema versions, and validates their complete cross-reference graph.
+ - `engine/` implements craftability, line-bounded search, shared candidate preparation, single-query ranking, overlap state search, scoring, bounded within-entry cancellation/progress, and workspace aggregation without React dependencies.
+ - `persistence/` validates, migrates, and recovers browser records.
+ - `presets/` contains committed read-only inventory presets.
+ - `components/` and `App.tsx` own the accessible editor, persisted working state, optimization lifecycle, and explanations.
+ 
+ The React application never contacts a live game or backend. Changing the explicit inventory recalculates the saved target workspace but does not replace it.
+ 
+ ## Inventories, presets, and browser storage
+ 
+ The inventory is a set of exact item IDs, each available in infinite quantity. Its choices come from the concrete ingredient union in `inventory-items.json`, while target choices remain the recipe outputs in `search-items.json`. Selecting `minecraft:oak_log`, for example, does not imply planks, sticks, or any other derived item.
+@@ -99,26 +100,30 @@ Edit `web/src/presets/builtInPresets.ts` to add committed built-in presets. Each
+ The browser exposes exactly three custom inventory slots. Each stores only a name and exact item-ID list and can be saved, overwritten, loaded, or cleared. They are versioned in local storage under `mcsr.inventory-slots.v1`.
+ 
+ Target sets are stored separately as one auto-saved workspace under `mcsr.target-workspace.v1`. That record preserves every set's ID, targets, enabled state, grid size, and display order. Disabled sets stay visible and saved but do not contribute to optimization or the aggregate score. Enabled empty sets are likewise saved and editable but remain non-scoring until a target is added. Malformed members are isolated where possible; unrecoverable raw records are copied to `mcsr.recovery.*` keys before safe defaults are restored.
+ 
+ Browser storage read, quota, or permission failures do not discard the active editor state. The app keeps the latest values in memory for the current page and surfaces a warning that they may be lost after reload.
+ 
+ ## Search and scoring
+ 
+ Queries are case-insensitive substrings, one through five characters long, and must occur within one searchable name or tooltip line. Printable spaces, numbers, punctuation, and symbols are eligible. Results explain the exact source line and matched span.
+ 
++Search reproduces Minecraft 1.16.1 recipe-result collections rather than treating each output as an isolated search document. Recipes with the same non-empty, exact JSON `group` join only when they also share the source-audited crafting recipe-book category; recipes with a missing or empty group each remain isolated. For a query, the engine first matches every searchable output member of an eligible recipe's collection, including members whose own recipes are not craftable, and then emits only the exact outputs of eligible recipes. For example, `wn` can match Brown Bed in the `bed` collection and surface craftable White Bed without claiming that Brown Bed is craftable.
++
++This collection lookup does not collapse item identity. Inventory entries, targets, visible outputs, and junk remain exact Minecraft item IDs: White Wool does not grant Brown Wool, White Bed and Brown Bed remain separate outputs, and ungrouped White Wool made from String does not inherit colored-wool aliases. There are no generic color, wood, or material-family records.
++
+ For a complete single query:
+ 
+ ```text
+ length penalty        = max(0, query length - 2)
+ junk-presence penalty = 2 when any non-target output matches, otherwise 0
+ junk-count penalty    = 0.5 × distinct junk output count
+ score                 = sum of those penalties
+ ```
+ 
+ Overlap results order useful queries to cover new targets. The first query uses the same length penalty; each transition charges only newly typed characters after the longest retained prefix. Backspaces are free. Junk presence and distinct junk are charged independently at every step, so the same junk item can be charged again later.
+ 
+ Single-query and overlap rankings remain separate. Each enabled target set contributes its lower complete score to the aggregate; if neither method completes, it contributes a deterministic finite failure score above every possible complete result for the same target and visible-output counts. Ties prefer fewer junk appearances, fewer steps, fewer typed characters, then alphabetical query sequence.
+ 
+ ## Validation boundary
+ 
+-The generator's tooltip behavior is audited against Minecraft 1.16.1 client sources, and every generated artifact must pass schema and diagnostic validation. However, automatic comparison with a running game is deferred: a future Fabric 1.16.1 client exporter will enumerate the same recipe outputs, call the game's tooltip implementation in English, and diff that export against `search-items.json`. Until that separate validator exists and runs, confidence means source-reproduced or explicitly overridden—not live-game verified.
++The generator's tooltip and recipe-result collection behavior is audited against Minecraft 1.16.1 client sources, and every generated artifact must pass schema and diagnostic validation. The browser requires schema version 3 for all four runtime payloads and rejects an older, newer, or mixed-version set explicitly. However, automatic comparison with a running game is deferred: a future Fabric 1.16.1 client exporter will enumerate the same recipe outputs, call the game's tooltip implementation in English, and diff that export against `search-items.json`. Until that separate validator exists and runs, confidence means source-reproduced or explicitly overridden—not live-game verified.
+diff --git a/web/src/engine/realDataAcceptance.test.ts b/web/src/engine/realDataAcceptance.test.ts
+new file mode 100644
+index 0000000..65acdcc
+--- /dev/null
++++ b/web/src/engine/realDataAcceptance.test.ts
+@@ -0,0 +1,81 @@
++import { describe, expect, test } from 'vitest'
++
++import craftingRecipesPayload from '../../public/data/crafting-recipes.json'
++import inventoryItemsPayload from '../../public/data/inventory-items.json'
++import recipeResultCollectionsPayload from '../../public/data/recipe-result-collections.json'
++import searchItemsPayload from '../../public/data/search-items.json'
++import { parseGeneratedData } from '../data/schema'
++import { candidateQueriesForTargets } from './candidates'
++import { eligibleRecipes } from './craftability'
++import { matchEligibleCollectionOutputs } from './collectionSearch'
++
++const data = parseGeneratedData(
++  searchItemsPayload,
++  inventoryItemsPayload,
++  craftingRecipesPayload,
++  recipeResultCollectionsPayload,
++)
++
++const groupedInventory = [
++  'minecraft:white_wool',
++  'minecraft:oak_planks',
++  'minecraft:stick',
++  'minecraft:crying_obsidian',
++  'minecraft:glowstone',
++  'minecraft:string',
++]
++const expectedGrouped = new Set([
++  'minecraft:white_bed',
++  'minecraft:respawn_anchor',
++  'minecraft:white_carpet',
++  'minecraft:white_banner',
++])
++
++function outputsFor(
++  query: string,
++  inventoryIds: string[],
++  gridSize: 2 | 3 = 3,
++): Set<string> {
++  const eligible = eligibleRecipes(data.recipes, new Set(inventoryIds), gridSize)
++  return new Set(matchEligibleCollectionOutputs(query, eligible, data.collections, data.items).keys())
++}
++
++describe('generated Minecraft 1.16.1 collection search data', () => {
++  test('matches wn aliases across grouped members but emits only eligible exact outputs', () => {
++    expect(outputsFor('wn', groupedInventory)).toEqual(expectedGrouped)
++    expect(outputsFor('wn ', groupedInventory)).toEqual(expectedGrouped)
++    expect(outputsFor('wn', ['minecraft:string']).has('minecraft:white_wool')).toBe(false)
++  })
++
++  test('includes every confirmed grouped output for re without excluding legitimate direct matches', () => {
++    const reOutputs = outputsFor('re', groupedInventory)
++
++    for (const itemId of expectedGrouped) expect(reOutputs.has(itemId)).toBe(true)
++  })
++
++  test('keeps direct-name ingot and iron-tool searches working', () => {
++    const ingotOutputs = outputsFor('ngo', [
++      'minecraft:iron_nugget',
++      'minecraft:iron_block',
++      'minecraft:gold_nugget',
++      'minecraft:gold_block',
++    ])
++
++    expect(ingotOutputs.has('minecraft:iron_ingot')).toBe(true)
++    expect(ingotOutputs.has('minecraft:gold_ingot')).toBe(true)
++    expect(outputsFor('ro', ['minecraft:iron_ingot', 'minecraft:stick']).has('minecraft:iron_axe')).toBe(true)
++    expect(outputsFor('oe', ['minecraft:iron_ingot', 'minecraft:stick']).has('minecraft:iron_hoe')).toBe(true)
++  })
++
++  test('derives White Bed candidates from every searchable member of its collection', () => {
++    const candidates = candidateQueriesForTargets(
++      new Set(['minecraft:white_bed']),
++      data.recipes,
++      data.collections,
++      data.items,
++    )
++
++    expect(candidates).toContain('wn')
++    expect(candidates).toContain('wn ')
++  })
++})

@@ -1,0 +1,639 @@
+# Review package: 73f586a..bbde3f7
+
+## Commits
+bbde3f7 feat: match eligible recipe collections
+
+## Files changed
+ web/src/engine/candidates.test.ts       |  91 ++++++++++++++++-
+ web/src/engine/candidates.ts            |  34 ++++++-
+ web/src/engine/collectionSearch.test.ts | 169 ++++++++++++++++++++++++++++++++
+ web/src/engine/collectionSearch.ts      | 117 ++++++++++++++++++++++
+ web/src/engine/craftability.test.ts     |  15 ++-
+ web/src/engine/craftability.ts          |  18 ++--
+ web/src/engine/search.ts                |  17 ++++
+ 7 files changed, 451 insertions(+), 10 deletions(-)
+
+## Diff
+diff --git a/web/src/engine/candidates.test.ts b/web/src/engine/candidates.test.ts
+index 6b59c13..ba7560a 100644
+--- a/web/src/engine/candidates.test.ts
++++ b/web/src/engine/candidates.test.ts
+@@ -1,14 +1,14 @@
+ import { describe, expect, test } from 'vitest'
+ 
+-import type { SearchItem } from '../domain/types'
+-import { candidateQueries } from './candidates'
++import type { CraftingRecipe, RecipeResultCollection, SearchItem } from '../domain/types'
++import { candidateQueries, candidateQueriesForTargets } from './candidates'
+ 
+ function target(id: string, lines: string[]): SearchItem {
+   return {
+     id,
+     name: id,
+     confidence: 'source_reproduced',
+     searchLines: lines.map((text) => ({ source: 'name', text })),
+   }
+ }
+ 
+@@ -34,10 +34,97 @@ describe('candidateQueries', () => {
+   })
+ 
+   test('does not begin candidates inside an expanded lowercase character', () => {
+     const candidates = candidateQueries([target('minecraft:expanded', ['İx'])])
+ 
+     expect(candidates).toEqual(['i', 'i̇', 'i̇x', 'x'])
+     expect(candidates).not.toContain('̇')
+     expect(candidates).not.toContain('̇x')
+   })
+ })
++
++function recipe(
++  id: string,
++  outputItemId: string,
++  resultCollectionId: string,
++): CraftingRecipe {
++  return {
++    id,
++    recipeGroup: null,
++    recipeBookCategory: 'crafting_misc',
++    resultCollectionId,
++    outputItemId,
++    outputCount: 1,
++    ingredientSlots: [{ acceptedItems: ['minecraft:stick'] }],
++    fits2x2: true,
++    fits3x3: true,
++  }
++}
++
++function collection(
++  id: string,
++  outputItemIds: string[],
++): RecipeResultCollection {
++  return {
++    id,
++    recipeBookCategory: 'crafting_misc',
++    recipeGroup: null,
++    recipeIds: [],
++    outputItemIds,
++  }
++}
++
++describe('candidateQueriesForTargets', () => {
++  test('derives unique sorted candidates from every member of target collections', () => {
++    const items = new Map([
++      ['minecraft:white_bed', target('minecraft:white_bed', ['Ivory Rest'])],
++      ['minecraft:brown_bed', target('minecraft:brown_bed', ['Brown Bed wn ', 'split'])],
++      ['minecraft:other', target('minecraft:other', ['not used'])],
++    ])
++    const recipes = [
++      recipe('minecraft:white_bed_recipe', 'minecraft:white_bed', 'collection:bed'),
++      recipe('minecraft:other_recipe', 'minecraft:other', 'collection:other'),
++    ]
++    const collections = new Map([
++      ['collection:bed', collection('collection:bed', ['minecraft:white_bed', 'minecraft:brown_bed'])],
++      ['collection:other', collection('collection:other', ['minecraft:other'])],
++    ])
++
++    const candidates = candidateQueriesForTargets(
++      new Set(['minecraft:white_bed']), recipes, collections, items,
++    )
++
++    expect(candidates).toContain('wn')
++    expect(candidates).toContain('wn ')
++    expect(candidates).not.toContain('ts')
++    expect(candidates).not.toContain('not')
++    expect(candidates).toEqual([...new Set(candidates)].sort())
++    expect(candidates.every((candidate) => candidate.length >= 1 && candidate.length <= 5)).toBe(true)
++  })
++
++  test('does not expand targets through collections that cannot output them', () => {
++    const items = new Map([
++      ['minecraft:white_bed', target('minecraft:white_bed', ['Ivory Rest'])],
++      ['minecraft:brown_bed', target('minecraft:brown_bed', ['Brown wn'])],
++      ['minecraft:other', target('minecraft:other', ['Exclusive alias'])],
++    ])
++    const recipes = [recipe('minecraft:white_bed_recipe', 'minecraft:white_bed', 'collection:bed')]
++    const collections = new Map([
++      ['collection:bed', collection('collection:bed', ['minecraft:white_bed', 'minecraft:brown_bed'])],
++      ['collection:other', collection('collection:other', ['minecraft:other'])],
++    ])
++
++    expect(candidateQueriesForTargets(new Set(['minecraft:white_bed']), recipes, collections, items))
++      .not.toContain('exclu')
++  })
++
++  test('rejects target collection members missing from the validated item graph', () => {
++    const recipes = [recipe('minecraft:white_bed_recipe', 'minecraft:white_bed', 'collection:bed')]
++    const collections = new Map([
++      ['collection:bed', collection('collection:bed', ['minecraft:white_bed', 'minecraft:missing'])],
++    ])
++    const items = new Map([['minecraft:white_bed', target('minecraft:white_bed', ['White Bed'])]])
++
++    expect(() => candidateQueriesForTargets(new Set(['minecraft:white_bed']), recipes, collections, items))
++      .toThrow('collection:bed: references missing item minecraft:missing')
++  })
++})
+diff --git a/web/src/engine/candidates.ts b/web/src/engine/candidates.ts
+index 086d4a8..80993c2 100644
+--- a/web/src/engine/candidates.ts
++++ b/web/src/engine/candidates.ts
+@@ -1,11 +1,11 @@
+-import type { SearchItem } from '../domain/types'
++import type { CraftingRecipe, RecipeResultCollection, SearchItem } from '../domain/types'
+ 
+ import { normalizeSearchLine } from './search'
+ 
+ const MAX_QUERY_LENGTH = 5
+ 
+ export function candidateQueries(targets: Iterable<SearchItem>, maxLength = MAX_QUERY_LENGTH): string[] {
+   const effectiveMaxLength = Math.min(Math.max(0, maxLength), MAX_QUERY_LENGTH)
+   const candidates = new Set<string>()
+ 
+   for (const target of targets) {
+@@ -14,10 +14,42 @@ export function candidateQueries(targets: Iterable<SearchItem>, maxLength = MAX_
+       for (const start of line.originalCharacterStarts) {
+         for (let length = 1; length <= effectiveMaxLength && start + length <= line.text.length; length += 1) {
+           candidates.add(line.text.slice(start, start + length))
+         }
+       }
+     }
+   }
+ 
+   return [...candidates].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0))
+ }
++
++export function candidateQueriesForTargets(
++  targetIds: ReadonlySet<string>,
++  recipes: readonly CraftingRecipe[],
++  collections: ReadonlyMap<string, RecipeResultCollection>,
++  items: ReadonlyMap<string, SearchItem>,
++  maxLength = MAX_QUERY_LENGTH,
++): string[] {
++  const targetCollections = new Set<string>()
++  for (const recipe of recipes) {
++    if (targetIds.has(recipe.outputItemId)) {
++      targetCollections.add(recipe.resultCollectionId)
++    }
++  }
++
++  const memberItems: SearchItem[] = []
++  for (const collectionId of [...targetCollections].sort()) {
++    const collection = collections.get(collectionId)
++    if (!collection) {
++      throw new Error(`recipe collection ${collectionId} is missing`)
++    }
++    for (const itemId of collection.outputItemIds) {
++      const item = items.get(itemId)
++      if (!item) {
++        throw new Error(`${collectionId}: references missing item ${itemId}`)
++      }
++      memberItems.push(item)
++    }
++  }
++
++  return candidateQueries(memberItems, maxLength)
++}
+diff --git a/web/src/engine/collectionSearch.test.ts b/web/src/engine/collectionSearch.test.ts
+new file mode 100644
+index 0000000..8f6f0ea
+--- /dev/null
++++ b/web/src/engine/collectionSearch.test.ts
+@@ -0,0 +1,169 @@
++import { describe, expect, test } from 'vitest'
++
++import type { CraftingRecipe, RecipeResultCollection, SearchItem } from '../domain/types'
++import { matchEligibleCollectionOutputs } from './collectionSearch'
++
++function item(id: string, name: string, lines = [name]): SearchItem {
++  return {
++    id,
++    name,
++    confidence: 'source_reproduced',
++    searchLines: lines.map((text, index) => ({ source: index === 0 ? 'name' : 'attribute', text })),
++  }
++}
++
++function recipe(
++  id: string,
++  outputItemId: string,
++  resultCollectionId: string,
++): CraftingRecipe {
++  return {
++    id,
++    recipeGroup: resultCollectionId === 'collection:bed' ? 'bed' : null,
++    recipeBookCategory: 'crafting_misc',
++    resultCollectionId,
++    outputItemId,
++    outputCount: 1,
++    ingredientSlots: [{ acceptedItems: ['minecraft:stick'] }],
++    fits2x2: true,
++    fits3x3: true,
++  }
++}
++
++function collection(
++  id: string,
++  outputItemIds: string[],
++  recipeGroup: string | null = null,
++): RecipeResultCollection {
++  return {
++    id,
++    recipeBookCategory: 'crafting_misc',
++    recipeGroup,
++    recipeIds: [],
++    outputItemIds,
++  }
++}
++
++function fixture() {
++  const items = new Map([
++    ['minecraft:brown_bed', item('minecraft:brown_bed', 'Brown Bed ')],
++    ['minecraft:white_bed', item('minecraft:white_bed', 'Ivory Rest')],
++    ['minecraft:brown_carpet', item('minecraft:brown_carpet', 'Brown Carpet ')],
++    ['minecraft:white_carpet', item('minecraft:white_carpet', 'Ivory Rug')],
++    ['minecraft:brown_banner', item('minecraft:brown_banner', 'Brown Banner ')],
++    ['minecraft:white_banner', item('minecraft:white_banner', 'Ivory Flag')],
++    ['minecraft:respawn_anchor', item('minecraft:respawn_anchor', 'Respawn Anchor ')],
++    ['minecraft:white_wool', item('minecraft:white_wool', 'White Wool')],
++  ])
++  const collections = new Map([
++    ['collection:wool', collection('collection:wool', ['minecraft:white_wool'])],
++    ['collection:carpet', collection('collection:carpet', ['minecraft:brown_carpet', 'minecraft:white_carpet'], 'carpet')],
++    ['collection:bed', collection('collection:bed', ['minecraft:brown_bed', 'minecraft:white_bed'], 'bed')],
++    ['collection:anchor', collection('collection:anchor', ['minecraft:respawn_anchor'])],
++    ['collection:banner', collection('collection:banner', ['minecraft:brown_banner', 'minecraft:white_banner'], 'banner')],
++  ])
++  const eligible = [
++    recipe('minecraft:white_bed_recipe', 'minecraft:white_bed', 'collection:bed'),
++    recipe('minecraft:white_carpet_recipe', 'minecraft:white_carpet', 'collection:carpet'),
++    recipe('minecraft:white_banner_recipe', 'minecraft:white_banner', 'collection:banner'),
++    recipe('minecraft:respawn_anchor_recipe', 'minecraft:respawn_anchor', 'collection:anchor'),
++    recipe('minecraft:white_wool_recipe', 'minecraft:white_wool', 'collection:wool'),
++  ]
++  return { items, collections, eligible }
++}
++
++describe('matchEligibleCollectionOutputs', () => {
++  test('matches aliases but emits only the eligible exact collection outputs', () => {
++    const { eligible, collections, items } = fixture()
++
++    const outputs = matchEligibleCollectionOutputs('wn', eligible, collections, items)
++
++    expect([...outputs.keys()]).toEqual([
++      'minecraft:respawn_anchor',
++      'minecraft:white_banner',
++      'minecraft:white_bed',
++      'minecraft:white_carpet',
++    ])
++    expect(outputs.has('minecraft:white_wool')).toBe(false)
++    expect(outputs.get('minecraft:white_bed')).toEqual([{
++      query: 'wn',
++      collectionId: 'collection:bed',
++      recipeGroup: 'bed',
++      matchedMemberItemId: 'minecraft:brown_bed',
++      matchedMemberName: 'Brown Bed ',
++      visibleOutputItemId: 'minecraft:white_bed',
++      visibleOutputName: 'Ivory Rest',
++      source: 'name',
++      line: 'Brown Bed ',
++      matchedSpan: { start: 3, end: 5, text: 'wn' },
++    }])
++  })
++
++  test('preserves ordinary trailing-space aliases and direct member matches', () => {
++    const { eligible, collections, items } = fixture()
++
++    expect([...matchEligibleCollectionOutputs('wn ', eligible, collections, items).keys()]).toEqual([
++      'minecraft:respawn_anchor',
++      'minecraft:white_banner',
++      'minecraft:white_bed',
++      'minecraft:white_carpet',
++    ])
++  })
++
++  test('emits two eligible exact outputs from one matched collection', () => {
++    const { eligible, collections, items } = fixture()
++    eligible.push(recipe('minecraft:second_white_bed_recipe', 'minecraft:second_white_bed', 'collection:bed'))
++    items.set('minecraft:second_white_bed', item('minecraft:second_white_bed', 'Second Ivory Rest'))
++    collections.set('collection:bed', collection(
++      'collection:bed',
++      ['minecraft:brown_bed', 'minecraft:white_bed', 'minecraft:second_white_bed'],
++      'bed',
++    ))
++
++    expect([...matchEligibleCollectionOutputs('wn', eligible, collections, items).keys()])
++      .toContain('minecraft:second_white_bed')
++  })
++
++  test('deduplicates an output shared by matched collections and orders explanations', () => {
++    const items = new Map([
++      ['minecraft:alias_a', item('minecraft:alias_a', 'Zwn', ['Zwn', 'awn'])],
++      ['minecraft:alias_b', item('minecraft:alias_b', 'Awn')],
++      ['minecraft:shared', item('minecraft:shared', 'Shared')],
++    ])
++    const collections = new Map([
++      ['collection:z', collection('collection:z', ['minecraft:alias_a', 'minecraft:shared'])],
++      ['collection:a', collection('collection:a', ['minecraft:alias_b', 'minecraft:shared'])],
++    ])
++    const eligible = [
++      recipe('minecraft:z_recipe', 'minecraft:shared', 'collection:z'),
++      recipe('minecraft:a_recipe', 'minecraft:shared', 'collection:a'),
++      recipe('minecraft:a_duplicate_recipe', 'minecraft:shared', 'collection:a'),
++    ]
++
++    const explanations = matchEligibleCollectionOutputs('wn', eligible, collections, items)
++      .get('minecraft:shared')
++
++    expect([...matchEligibleCollectionOutputs('wn', eligible, collections, items).keys()])
++      .toEqual(['minecraft:shared'])
++    expect(explanations?.map(({ collectionId, matchedMemberItemId, source }) => [collectionId, matchedMemberItemId, source]))
++      .toEqual([
++        ['collection:a', 'minecraft:alias_b', 'name'],
++        ['collection:z', 'minecraft:alias_a', 'attribute'],
++        ['collection:z', 'minecraft:alias_a', 'name'],
++      ])
++  })
++
++  test('keeps Unicode-safe low-level match spans in collection explanations', () => {
++    const items = new Map([
++      ['minecraft:unicode_alias', item('minecraft:unicode_alias', 'İx')],
++      ['minecraft:visible', item('minecraft:visible', 'Visible')],
++    ])
++    const collections = new Map([
++      ['collection:unicode', collection('collection:unicode', ['minecraft:unicode_alias', 'minecraft:visible'])],
++    ])
++    const eligible = [recipe('minecraft:visible_recipe', 'minecraft:visible', 'collection:unicode')]
++
++    expect(matchEligibleCollectionOutputs('x', eligible, collections, items).get('minecraft:visible'))
++      .toMatchObject([{ matchedSpan: { start: 1, end: 2, text: 'x' } }])
++  })
++})
+diff --git a/web/src/engine/collectionSearch.ts b/web/src/engine/collectionSearch.ts
+new file mode 100644
+index 0000000..3354f53
+--- /dev/null
++++ b/web/src/engine/collectionSearch.ts
+@@ -0,0 +1,117 @@
++import type { CraftingRecipe, RecipeResultCollection, SearchItem } from '../domain/types'
++
++import { type CollectionMatchExplanation, matchItem } from './search'
++
++function compareExplanations(
++  left: CollectionMatchExplanation,
++  right: CollectionMatchExplanation,
++): number {
++  const comparisons = [
++    [left.collectionId, right.collectionId],
++    [left.visibleOutputItemId, right.visibleOutputItemId],
++    [left.matchedMemberItemId, right.matchedMemberItemId],
++    [left.source, right.source],
++    [left.line, right.line],
++    [left.matchedSpan.start, right.matchedSpan.start],
++    [left.matchedSpan.end, right.matchedSpan.end],
++    [left.matchedSpan.text, right.matchedSpan.text],
++  ] as const
++
++  for (const [leftValue, rightValue] of comparisons) {
++    if (leftValue < rightValue) return -1
++    if (leftValue > rightValue) return 1
++  }
++  return 0
++}
++
++function explanationKey(explanation: CollectionMatchExplanation): string {
++  return JSON.stringify(explanation)
++}
++
++function getCollection(
++  collectionId: string,
++  collections: ReadonlyMap<string, RecipeResultCollection>,
++): RecipeResultCollection {
++  const collection = collections.get(collectionId)
++  if (!collection) {
++    throw new Error(`recipe collection ${collectionId} is missing`)
++  }
++  return collection
++}
++
++function getItem(
++  itemId: string,
++  collectionId: string,
++  items: ReadonlyMap<string, SearchItem>,
++): SearchItem {
++  const item = items.get(itemId)
++  if (!item) {
++    throw new Error(`${collectionId}: references missing item ${itemId}`)
++  }
++  return item
++}
++
++export function matchEligibleCollectionOutputs(
++  query: string,
++  eligible: readonly CraftingRecipe[],
++  collections: ReadonlyMap<string, RecipeResultCollection>,
++  items: ReadonlyMap<string, SearchItem>,
++): Map<string, CollectionMatchExplanation[]> {
++  const eligibleByCollection = new Map<string, CraftingRecipe[]>()
++  for (const recipe of eligible) {
++    const recipes = eligibleByCollection.get(recipe.resultCollectionId) ?? []
++    recipes.push(recipe)
++    eligibleByCollection.set(recipe.resultCollectionId, recipes)
++  }
++
++  const explanationsByOutput = new Map<string, CollectionMatchExplanation[]>()
++  const seenByOutput = new Map<string, Set<string>>()
++
++  for (const collectionId of [...eligibleByCollection.keys()].sort()) {
++    const collection = getCollection(collectionId, collections)
++    const memberMatches = collection.outputItemIds
++      .slice()
++      .sort()
++      .flatMap((memberItemId) => {
++        const member = getItem(memberItemId, collectionId, items)
++        return matchItem(member, query).map((match) => ({ member, match }))
++      })
++    if (memberMatches.length === 0) continue
++
++    const outputIds = [...new Set(eligibleByCollection.get(collectionId)!.map(
++      (recipe) => recipe.outputItemId,
++    ))].sort()
++    for (const outputItemId of outputIds) {
++      const visibleOutput = getItem(outputItemId, collectionId, items)
++      const explanations = explanationsByOutput.get(outputItemId) ?? []
++      const seen = seenByOutput.get(outputItemId) ?? new Set<string>()
++
++      for (const { member, match } of memberMatches) {
++        const explanation: CollectionMatchExplanation = {
++          query,
++          collectionId,
++          recipeGroup: collection.recipeGroup,
++          matchedMemberItemId: member.id,
++          matchedMemberName: member.name,
++          visibleOutputItemId: outputItemId,
++          visibleOutputName: visibleOutput.name,
++          source: match.source,
++          line: match.line,
++          matchedSpan: match.matchedSpan,
++        }
++        const key = explanationKey(explanation)
++        if (!seen.has(key)) {
++          seen.add(key)
++          explanations.push(explanation)
++        }
++      }
++
++      explanationsByOutput.set(outputItemId, explanations)
++      seenByOutput.set(outputItemId, seen)
++    }
++  }
++
++  return new Map([...explanationsByOutput.entries()]
++    .sort(([left], [right]) => left.localeCompare(right))
++    .map(([outputId, explanations]) => [outputId, explanations.sort(compareExplanations)]))
++}
+diff --git a/web/src/engine/craftability.test.ts b/web/src/engine/craftability.test.ts
+index 49f39f9..e52e68c 100644
+--- a/web/src/engine/craftability.test.ts
++++ b/web/src/engine/craftability.test.ts
+@@ -1,14 +1,14 @@
+ import { describe, expect, test } from 'vitest'
+ 
+ import type { CraftingRecipe } from '../domain/types'
+-import { isRecipeCraftable, targetSupports2x2, visibleOutputIds } from './craftability'
++import { eligibleRecipes, isRecipeCraftable, targetSupports2x2, visibleOutputIds } from './craftability'
+ 
+ function recipe(overrides: Partial<CraftingRecipe> = {}): CraftingRecipe {
+   return {
+     id: 'minecraft:test_recipe',
+     recipeGroup: null,
+     recipeBookCategory: 'crafting_misc',
+     resultCollectionId: 'crafting_misc/recipe/minecraft%3Atest_recipe',
+     outputItemId: 'minecraft:test_output',
+     outputCount: 1,
+     ingredientSlots: [{ acceptedItems: ['minecraft:stick'] }],
+@@ -66,20 +66,33 @@ describe('visibleOutputIds', () => {
+     const recipes = [
+       recipe({ id: 'minecraft:output_from_stick', outputItemId: 'minecraft:torch' }),
+       recipe({ id: 'minecraft:output_from_plank', outputItemId: 'minecraft:torch', ingredientSlots: [{ acceptedItems: ['minecraft:planks'] }] }),
+     ]
+ 
+     expect(visibleOutputIds(recipes, new Set(['minecraft:stick', 'minecraft:planks']), 2))
+       .toEqual(new Set(['minecraft:torch']))
+   })
+ })
+ 
++describe('eligibleRecipes', () => {
++  test('returns every craftable recipe while visible outputs remain distinct', () => {
++    const recipes = [
++      recipe({ id: 'minecraft:first_torch', outputItemId: 'minecraft:torch' }),
++      recipe({ id: 'minecraft:second_torch', outputItemId: 'minecraft:torch' }),
++      recipe({ id: 'minecraft:uncraftable', ingredientSlots: [{ acceptedItems: ['minecraft:coal'] }] }),
++    ]
++
++    expect(eligibleRecipes(recipes, new Set(['minecraft:stick']), 2).map(({ id }) => id))
++      .toEqual(['minecraft:first_torch', 'minecraft:second_torch'])
++  })
++})
++
+ describe('targetSupports2x2', () => {
+   test('returns true when any recipe for the target fits the 2x2 grid', () => {
+     const recipes = [
+       recipe({ id: 'minecraft:three_by_three', outputItemId: 'minecraft:chest', fits2x2: false, fits3x3: true }),
+       recipe({ id: 'minecraft:two_by_two', outputItemId: 'minecraft:chest', fits2x2: true, fits3x3: true }),
+     ]
+ 
+     expect(targetSupports2x2('minecraft:chest', recipes)).toBe(true)
+   })
+ })
+diff --git a/web/src/engine/craftability.ts b/web/src/engine/craftability.ts
+index 0c4ceea..7c00a2e 100644
+--- a/web/src/engine/craftability.ts
++++ b/web/src/engine/craftability.ts
+@@ -3,33 +3,39 @@ import type { CraftingRecipe } from '../domain/types'
+ export type GridSize = 2 | 3
+ 
+ function fitsGrid(recipe: CraftingRecipe, gridSize: GridSize): boolean {
+   return gridSize === 2
+     ? recipe.fits2x2
+     : recipe.fits2x2 || recipe.fits3x3
+ }
+ 
+ export function isRecipeCraftable(
+   recipe: CraftingRecipe,
+-  inventory: Set<string>,
++  inventory: ReadonlySet<string>,
+   gridSize: GridSize,
+ ): boolean {
+   return fitsGrid(recipe, gridSize) && recipe.ingredientSlots.every((slot) =>
+     slot.acceptedItems.some((itemId) => inventory.has(itemId)),
+   )
+ }
+ 
++export function eligibleRecipes(
++  recipes: readonly CraftingRecipe[],
++  inventory: ReadonlySet<string>,
++  gridSize: GridSize,
++): CraftingRecipe[] {
++  return recipes.filter((recipe) => isRecipeCraftable(recipe, inventory, gridSize))
++}
++
+ export function visibleOutputIds(
+-  recipes: CraftingRecipe[],
+-  inventory: Set<string>,
++  recipes: readonly CraftingRecipe[],
++  inventory: ReadonlySet<string>,
+   gridSize: GridSize,
+ ): Set<string> {
+   return new Set(
+-    recipes
+-      .filter((recipe) => isRecipeCraftable(recipe, inventory, gridSize))
+-      .map((recipe) => recipe.outputItemId),
++    eligibleRecipes(recipes, inventory, gridSize).map((recipe) => recipe.outputItemId),
+   )
+ }
+ 
+ export function targetSupports2x2(targetId: string, recipes: CraftingRecipe[]): boolean {
+   return recipes.some((recipe) => recipe.outputItemId === targetId && recipe.fits2x2)
+ }
+diff --git a/web/src/engine/search.ts b/web/src/engine/search.ts
+index 83055d0..76a7828 100644
+--- a/web/src/engine/search.ts
++++ b/web/src/engine/search.ts
+@@ -4,20 +4,37 @@ export interface MatchExplanation {
+   itemId: string
+   source: string
+   line: string
+   matchedSpan: {
+     start: number
+     end: number
+     text: string
+   }
+ }
+ 
++export interface CollectionMatchExplanation {
++  query: string
++  collectionId: string
++  recipeGroup: string | null
++  matchedMemberItemId: string
++  matchedMemberName: string
++  visibleOutputItemId: string
++  visibleOutputName: string
++  source: string
++  line: string
++  matchedSpan: {
++    start: number
++    end: number
++    text: string
++  }
++}
++
+ export interface NormalizedSearchLine {
+   text: string
+   originalStarts: number[]
+   originalEnds: number[]
+   originalCharacterStarts: number[]
+ }
+ 
+ const MAX_QUERY_LENGTH = 5
+ 
+ export function normalizeSearchText(text: string): string {
