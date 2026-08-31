@@ -24,6 +24,8 @@ This document supersedes the earlier interface requirements in these areas:
   names.
 - The selectable inventory catalog includes approved preset-only items in
   addition to normalized recipe ingredients.
+- Browser icons come from the separately specified Minecraft 1.16.1 client
+  exporter rather than a reimplementation of Minecraft's item renderer.
 
 Version one remains English-only. The language column and aggregate result
 contract are structured so additional languages can be added later, but this
@@ -393,24 +395,26 @@ a legitimate no-viable-search result does not.
 
 ### Minecraft item icons
 
-A development-time asset generator accepts the supplied
-`minecraft-1.16.1-client.jar`. It reads the 1.16.1 item models, block-model
-parents, referenced textures, texture layers, and required item coloring to
-produce transparent browser-ready inventory icons for the union of searchable
-recipe outputs and selectable inventory inputs, including preset-only inputs.
+The browser consumes the validated output of the separate
+[Minecraft 1.16.1 item-icon exporter design](2026-08-31-minecraft-item-icon-exporter-design.md).
+A small Fabric client mod asks Minecraft's own
+`ItemRenderer` to render native 16x16 GUI icons, including items handled by the
+special built-in entity renderer such as beds, banners, chests, shields,
+shulker boxes, skulls, conduits, and tridents. This avoids approximating final
+icons from raw JAR textures and model JSON.
 
-The generator writes:
+A repository-side importer validates the export against the union of
+searchable recipe outputs and selectable inventory inputs, including
+preset-only inputs. It then publishes:
 
-- One deterministic transparent PNG per required exact item ID.
-- A manifest from exact item ID to its icon asset.
-- A validation report listing every required ID and any unresolved model,
-  texture, parent, layer, or color rule.
+- One transparent PNG per required exact item ID.
+- A browser manifest from exact item ID to its icon asset.
+- A validation report listing missing, invalid, or unexpected export records.
 
-Generated output is deterministic. Production generation fails when a
-required icon cannot be resolved. The runtime still uses a labeled fallback
-tile for an isolated missing or failed image so one broken asset cannot make an
-item invisible. The full client JAR is an external build input and is never
-copied into the website or repository.
+The website never loads the client mod, a running game, or the full client JAR.
+The runtime uses a labeled fallback tile for an isolated failed image so one
+broken request cannot make an item invisible. A missing required icon is still
+a pre-deployment validation failure.
 
 Icons render as crisp Minecraft-style tiles. Compact row icons, picker icons,
 target icons, junk icons, and result icons all use the same manifest component.
@@ -517,7 +521,7 @@ logic remain framework-independent wherever practical.
   being converted into a maximum score.
 - Obsolete calculation work is cancelled and cannot publish stale output.
 - A broken runtime image displays the labeled icon fallback.
-- Missing required icon generation fails the asset validation step before
+- Missing required icon import fails the asset validation step before
   deployment.
 - Invalid drafts cannot be saved and keep their fields available for
   correction.
@@ -542,17 +546,19 @@ logic remain framework-independent wherever practical.
 
 ## Testing
 
-### Generator and icon tests
+### Exporter and icon-import tests
 
-- The supplied 1.16.1 client JAR can be opened and its required model and
-  texture roots are recognized.
-- Every searchable output and inventory input resolves to one manifest entry.
-- Flat items, layered items, tinted items, and block-parent item models have
-  representative fixtures.
-- Repeated generation is byte-for-byte deterministic.
-- Missing models, textures, parents, or required color rules fail with exact
-  diagnostics.
-- The production website does not contain the client JAR.
+- The separate Fabric exporter records Minecraft 1.16.1, vanilla resources,
+  native 16x16 dimensions, exact registry IDs, PNG hashes, and export errors.
+- Representative flat, block, tinted, and built-in-entity items are manually
+  verified against the same running client that produced the export.
+- Every searchable output and selectable inventory input resolves to one
+  imported browser-manifest entry.
+- Importing the same export twice produces identical browser assets and
+  manifest bytes.
+- Missing, corrupt, wrong-sized, nontransparent, wrong-version, or
+  non-vanilla exports fail with exact diagnostics.
+- The production website contains neither the exporter mod nor the client JAR.
 
 ### Engine and ranking tests
 
@@ -630,6 +636,14 @@ and focused React state boundaries are sufficient.
 
 Rejected because block items, layered items, and tinted items would not match
 their Minecraft inventory appearance.
+
+### Reimplement the JAR model renderer at build time
+
+Rejected after inspecting the supplied client JAR. Several required item-model
+families use `builtin/entity`, so source textures and JSON alone do not encode
+the final GUI pixels. Calling Minecraft's own renderer is smaller and more
+accurate than reproducing baked models, tinting, lighting, and special block
+entity item renderers.
 
 ### Assign a preset during version-1 migration
 
