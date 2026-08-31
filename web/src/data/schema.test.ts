@@ -197,6 +197,119 @@ describe('parseGeneratedData', () => {
     }, 'recipes[0].id')
   })
 
+  test('rejects an empty orphan collection', () => {
+    try {
+      parseGeneratedData(items, inventoryItems, { schema_version: 3, recipes: [] }, {
+        schema_version: 3,
+        collections: [{
+          ...collections.collections[0],
+          recipe_ids: [],
+          output_item_ids: [],
+        }],
+      })
+      throw new Error('Expected generated data validation to fail')
+    } catch (error) {
+      expect(error).toBeInstanceOf(GeneratedDataError)
+      expect((error as GeneratedDataError).errors).toEqual(expect.arrayContaining([
+        expect.stringContaining('collections[0].recipe_ids'),
+        expect.stringContaining('collections[0].output_item_ids'),
+      ]))
+    }
+  })
+
+  test('rejects an internally consistent merged null-group collection', () => {
+    const alternateRecipe = {
+      ...recipe,
+      id: 'minecraft:torch_alt',
+    }
+    expectValidationError(items, inventoryItems, {
+      schema_version: 3,
+      recipes: [recipe, alternateRecipe],
+    }, {
+      schema_version: 3,
+      collections: [{
+        ...collections.collections[0],
+        recipe_ids: [recipe.id, alternateRecipe.id],
+      }],
+    }, 'collections[0].recipe_ids')
+  })
+
+  test('rejects internally consistent split collections sharing a grouped semantic key', () => {
+    const firstCollectionId = 'crafting_misc/group/tools-one'
+    const secondCollectionId = 'crafting_misc/group/tools-two'
+    const firstRecipe = {
+      ...recipe,
+      id: 'minecraft:torch_one',
+      recipe_group: 'tools',
+      result_collection_id: firstCollectionId,
+    }
+    const secondRecipe = {
+      ...recipe,
+      id: 'minecraft:torch_two',
+      recipe_group: 'tools',
+      result_collection_id: secondCollectionId,
+    }
+    expectValidationError(items, inventoryItems, {
+      schema_version: 3,
+      recipes: [firstRecipe, secondRecipe],
+    }, {
+      schema_version: 3,
+      collections: [
+        {
+          ...collections.collections[0],
+          id: firstCollectionId,
+          recipe_group: 'tools',
+          recipe_ids: [firstRecipe.id],
+        },
+        {
+          ...collections.collections[0],
+          id: secondCollectionId,
+          recipe_group: 'tools',
+          recipe_ids: [secondRecipe.id],
+        },
+      ],
+    }, 'collections[1].recipe_group')
+  })
+
+  test('treats distinct untrimmed recipe groups as distinct semantic keys', () => {
+    const firstCollectionId = 'crafting_misc/group/leading-space'
+    const secondCollectionId = 'crafting_misc/group/plain'
+    const firstRecipe = {
+      ...recipe,
+      id: 'minecraft:torch_leading_space',
+      recipe_group: ' tools',
+      result_collection_id: firstCollectionId,
+    }
+    const secondRecipe = {
+      ...recipe,
+      id: 'minecraft:torch_plain',
+      recipe_group: 'tools',
+      result_collection_id: secondCollectionId,
+    }
+    const generated = parseGeneratedData(items, inventoryItems, {
+      schema_version: 3,
+      recipes: [firstRecipe, secondRecipe],
+    }, {
+      schema_version: 3,
+      collections: [
+        {
+          ...collections.collections[0],
+          id: firstCollectionId,
+          recipe_group: firstRecipe.recipe_group,
+          recipe_ids: [firstRecipe.id],
+        },
+        {
+          ...collections.collections[0],
+          id: secondCollectionId,
+          recipe_group: secondRecipe.recipe_group,
+          recipe_ids: [secondRecipe.id],
+        },
+      ],
+    })
+
+    expect(generated.collections.size).toBe(2)
+  })
+
   test('rejects collection outputs that omit their member recipe output', () => {
     expectValidationError(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, {
       schema_version: 3,

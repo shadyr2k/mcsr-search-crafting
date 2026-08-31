@@ -387,10 +387,30 @@ function validateCollectionGraph(
   const recipesById = new Map(recipes.map((recipe) => [recipe.recipe.id, recipe]))
   const collectionsById = new Map(collections.map((collection) => [collection.collection.id, collection]))
   const membershipCounts = new Map(recipes.map(({ recipe }) => [recipe.id, 0]))
+  const groupedCollectionPaths = new Map<string, string>()
 
   collections.forEach(({ collection, sourceIndex }) => {
     const collectionPath = `collections[${sourceIndex}]`
     const memberOutputItemIds = new Set<string>()
+    if (collection.recipeIds.length === 0) {
+      errors.push(`${collectionPath}.recipe_ids: expected a non-empty array`)
+    }
+    if (collection.outputItemIds.length === 0) {
+      errors.push(`${collectionPath}.output_item_ids: expected a non-empty array`)
+    }
+    if (collection.recipeGroup === null) {
+      if (collection.recipeIds.length !== 1) {
+        errors.push(`${collectionPath}.recipe_ids: null-group collections must contain exactly one recipe`)
+      }
+    } else {
+      const groupKey = `${collection.recipeBookCategory}\u0000${collection.recipeGroup}`
+      const priorCollectionPath = groupedCollectionPaths.get(groupKey)
+      if (priorCollectionPath) {
+        errors.push(`${collectionPath}.recipe_group: duplicates category/group collection at ${priorCollectionPath}`)
+      } else {
+        groupedCollectionPaths.set(groupKey, collectionPath)
+      }
+    }
     collection.recipeIds.forEach((recipeId, recipeIndex) => {
       const recipe = recipesById.get(recipeId)
       const recipeIdPath = `${collectionPath}.recipe_ids[${recipeIndex}]`
