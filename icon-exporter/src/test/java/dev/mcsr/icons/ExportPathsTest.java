@@ -88,6 +88,19 @@ class ExportPathsTest {
     }
 
     @Test
+    void doesNotOverwriteAnExportThatAppearsBeforeTheDirectoryMove() throws Exception {
+        ExportPaths paths = new ExportPaths(tempDir, moveWhereExportDestinationAppears());
+        Path staging = stagingWithManifest(paths, "race");
+        Path concurrentExport = tempDir.resolve("exports/20260831T123456Z-race");
+
+        assertThrows(IOException.class, () -> paths.publish(staging, MANIFEST_SHA256));
+
+        assertTrue(Files.isDirectory(staging));
+        assertEquals("concurrent", new String(Files.readAllBytes(concurrentExport.resolve("marker")), UTF_8));
+        assertFalse(Files.exists(tempDir.resolve("latest.json")));
+    }
+
+    @Test
     void failedAtomicPointerReplacementPreservesPreviousPointerAndExports() throws Exception {
         Files.write(tempDir.resolve("latest.json"), "old".getBytes(UTF_8));
         Path oldExport = Files.createDirectories(tempDir.resolve("exports/old"));
@@ -114,6 +127,30 @@ class ExportPathsTest {
             }
             return Files.move(source, target, options);
         };
+    }
+
+    private static ExportPaths.MoveOperation moveWhereExportDestinationAppears() {
+        return (source, target, options) -> {
+            if (target.getParent().getFileName().toString().equals("exports")) {
+                Files.createDirectory(target);
+                Files.write(target.resolve("marker"), "concurrent".getBytes(UTF_8));
+                if (hasAtomicMove(options)) {
+                    Files.delete(target.resolve("marker"));
+                    Files.delete(target);
+                    return Files.move(source, target);
+                }
+            }
+            return Files.move(source, target, options);
+        };
+    }
+
+    private static boolean hasAtomicMove(java.nio.file.CopyOption[] options) {
+        for (java.nio.file.CopyOption option : options) {
+            if (StandardCopyOption.ATOMIC_MOVE.equals(option)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String repeat(String value, int count) {

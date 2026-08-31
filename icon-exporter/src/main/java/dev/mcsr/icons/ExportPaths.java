@@ -86,7 +86,7 @@ public final class ExportPaths {
             throw new FileAlreadyExistsException(destination.toString());
         }
 
-        moveOperation.move(safeStaging, destination, StandardCopyOption.ATOMIC_MOVE);
+        moveOperation.move(safeStaging, destination);
 
         Path temporaryPointer = childOf(exportRoot, "latest.json.tmp");
         Files.write(temporaryPointer,
