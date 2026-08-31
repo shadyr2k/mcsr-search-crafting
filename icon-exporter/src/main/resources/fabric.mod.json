@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "mcsr_item_icons",
+  "version": "${version}",
+  "name": "MCSR Item Icons",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.mcsr.icons.McsrItemIconsClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.9.3",
+    "fabric": "*",
+    "minecraft": "1.16.1"
+  }
+}

@@ -1,0 +1,68 @@
+buildscript {
+    repositories {
+        maven {
+            url = 'https://maven.fabricmc.net/'
+        }
+        mavenCentral()
+    }
+    dependencies {
+        classpath "net.fabricmc:fabric-loom:${project.loom_version}"
+    }
+    configurations.classpath {
+        // Loom 0.5.15's Mercury dependency declares Eclipse ranges. Without
+        // these Java 8-era constraints, contemporary Maven resolution selects
+        // Java 17 bytecode that Gradle 6.6.1 cannot inspect.
+        resolutionStrategy.force(
+                'org.eclipse.platform:org.eclipse.core.resources:3.13.700',
+                'org.eclipse.platform:org.eclipse.core.filesystem:1.7.0',
+                'org.eclipse.platform:org.eclipse.text:3.8.0',
+                'org.eclipse.platform:org.eclipse.core.expressions:3.5.100',
+                'org.eclipse.platform:org.eclipse.core.runtime:3.13.0',
+                'org.eclipse.platform:org.eclipse.core.jobs:3.10.600',
+                'org.eclipse.platform:org.eclipse.core.contenttype:3.6.0',
+                'org.eclipse.platform:org.eclipse.equinox.app:1.4.400',
+                'org.eclipse.platform:org.eclipse.equinox.common:3.10.0',
+                'org.eclipse.platform:org.eclipse.equinox.registry:3.8.100',
+                'org.eclipse.platform:org.eclipse.equinox.preferences:3.7.0',
+                'org.eclipse.platform:org.eclipse.osgi:3.12.100',
+                'org.eclipse.platform:org.eclipse.core.commands:3.9.800'
+        )
+    }
+}
+
+apply plugin: 'fabric-loom'
+
+group = project.maven_group
+version = project.mod_version
+archivesBaseName = project.archives_base_name
+
+sourceCompatibility = JavaVersion.VERSION_1_8
+targetCompatibility = JavaVersion.VERSION_1_8
+
+repositories {
+    maven {
+        url = 'https://maven.fabricmc.net/'
+    }
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.6.2'
+}
+
+processResources {
+    inputs.property 'version', project.version
+
+    filesMatching('fabric.mod.json') {
+        expand 'version': project.version
+    }
+}
+
+test {
+    useJUnitPlatform()
+}
