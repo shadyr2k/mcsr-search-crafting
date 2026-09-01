@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "minecraft_version": "1.16.1",
+  "exporter_version": "1.0.0",
+  "icon_width": 16,
+  "icon_height": 16,
+  "resource_packs": [
+    "vanilla"
+  ],
+  "icons": {
+    "minecraft:stick": {
+      "path": "icons/minecraft/stick.png",
+      "sha256": "1827d7f083780363ba4bb221f77058a261673389757b256921e08f010b55285d"
+    }
+  },
+  "failures": []
+}
