@@ -4,6 +4,8 @@ import copy
 import hashlib
 import json
 import shutil
+import struct
+import zlib
 from pathlib import Path
 
 import pytest
@@ -40,6 +42,15 @@ def write_rgba_png(path: Path, size: tuple[int, int] = (16, 16)) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     Image.new("RGBA", size, (10, 20, 30, 40)).save(path, format="PNG")
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def png_with_dimensions(width: int, height: int) -> bytes:
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        checksum = zlib.crc32(kind + data) & 0xFFFFFFFF
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", checksum)
+
+    header = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
+    return PNG_SIGNATURE + chunk(b"IHDR", header) + chunk(b"IEND", b"")
 
 
 def error_lines(export_root: Path) -> list[str]:
@@ -217,6 +228,29 @@ def test_rejects_unsafe_icon_paths(
     assert any(message in line for line in error_lines(tmp_path))
 
 
+@pytest.mark.parametrize(
+    ("path", "message"),
+    [
+        ("icons/minecraft/C:/stick.png", "colon is not allowed"),
+        ("icons/minecraft/stick.png.", "path segment cannot end with dot or space"),
+        ("icons/minecraft/stick.png ", "path segment cannot end with dot or space"),
+        ("icons/minecraft/stick.png::$DATA", "colon is not allowed"),
+        ("icons/minecraft/CON.png", "reserved Windows device name is not allowed"),
+        ("icons/minecraft/lpt9.icon", "reserved Windows device name is not allowed"),
+    ],
+)
+def test_rejects_windows_path_aliases(
+    valid_export: Path,
+    path: str,
+    message: str,
+) -> None:
+    raw = json.loads((valid_export / "manifest.json").read_text(encoding="utf-8"))
+    raw["icons"]["minecraft:stick"]["path"] = path
+    write_manifest(valid_export, raw)
+
+    assert any(message in line for line in error_lines(valid_export))
+
+
 def test_rejects_duplicate_normalized_paths(
     valid_manifest: dict[str, object],
     tmp_path: Path,
@@ -265,6 +299,47 @@ def test_rejects_malformed_sha256(
     write_manifest(tmp_path, valid_manifest)
 
     assert any(message in line for line in error_lines(tmp_path))
+
+
+@pytest.mark.parametrize(
+    ("source_problem", "source_messages"),
+    [
+        ("missing", ["source file does not exist"]),
+        ("signature", ["source file has invalid PNG signature"]),
+        (
+            "metadata",
+            [
+                "source image mode: expected RGBA",
+                "source image size: expected 16x16",
+            ],
+        ),
+    ],
+)
+def test_malformed_sha_does_not_suppress_source_diagnostics(
+    valid_export: Path,
+    source_problem: str,
+    source_messages: list[str],
+) -> None:
+    path = valid_export / "icons" / "minecraft" / "stick.png"
+    if source_problem == "missing":
+        path.unlink()
+    elif source_problem == "signature":
+        path.write_bytes(b"not png data")
+    else:
+        Image.new("RGB", (15, 16), (10, 20, 30)).save(path, format="PNG")
+    raw = json.loads((valid_export / "manifest.json").read_text(encoding="utf-8"))
+    raw["icons"]["minecraft:stick"]["sha256"] = "BAD"
+    write_manifest(valid_export, raw)
+
+    lines = error_lines(valid_export)
+
+    assert any(
+        "sha256: expected 64 lower-case hexadecimal characters" in line
+        for line in lines
+    )
+    for message in source_messages:
+        assert any(message in line for line in lines)
+    assert not any("source bytes do not match" in line for line in lines)
 
 
 def test_rejects_missing_icon_file(valid_export: Path) -> None:
@@ -322,6 +397,25 @@ def test_rejects_non_png_image_with_png_signature(valid_export: Path) -> None:
     assert any("source image: invalid PNG" in line for line in error_lines(valid_export))
 
 
+@pytest.mark.parametrize("size", [(10_000, 10_000), (100_000, 100_000)])
+def test_reports_decompression_bomb_as_manifest_diagnostic(
+    valid_export: Path,
+    size: tuple[int, int],
+) -> None:
+    path = valid_export / "icons" / "minecraft" / "stick.png"
+    path.write_bytes(png_with_dimensions(*size))
+    raw = json.loads((valid_export / "manifest.json").read_text(encoding="utf-8"))
+    raw["icons"]["minecraft:stick"]["sha256"] = hashlib.sha256(
+        path.read_bytes()
+    ).hexdigest()
+    write_manifest(valid_export, raw)
+
+    assert any(
+        "source image size: exceeds Pillow safety limit" in line
+        for line in error_lines(valid_export)
+    )
+
+
 @pytest.mark.parametrize(
     ("failure", "message"),
     [
@@ -376,6 +470,36 @@ def test_rejects_item_present_in_icons_and_failures(
     assert any(
         "failures[0].item_id: item also appears in icons" in line
         for line in error_lines(tmp_path)
+    )
+
+
+def test_rejects_overlap_when_declared_icon_record_is_invalid(
+    valid_manifest: dict[str, object],
+    tmp_path: Path,
+) -> None:
+    valid_manifest["icons"]["minecraft:stick"] = {  # type: ignore[index]
+        "path": "../stick.png",
+        "sha256": "BAD",
+    }
+    valid_manifest["failures"] = [
+        {
+            "item_id": "minecraft:stick",
+            "exception_class": "RuntimeException",
+            "message": "render failed",
+        }
+    ]
+    write_manifest(tmp_path, valid_manifest)
+
+    lines = error_lines(tmp_path)
+
+    assert any("path escapes export root" in line for line in lines)
+    assert any(
+        "sha256: expected 64 lower-case hexadecimal characters" in line
+        for line in lines
+    )
+    assert any(
+        "failures[0].item_id: item also appears in icons" in line
+        for line in lines
     )
 
 

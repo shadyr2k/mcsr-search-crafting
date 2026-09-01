@@ -5,6 +5,7 @@ import io
 import json
 import os
 import re
+import warnings
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
@@ -31,6 +32,11 @@ TOP_LEVEL_FIELDS = frozenset(
 )
 ICON_FIELDS = frozenset({"path", "sha256"})
 FAILURE_FIELDS = frozenset({"item_id", "exception_class", "message"})
+WINDOWS_RESERVED_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL", "CLOCK$", "CONIN$", "CONOUT$"}
+    | {f"COM{index}" for index in range(1, 10)}
+    | {f"LPT{index}" for index in range(1, 10)}
+)
 
 
 class IconManifestError(ValueError):
@@ -129,8 +135,8 @@ def load_export_manifest(export_root: Path) -> ValidatedExport:
 
     _validate_resource_packs(raw, diagnostics)
 
-    icons = _validate_icons(raw, root, diagnostics)
-    failed_item_ids = _validate_failures(raw, set(icons), diagnostics)
+    icons, declared_icon_ids = _validate_icons(raw, root, diagnostics)
+    failed_item_ids = _validate_failures(raw, declared_icon_ids, diagnostics)
     diagnostics.raise_if_any()
 
     return ValidatedExport(
@@ -209,22 +215,25 @@ def _validate_resource_packs(
 
 def _validate_icons(
     raw: dict[str, object], root: Path, diagnostics: _Diagnostics
-) -> dict[str, ExportIcon]:
+) -> tuple[dict[str, ExportIcon], set[str]]:
     if "icons" not in raw:
-        return {}
+        return {}, set()
     raw_icons = raw["icons"]
     if not isinstance(raw_icons, dict):
         diagnostics.add("icons", "expected object")
-        return {}
+        return {}, set()
     if isinstance(raw_icons, _JSONObject):
         for item_id in raw_icons.duplicate_fields:
             diagnostics.add(f"icons.{item_id}", "duplicate item identifier")
 
     icons: dict[str, ExportIcon] = {}
+    declared_icon_ids: set[str] = set()
     normalized_paths: dict[str, str] = {}
     for item_id, record in raw_icons.items():
         icon_prefix = f"icons.{item_id}"
         identifier_valid = _validate_identifier(item_id, icon_prefix, diagnostics)
+        if identifier_valid:
+            declared_icon_ids.add(item_id)
         if not isinstance(record, dict):
             diagnostics.add(icon_prefix, "expected object")
             continue
@@ -256,12 +265,15 @@ def _validate_icons(
                 else:
                     normalized_paths[normalized] = item_id
 
-        if source_path is not None and hash_valid:
-            _validate_source_image(source_path, sha256, icon_prefix, diagnostics)
+        if source_path is not None:
+            expected_sha256 = sha256 if hash_valid else None
+            _validate_source_image(
+                source_path, expected_sha256, icon_prefix, diagnostics
+            )
 
         if identifier_valid and relative_path is not None and hash_valid:
             icons[item_id] = ExportIcon(item_id, relative_path, sha256)
-    return icons
+    return icons, declared_icon_ids
 
 
 def _validate_failures(
@@ -356,6 +368,22 @@ def _validate_path(
     if "." in segments:
         diagnostics.add(diagnostic_path, "dot path segment is not allowed")
         return None, None
+    if any(":" in segment for segment in segments):
+        diagnostics.add(diagnostic_path, "colon is not allowed")
+        return None, None
+    if any(segment.endswith((".", " ")) for segment in segments):
+        diagnostics.add(
+            diagnostic_path, "path segment cannot end with dot or space"
+        )
+        return None, None
+    if any(
+        segment.split(".", 1)[0].upper() in WINDOWS_RESERVED_NAMES
+        for segment in segments
+    ):
+        diagnostics.add(
+            diagnostic_path, "reserved Windows device name is not allowed"
+        )
+        return None, None
 
     source_path = root.joinpath(*segments)
     try:
@@ -376,7 +404,7 @@ def _validate_path(
 
 def _validate_source_image(
     source_path: Path,
-    expected_sha256: str,
+    expected_sha256: str | None,
     icon_prefix: str,
     diagnostics: _Diagnostics,
 ) -> None:
@@ -390,7 +418,7 @@ def _validate_source_image(
         return
 
     actual_sha256 = hashlib.sha256(source_bytes).hexdigest()
-    if actual_sha256 != expected_sha256:
+    if expected_sha256 is not None and actual_sha256 != expected_sha256:
         diagnostics.add(f"{icon_prefix}.sha256", "source bytes do not match")
 
     if not source_bytes.startswith(PNG_SIGNATURE):
@@ -398,13 +426,27 @@ def _validate_source_image(
         return
 
     try:
-        with Image.open(io.BytesIO(source_bytes)) as image:
-            image.load()
-            if image.format != "PNG":
-                diagnostics.add(f"{icon_prefix}.path", "source image format: expected PNG")
-            if image.mode != "RGBA":
-                diagnostics.add(f"{icon_prefix}.path", "source image mode: expected RGBA")
-            if image.size != (16, 16):
-                diagnostics.add(f"{icon_prefix}.path", "source image size: expected 16x16")
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(source_bytes)) as image:
+                if image.format != "PNG":
+                    diagnostics.add(
+                        f"{icon_prefix}.path", "source image format: expected PNG"
+                    )
+                if image.mode != "RGBA":
+                    diagnostics.add(
+                        f"{icon_prefix}.path", "source image mode: expected RGBA"
+                    )
+                if image.size != (16, 16):
+                    diagnostics.add(
+                        f"{icon_prefix}.path", "source image size: expected 16x16"
+                    )
+                else:
+                    image.load()
+    except (Image.DecompressionBombWarning, Image.DecompressionBombError):
+        diagnostics.add(
+            f"{icon_prefix}.path",
+            "source image size: exceeds Pillow safety limit",
+        )
     except (OSError, ValueError, UnidentifiedImageError):
         diagnostics.add(f"{icon_prefix}.path", "source image: invalid PNG")
