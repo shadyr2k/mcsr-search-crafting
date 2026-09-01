@@ -9,6 +9,7 @@
       "dev.mcsr.icons.McsrItemIconsClient"
     ]
   },
+  "accessWidener": "mcsr_item_icons.accesswidener",
   "depends": {
     "fabricloader": ">=0.9.3",
     "fabric": "*",

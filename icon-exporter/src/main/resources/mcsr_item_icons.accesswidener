@@ -1,0 +1,3 @@
+accessWidener v1 named
+accessible field com/mojang/blaze3d/platform/GlStateManager LIGHT_ENABLE [Lcom/mojang/blaze3d/platform/GlStateManager$CapabilityTracker;
+accessible class com/mojang/blaze3d/platform/GlStateManager$CapabilityTracker

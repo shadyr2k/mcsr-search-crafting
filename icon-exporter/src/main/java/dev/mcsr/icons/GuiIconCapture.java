@@ -48,8 +48,11 @@ public final class GuiIconCapture implements IconCapture {
 
             configureGuiProjection();
             DiffuseLighting.enableGuiDepthLighting();
-            client.getItemRenderer().renderGuiItemIcon(stack, 0, 0);
-            client.getBufferBuilders().getEntityVertexConsumers().draw();
+            try {
+                client.getItemRenderer().renderGuiItemIcon(stack, 0, 0);
+            } finally {
+                client.getBufferBuilders().getEntityVertexConsumers().draw();
+            }
 
             Path output = exportPaths.iconPath(stagingRoot, id);
             writeColorAttachment(framebuffer, output);
@@ -108,6 +111,8 @@ public final class GuiIconCapture implements IconCapture {
         private final int alphaFunction;
         private final float alphaReference;
         private final boolean lighting;
+        private final boolean light0;
+        private final boolean light1;
         private final boolean colorMaterial;
         private final boolean depthTest;
         private final int depthFunction;
@@ -158,6 +163,8 @@ public final class GuiIconCapture implements IconCapture {
             alphaFunction = GL11.glGetInteger(GL11.GL_ALPHA_TEST_FUNC);
             alphaReference = GL11.glGetFloat(GL11.GL_ALPHA_TEST_REF);
             lighting = GL11.glIsEnabled(GL11.GL_LIGHTING);
+            light0 = GL11.glIsEnabled(GL11.GL_LIGHT0);
+            light1 = GL11.glIsEnabled(GL11.GL_LIGHT1);
             colorMaterial = GL11.glIsEnabled(GL11.GL_COLOR_MATERIAL);
             depthTest = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
             depthFunction = GL11.glGetInteger(GL11.GL_DEPTH_FUNC);
@@ -243,6 +250,8 @@ public final class GuiIconCapture implements IconCapture {
                     alphaReference == 0.0F ? 1.0F : 0.0F);
             RenderSystem.alphaFunc(alphaFunction, alphaReference);
             forceCapability(lighting, RenderSystem::enableLighting, RenderSystem::disableLighting);
+            forceLight(light0, 0);
+            forceLight(light1, 1);
             forceCapability(colorMaterial, RenderSystem::enableColorMaterial, RenderSystem::disableColorMaterial);
             forceCapability(depthTest, RenderSystem::enableDepthTest, RenderSystem::disableDepthTest);
             RenderSystem.depthFunc(depthFunction == GL11.GL_ALWAYS ? GL11.GL_LESS : GL11.GL_ALWAYS);
@@ -292,6 +301,11 @@ public final class GuiIconCapture implements IconCapture {
                 enable.run();
                 disable.run();
             }
+        }
+
+        private static void forceLight(boolean enabled, int light) {
+            GlStateManager.LIGHT_ENABLE[light].setState(!enabled);
+            GlStateManager.LIGHT_ENABLE[light].setState(enabled);
         }
 
         private static int[] integers(int parameter, int length) {

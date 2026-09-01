@@ -32,6 +32,10 @@ buildscript {
 
 apply plugin: 'fabric-loom'
 
+minecraft {
+    accessWidener = file('src/main/resources/mcsr_item_icons.accesswidener')
+}
+
 group = project.maven_group
 version = project.mod_version
 archivesBaseName = project.archives_base_name
