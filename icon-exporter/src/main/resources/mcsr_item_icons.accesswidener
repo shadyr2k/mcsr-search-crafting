@@ -1,3 +1,7 @@
 accessWidener v1 named
 accessible field com/mojang/blaze3d/platform/GlStateManager LIGHT_ENABLE [Lcom/mojang/blaze3d/platform/GlStateManager$CapabilityTracker;
 accessible class com/mojang/blaze3d/platform/GlStateManager$CapabilityTracker
+accessible field net/minecraft/client/render/VertexConsumerProvider$Immediate fallbackBuffer Lnet/minecraft/client/render/BufferBuilder;
+accessible field net/minecraft/client/render/VertexConsumerProvider$Immediate layerBuffers Ljava/util/Map;
+accessible field net/minecraft/client/render/VertexConsumerProvider$Immediate currentLayer Ljava/util/Optional;
+accessible field net/minecraft/client/render/VertexConsumerProvider$Immediate activeConsumers Ljava/util/Set;

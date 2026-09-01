@@ -4,7 +4,9 @@ import com.mojang.blaze3d.platform.FramebufferInfo;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gl.Framebuffer;
 import net.minecraft.client.render.DiffuseLighting;
@@ -48,11 +50,7 @@ public final class GuiIconCapture implements IconCapture {
 
             configureGuiProjection();
             DiffuseLighting.enableGuiDepthLighting();
-            try {
-                client.getItemRenderer().renderGuiItemIcon(stack, 0, 0);
-            } finally {
-                client.getBufferBuilders().getEntityVertexConsumers().draw();
-            }
+            flushEntityBuffersAfterRender(stack);
 
             Path output = exportPaths.iconPath(stagingRoot, id);
             writeColorAttachment(framebuffer, output);
@@ -66,6 +64,75 @@ public final class GuiIconCapture implements IconCapture {
                 previous.restore();
             }
         }
+    }
+
+    private void flushEntityBuffersAfterRender(ItemStack stack) {
+        net.minecraft.client.render.VertexConsumerProvider.Immediate consumers =
+                client.getBufferBuilders().getEntityVertexConsumers();
+        Throwable renderFailure = null;
+        try {
+            client.getItemRenderer().renderGuiItemIcon(stack, 0, 0);
+        } catch (RuntimeException exception) {
+            renderFailure = exception;
+        } catch (Error error) {
+            renderFailure = error;
+        }
+
+        Throwable flushFailure = null;
+        try {
+            consumers.draw();
+        } catch (RuntimeException exception) {
+            flushFailure = exception;
+        } catch (Error error) {
+            flushFailure = error;
+        }
+        if (renderFailure != null || flushFailure != null) {
+            Throwable cleanupFailure = renderFailure != null ? renderFailure : flushFailure;
+            discardEntityBuffers(consumers, cleanupFailure);
+        }
+        if (renderFailure != null) {
+            if (flushFailure != null) {
+                renderFailure.addSuppressed(flushFailure);
+            }
+            rethrow(renderFailure);
+        }
+        if (flushFailure != null) {
+            rethrow(flushFailure);
+        }
+    }
+
+    private static void discardEntityBuffers(
+            net.minecraft.client.render.VertexConsumerProvider.Immediate consumers, Throwable failure) {
+        Set<net.minecraft.client.render.BufferBuilder> buffers =
+                new HashSet<net.minecraft.client.render.BufferBuilder>(consumers.layerBuffers.values());
+        buffers.add(consumers.fallbackBuffer);
+        for (net.minecraft.client.render.BufferBuilder buffer : buffers) {
+            try {
+                if (buffer.isBuilding()) {
+                    buffer.end();
+                }
+                buffer.clear();
+            } catch (RuntimeException exception) {
+                addSuppressedUnlessSelf(failure, exception);
+            } catch (Error error) {
+                addSuppressedUnlessSelf(failure, error);
+            }
+        }
+        consumers.activeConsumers.clear();
+        consumers.currentLayer = java.util.Optional.empty();
+    }
+
+    private static void addSuppressedUnlessSelf(Throwable failure, Throwable suppressed) {
+        if (failure != suppressed) {
+            failure.addSuppressed(suppressed);
+        }
+    }
+
+    private static void rethrow(Throwable failure) {
+        if (failure instanceof RuntimeException) {
+            throw (RuntimeException) failure;
+        }
+        throw (Error) failure;
     }
 
     private static void configureGuiProjection() {
