@@ -1,4 +1,16 @@
 {
-  "category.mcsr_item_icons": "MCSR Search Crafting",
-  "key.mcsr_item_icons.export": "Export item icons"
+  "key.categories.mcsr_item_icons": "MCSR Search Crafting",
+  "key.mcsr_item_icons.export": "Export item icons",
+  "mcsr_item_icons.export.title": "MCSR Item Icons",
+  "mcsr_item_icons.export.started": "Started export of %s item icons.",
+  "mcsr_item_icons.export.progress": "Exported %s of %s item icons.",
+  "mcsr_item_icons.export.completed": "Export complete: %s",
+  "mcsr_item_icons.export.completed_with_failures": "Export complete with %s failures: %s",
+  "mcsr_item_icons.export.failed": "Export failed; the prior export remains unchanged.",
+  "mcsr_item_icons.export.already_running": "An item-icon export is already running.",
+  "mcsr_item_icons.export.blocked.version": "Export requires Minecraft 1.16.1.",
+  "mcsr_item_icons.export.blocked.reload": "Wait for resource loading to finish before exporting.",
+  "mcsr_item_icons.export.blocked.screen": "Join a world before exporting.",
+  "mcsr_item_icons.export.blocked.resource_packs": "Disable all non-vanilla resource packs before exporting.",
+  "mcsr_item_icons.export.blocked.output": "The mcsr-item-icons output directory is not writable."
 }

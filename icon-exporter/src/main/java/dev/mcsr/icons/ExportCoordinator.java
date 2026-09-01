@@ -38,6 +38,7 @@ public final class ExportCoordinator {
     private ExportState state = ExportState.IDLE;
     private ExportManifest manifest;
     private Path staging;
+    private Path completedExport;
     private int attemptedCount;
 
     public ExportCoordinator(ExportEnvironment environment, IconCapture capture, ExportPaths paths,
@@ -114,6 +115,14 @@ public final class ExportCoordinator {
         return attemptedCount;
     }
 
+    public int totalCount() {
+        return items.size();
+    }
+
+    public Path completedExport() {
+        return completedExport;
+    }
+
     public ExportManifest manifest() {
         return manifest;
     }
@@ -122,6 +131,7 @@ public final class ExportCoordinator {
         manifest = ExportManifest.create(minecraftVersion, exporterVersion, resourcePacks);
         items.clear();
         staging = null;
+        completedExport = null;
         attemptedCount = 0;
     }
 
@@ -156,7 +166,7 @@ public final class ExportCoordinator {
     private void writeAndPublishManifest() throws IOException, NoSuchAlgorithmException {
         Path manifestPath = staging.resolve("manifest.json").toAbsolutePath().normalize();
         Files.write(manifestPath, ManifestWriter.toJson(manifest).getBytes(StandardCharsets.UTF_8));
-        paths.publish(staging, sha256(Files.readAllBytes(manifestPath)));
+        completedExport = paths.publish(staging, sha256(Files.readAllBytes(manifestPath)));
     }
 
     private void fail() {

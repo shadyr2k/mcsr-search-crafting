@@ -4,6 +4,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -19,7 +20,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.function.Function;
 import net.minecraft.Bootstrap;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -92,6 +95,7 @@ class ExportCoordinatorTest {
 
     @Test
     void usesDefaultBatchSizeOfFour() throws Exception {
+        Function<MinecraftClient, ExportCoordinator> clientFactory = McsrItemIconsClient::createCoordinator;
         RecordingEnvironment environment = allowedEnvironment(
                 entry("minecraft:apple", Items.APPLE),
                 entry("minecraft:bread", Items.BREAD),
@@ -101,8 +105,10 @@ class ExportCoordinatorTest {
         RecordingCapture capture = new RecordingCapture();
         ExportCoordinator coordinator = coordinator(environment, capture);
 
+        assertNotNull(clientFactory);
         assertEquals(4, ExportCoordinator.DEFAULT_BATCH_SIZE);
         assertTrue(coordinator.start());
+        assertEquals(5, coordinator.totalCount());
         coordinator.tick();
 
         assertEquals(4, coordinator.attemptedCount());
@@ -150,6 +156,7 @@ class ExportCoordinatorTest {
 
         assertEquals(ExportState.COMPLETE, coordinator.state());
         assertEquals(Arrays.asList("minecraft:apple", "minecraft:stick"), capture.attemptedIds());
+        assertEquals(tempDir.resolve("exports/20260831T123456Z-test-run"), coordinator.completedExport());
         assertTrue(Files.isRegularFile(tempDir.resolve("latest.json")));
         assertTrue(Files.isRegularFile(tempDir.resolve("exports/20260831T123456Z-test-run/manifest.json")));
     }
