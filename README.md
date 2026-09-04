@@ -38,15 +38,16 @@ Generate the browser data from the pinned source tree:
 .\.venv\Scripts\python.exe -m mcsr_data.generate --source minecraft-data --output web/public/data
 ```
 
-The production command requires `recipes/`, `tags/items/`, and `lang/en_us.json`, then enforces the clean Minecraft 1.16.1 English baseline of exactly 634 recipes, 562 output items, 281 concrete inventory ingredients, 354 recipe-result collections, and 0 validation errors. It atomically writes five mutually consistent schema-version-3 artifacts:
+The production command requires `recipes/`, `tags/items/`, and `lang/en_us.json`, then enforces the clean Minecraft 1.16.1 English baseline of exactly 634 recipes, 562 output items, 283 selectable inventory items, 354 recipe-result collections, and 0 validation errors. It atomically writes six mutually consistent schema-version-3 artifacts:
 
 - `web/public/data/search-items.json`: output item names, line-bounded searchable text, provenance, and confidence.
-- `web/public/data/inventory-items.json`: every concrete recipe ingredient ID and its English name for the inventory picker.
+- `web/public/data/inventory-items.json`: every concrete recipe ingredient plus approved preset-only IDs and their English names for the inventory picker.
+- `web/public/data/inventory-presets.json`: the approved built-in inventories and their exact item IDs.
 - `web/public/data/crafting-recipes.json`: normalized recipes, resolved ingredient alternatives, output counts, grid compatibility, exact recipe groups, recipe-book categories, and result-collection IDs.
 - `web/public/data/recipe-result-collections.json`: deterministic category-plus-group collections with their exact recipe and output members.
 - `web/public/data/validation-report.json`: generation counts and machine-readable diagnostics.
 
-If validation fails, the generator prints every diagnostic and atomically writes `validation-failure-report.json` while leaving all five last-valid browser artifacts untouched. Small fixture generation is intentionally opt-in:
+If validation fails, the generator prints every diagnostic and atomically writes `validation-failure-report.json` while leaving all six last-valid browser artifacts untouched. Small fixture generation is intentionally opt-in:
 
 ```powershell
 .\.venv\Scripts\python.exe -m mcsr_data.generate --source path/to/fixture --output path/to/output --allow-non-baseline
@@ -83,7 +84,7 @@ The build-time generator under `generator/src/mcsr_data/` parses the extracted 1
 
 The runtime application under `web/src/` has explicit module boundaries:
 
-- `data/` fetches the four runtime payloads (search items, inventory items, recipes, and result collections), rejects mixed schema versions, and validates their complete cross-reference graph.
+- `data/` fetches the five runtime payloads (search items, inventory items, inventory presets, recipes, and result collections), rejects mixed schema versions, and validates their complete cross-reference graph.
 - `engine/` implements craftability, line-bounded search, shared candidate preparation, single-query ranking, overlap state search, scoring, bounded within-entry cancellation/progress, and workspace aggregation without React dependencies.
 - `persistence/` validates, migrates, and recovers browser records.
 - `presets/` contains committed read-only inventory presets.
@@ -95,7 +96,7 @@ The React application never contacts a live game or backend. Changing the explic
 
 The inventory is a set of exact item IDs, each available in infinite quantity. Its choices come from the concrete ingredient union in `inventory-items.json`, while target choices remain the recipe outputs in `search-items.json`. Selecting `minecraft:oak_log`, for example, does not imply planks, sticks, or any other derived item.
 
-Edit `web/src/presets/builtInPresets.ts` to add committed built-in presets. Each preset has a stable `id`, a display `name`, and exact `itemIds`. Loading a built-in preset creates an editable working inventory; it does not mutate the preset.
+Built-in presets are generated from `generator/src/mcsr_data/inventory_presets.json`. Each has a stable `id`, a display `name`, and exact item IDs. Loading one creates an editable working inventory; it does not mutate the preset.
 
 The browser exposes exactly three custom inventory slots. Each stores only a name and exact item-ID list and can be saved, overwritten, loaded, or cleared. They are versioned in local storage under `mcsr.inventory-slots.v1`.
 
@@ -126,4 +127,4 @@ Single-query and overlap rankings remain separate. Each enabled target set contr
 
 ## Validation boundary
 
-The generator's tooltip and recipe-result collection behavior is audited against Minecraft 1.16.1 client sources, and every generated artifact must pass schema and diagnostic validation. The browser requires schema version 3 for all four runtime payloads and rejects an older, newer, or mixed-version set explicitly. However, automatic comparison with a running game is deferred: a future Fabric 1.16.1 client exporter will enumerate the same recipe outputs, call the game's tooltip implementation in English, and diff that export against `search-items.json`. Until that separate validator exists and runs, confidence means source-reproduced or explicitly overridden—not live-game verified.
+The generator's tooltip and recipe-result collection behavior is audited against Minecraft 1.16.1 client sources, and every generated artifact must pass schema and diagnostic validation. The browser requires schema version 3 for all five runtime payloads and rejects an older, newer, or mixed-version set explicitly. Native item icons are exported from the same pinned client and verified during import; see [the exporter workflow](docs/icon-exporter.md). Automatic live-game comparison of tooltip and language strings remains future work, so confidence means source-reproduced or explicitly overridden—not live-game verified.
