@@ -31,10 +31,11 @@ function nextEntryId(entries: readonly TargetWorkspaceEntry[]): string {
 }
 
 export function commitDraft(workspace: TargetWorkspace, commit: ItemSetEditorCommit): TargetWorkspace {
-  const existing = commit.draft.sourceEntryId === undefined ? undefined : workspace.entries.find((entry) => entry.id === commit.draft.sourceEntryId)
+  const { sourceEntryId, ...draft } = commit.draft
+  const existing = sourceEntryId === undefined ? undefined : workspace.entries.find((entry) => entry.id === sourceEntryId)
   const entry: TargetWorkspaceEntry = existing
-    ? { ...commit.draft, id: existing.id, order: existing.order }
-    : { ...commit.draft, id: nextEntryId(workspace.entries), order: workspace.entries.length }
+    ? { ...draft, id: existing.id, order: existing.order }
+    : { ...draft, id: nextEntryId(workspace.entries), order: workspace.entries.length }
   const entries = existing ? workspace.entries.map((candidate) => candidate.id === existing.id ? entry : candidate) : [...workspace.entries, entry]
   return { entries: orderedEntries(entries).map((candidate, order) => ({ ...candidate, order })) }
 }

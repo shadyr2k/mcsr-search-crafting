@@ -30,6 +30,7 @@ export function ItemPicker({
   onChange,
 }: ItemPickerProps) {
   const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
   const searchId = useId()
   const searchLabel = label.startsWith('Search ') ? label : `Search ${label}`
   const selected = useMemo(() => new Set(selectedIds), [selectedIds])
@@ -70,17 +71,25 @@ export function ItemPicker({
     </li>
   }
 
-  return <div className="item-picker">
+  return <div
+    className="item-picker"
+    onFocusCapture={() => setOpen(true)}
+    onBlurCapture={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false)
+    }}
+  >
     <label htmlFor={searchId}>{searchLabel}</label>
     <input
       id={searchId}
       type="search"
       value={query}
+      onFocus={() => setOpen(true)}
+      onClick={() => setOpen(true)}
       onChange={(event) => setQuery(event.target.value)}
     />
-    <ul className="item-picker__results" aria-label={`${label} results`}>
+    {open && <ul className="item-picker__results" aria-label={`${label} results`}>
       {selectedItems.map(option)}
       {matches.map(option)}
-    </ul>
+    </ul>}
   </div>
 }

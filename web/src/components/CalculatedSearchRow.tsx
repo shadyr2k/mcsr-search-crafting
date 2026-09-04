@@ -56,8 +56,10 @@ export function CalculatedSearchRow({ entry, entryNumber, state, items, icons, o
     {onRetry && <button type="button" onClick={onRetry} aria-label={`Retry item set ${entryNumber}`}>Retry</button>}
   </section>
   if (state.outcome.kind === 'no-viable') return <section className="calculated-search-row" aria-label={`Calculated searches for ${label}`}>
+    <div className="calculated-search-row__status">
     <span>No viable search</span>
     <strong className="metric">{state.outcome.bestScore}</strong>
+    </div>
   </section>
 
   const searches = state.outcome.rankedSearches
