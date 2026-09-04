@@ -57,6 +57,7 @@ function generatedData(items: SearchItem[], recipes: CraftingRecipe[]): Generate
       recipeIds: [craftingRecipe.id],
       outputItemIds: [craftingRecipe.outputItemId],
     }])),
+    presets: new Map(),
   }
 }
 
@@ -121,6 +122,7 @@ function aliasFixture(): {
           'carpet',
         )],
       ]),
+      presets: new Map(),
     },
     inventory: new Set(['ingredient:bed', 'ingredient:carpet']),
     whiteBedId: whiteBed.id,
@@ -333,6 +335,7 @@ describe('optimizeWorkspace', () => {
         [targetItem.id, ...aliases.map(({ id }) => id)],
         'large',
       )]]),
+      presets: new Map(),
     }
     const controller = new AbortController()
     const matchingProgress: Array<[number, number | undefined]> = []

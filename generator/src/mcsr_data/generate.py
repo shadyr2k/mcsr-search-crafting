@@ -16,6 +16,7 @@ from mcsr_data.models import (
     RecipeResultCollection,
     SearchItem,
 )
+from mcsr_data.presets import InventoryPreset, load_inventory_presets
 from mcsr_data.recipe_collections import (
     RecipeCollectionError,
     assign_recipe_result_collections,
@@ -45,7 +46,7 @@ class GenerationBaseline:
 MINECRAFT_1_16_1_BASELINE = GenerationBaseline(
     recipe_count=634,
     output_item_count=562,
-    inventory_item_count=281,
+    inventory_item_count=283,
     collection_count=354,
 )
 
@@ -90,6 +91,7 @@ def generate(
     tags = _load_tags(source_root, report)
     catalog = _load_translations(source_root, report)
     overrides = _load_overrides(report)
+    presets = _load_inventory_presets(report)
 
     resolved_recipes = _resolve_recipes(recipes, tags, report)
     categories = (
@@ -103,7 +105,7 @@ def generate(
         report,
     )
     items = _build_items(enriched_recipes, catalog, overrides, report)
-    inventory_items = _build_inventory_items(enriched_recipes, catalog, report)
+    inventory_items = _build_inventory_items(enriched_recipes, presets, catalog, report)
     _validate_cross_references(
         enriched_recipes,
         items,
@@ -138,6 +140,13 @@ def generate(
                 item_id: _serialize_inventory_item(item)
                 for item_id, item in sorted(inventory_items.items())
             },
+        },
+        "inventory-presets.json": {
+            "schema_version": SCHEMA_VERSION,
+            "presets": [
+                _serialize_preset(preset)
+                for preset in sorted(presets, key=lambda preset: preset.preset_id)
+            ],
         },
         "crafting-recipes.json": {
             "schema_version": SCHEMA_VERSION,
@@ -207,6 +216,14 @@ def _load_overrides(report: ValidationReport) -> dict[str, object]:
         return {}
 
 
+def _load_inventory_presets(report: ValidationReport) -> tuple[InventoryPreset, ...]:
+    try:
+        return load_inventory_presets()
+    except (OSError, ValueError) as error:
+        report.error("invalid_inventory_presets", "inventory_presets", str(error))
+        return ()
+
+
 def _resolve_recipes(
     recipes: list[NormalizedRecipe],
     tags: TagResolver | None,
@@ -271,19 +288,25 @@ def _build_items(
 
 def _build_inventory_items(
     recipes: list[NormalizedRecipe],
+    presets: tuple[InventoryPreset, ...],
     catalog: TranslationCatalog | None,
     report: ValidationReport,
 ) -> dict[str, InventoryItem]:
     if catalog is None:
         return {}
     items: dict[str, InventoryItem] = {}
-    ingredient_ids = {
+    inventory_ids = {
         item_id
         for recipe in recipes
         for slot in recipe.ingredient_slots
         for item_id in slot.accepted_items
     }
-    for item_id in sorted(ingredient_ids):
+    inventory_ids.update(
+        item_id
+        for preset in presets
+        for item_id in preset.item_ids
+    )
+    for item_id in sorted(inventory_ids):
         try:
             items[item_id] = InventoryItem(item_id=item_id, name=catalog.item_name(item_id))
         except KeyError as error:
@@ -524,6 +547,14 @@ def _serialize_collection(collection: RecipeResultCollection) -> dict[str, objec
         "recipe_group": collection.recipe_group,
         "recipe_ids": list(collection.recipe_ids),
         "output_item_ids": list(collection.output_item_ids),
+    }
+
+
+def _serialize_preset(preset: InventoryPreset) -> dict[str, object]:
+    return {
+        "id": preset.preset_id,
+        "name": preset.name,
+        "item_ids": list(preset.item_ids),
     }
 
 

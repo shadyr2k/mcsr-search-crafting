@@ -35,6 +35,7 @@ function generatedData(
     inventoryItems: new Map(inventoryItems.map((id) => [id, { id, name: id }])),
     recipes: [],
     collections: new Map(),
+    presets: new Map(),
   }
 }
 

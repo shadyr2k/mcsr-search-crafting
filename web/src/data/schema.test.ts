@@ -46,6 +46,17 @@ const collections = {
   }],
 }
 
+function presetPayload(itemIds: string[]) {
+  return {
+    schema_version: 3,
+    presets: [{
+      id: 'overworld',
+      name: 'Overworld',
+      item_ids: itemIds,
+    }],
+  }
+}
+
 function expectValidationError(
   itemsData: unknown,
   inventoryItemsData: unknown,
@@ -54,7 +65,7 @@ function expectValidationError(
   path: string,
 ) {
   try {
-    parseGeneratedData(itemsData, inventoryItemsData, recipesData, collectionsData)
+    parseGeneratedData(itemsData, inventoryItemsData, recipesData, collectionsData, presetPayload(['minecraft:oak_log']))
     throw new Error('Expected generated data validation to fail')
   } catch (error) {
     expect(error).toBeInstanceOf(GeneratedDataError)
@@ -70,7 +81,7 @@ afterEach(() => {
 
 describe('parseGeneratedData', () => {
   test('converts a complete valid graph into shared map-based domain data', () => {
-    const generated = parseGeneratedData(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, collections)
+    const generated = parseGeneratedData(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, collections, presetPayload(['minecraft:oak_log']))
 
     expect(generated.schemaVersion).toBe(3)
     expect(generated.items).toBeInstanceOf(Map)
@@ -104,6 +115,25 @@ describe('parseGeneratedData', () => {
     }]]))
   })
 
+  test('loads generated presets and rejects unknown inventory references', () => {
+    const generated = parseGeneratedData(
+      items,
+      inventoryItems,
+      { schema_version: 3, recipes: [recipe] },
+      collections,
+      presetPayload(['minecraft:oak_log']),
+    )
+
+    expect(generated.presets.get('overworld')?.itemIds).toContain('minecraft:oak_log')
+    expect(() => parseGeneratedData(
+      items,
+      inventoryItems,
+      { schema_version: 3, recipes: [recipe] },
+      collections,
+      presetPayload(['minecraft:missing']),
+    )).toThrow('references missing inventory item')
+  })
+
   test('preserves a whitespace-only recipe group shared by its collection', () => {
     const generated = parseGeneratedData(items, inventoryItems, {
       schema_version: 3,
@@ -111,7 +141,7 @@ describe('parseGeneratedData', () => {
     }, {
       schema_version: 3,
       collections: [{ ...collections.collections[0], recipe_group: ' '}],
-    })
+    }, presetPayload(['minecraft:oak_log']))
 
     expect(generated.recipes[0].recipeGroup).toBe(' ')
     expect(generated.collections.get(collectionId)?.recipeGroup).toBe(' ')
@@ -206,7 +236,7 @@ describe('parseGeneratedData', () => {
           recipe_ids: [],
           output_item_ids: [],
         }],
-      })
+      }, presetPayload(['minecraft:oak_log']))
       throw new Error('Expected generated data validation to fail')
     } catch (error) {
       expect(error).toBeInstanceOf(GeneratedDataError)
@@ -305,7 +335,7 @@ describe('parseGeneratedData', () => {
           recipe_ids: [secondRecipe.id],
         },
       ],
-    })
+    }, presetPayload(['minecraft:oak_log']))
 
     expect(generated.collections.size).toBe(2)
   })
@@ -372,6 +402,7 @@ describe('loadGeneratedData', () => {
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => inventoryItems })
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ schema_version: 3, recipes: [recipe] }) })
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => collections })
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => presetPayload(['minecraft:oak_log']) })
     vi.stubGlobal('fetch', fetchMock)
 
     await loadGeneratedData()
@@ -383,5 +414,6 @@ describe('loadGeneratedData', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(2, `${base}data/inventory-items.json`)
     expect(fetchMock).toHaveBeenNthCalledWith(3, `${base}data/crafting-recipes.json`)
     expect(fetchMock).toHaveBeenNthCalledWith(4, `${base}data/recipe-result-collections.json`)
+    expect(fetchMock).toHaveBeenNthCalledWith(5, `${base}data/inventory-presets.json`)
   })
 })

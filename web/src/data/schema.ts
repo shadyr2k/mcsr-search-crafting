@@ -3,6 +3,7 @@ import type {
   GeneratedData,
   IngredientSlot,
   InventoryItem,
+  InventoryPreset,
   RecipeBookCategory,
   RecipeResultCollection,
   SearchItem,
@@ -193,6 +194,62 @@ function parseInventoryItems(value: unknown, errors: string[]): Map<string, Inve
   })
 
   return items
+}
+
+function parseInventoryPresets(
+  value: unknown,
+  inventoryItems: Map<string, InventoryItem>,
+  errors: string[],
+): Map<string, InventoryPreset> {
+  const root = getRecord(value, 'inventoryPresets', errors)
+  if (!root) return new Map()
+
+  if (root.schema_version !== GENERATED_SCHEMA_VERSION) {
+    errors.push(`inventoryPresets.schema_version: expected ${GENERATED_SCHEMA_VERSION}`)
+  }
+  if (!Array.isArray(root.presets)) {
+    errors.push('inventoryPresets.presets: expected an array')
+    return new Map()
+  }
+
+  const presets = new Map<string, InventoryPreset>()
+  const names = new Set<string>()
+  root.presets.forEach((rawPreset, index) => {
+    const presetPath = `presets[${index}]`
+    const record = getRecord(rawPreset, presetPath, errors)
+    if (!record) return
+
+    const id = getNonEmptyString(record.id, `${presetPath}.id`, errors)
+    const name = getNonEmptyString(record.name, `${presetPath}.name`, errors)
+    const itemIds = parseUniqueStringArray(record.item_ids, `${presetPath}.item_ids`, errors)
+    if (itemIds !== undefined && itemIds.length === 0) {
+      errors.push(`${presetPath}.item_ids: expected a non-empty array`)
+    }
+    if (id !== undefined && presets.has(id)) {
+      errors.push(`${presetPath}.id: duplicate preset ID ${id}`)
+    }
+    if (name !== undefined && names.has(name)) {
+      errors.push(`${presetPath}.name: duplicate preset name ${name}`)
+    }
+    itemIds?.forEach((itemId, itemIndex) => {
+      if (!inventoryItems.has(itemId)) {
+        errors.push(`${presetPath}.item_ids[${itemIndex}]: references missing inventory item ${itemId}`)
+      }
+    })
+    if (
+      id !== undefined
+      && name !== undefined
+      && itemIds !== undefined
+      && itemIds.length > 0
+      && !presets.has(id)
+      && !names.has(name)
+    ) {
+      presets.set(id, { id, name, itemIds })
+      names.add(name)
+    }
+  })
+
+  return presets
 }
 
 function parseIngredientSlots(value: unknown, path: string, errors: string[]): IngredientSlot[] | undefined {
@@ -464,10 +521,12 @@ export function parseGeneratedData(
   inventoryItemsPayload: unknown,
   recipesPayload: unknown,
   collectionsPayload: unknown,
+  inventoryPresetsPayload: unknown,
 ): GeneratedData {
   const errors: string[] = []
   const items = parseItems(itemsPayload, errors)
   const inventoryItems = parseInventoryItems(inventoryItemsPayload, errors)
+  const presets = parseInventoryPresets(inventoryPresetsPayload, inventoryItems, errors)
   const indexedRecipes = parseRecipes(recipesPayload, errors)
   const indexedCollections = parseCollections(collectionsPayload, errors)
   validateRecipeReferences(indexedRecipes, items, inventoryItems, errors)
@@ -483,6 +542,7 @@ export function parseGeneratedData(
     inventoryItems,
     recipes: indexedRecipes.map(({ recipe }) => recipe),
     collections: new Map(indexedCollections.map(({ collection }) => [collection.id, collection])),
+    presets,
   }
 }
 
@@ -501,11 +561,18 @@ async function fetchJson(url: string): Promise<unknown> {
 
 export async function loadGeneratedData(baseUrl = import.meta.env.BASE_URL): Promise<GeneratedData> {
   const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
-  const [itemsPayload, inventoryItemsPayload, recipesPayload, collectionsPayload] = await Promise.all([
+  const [itemsPayload, inventoryItemsPayload, recipesPayload, collectionsPayload, inventoryPresetsPayload] = await Promise.all([
     fetchJson(`${base}data/search-items.json`),
     fetchJson(`${base}data/inventory-items.json`),
     fetchJson(`${base}data/crafting-recipes.json`),
     fetchJson(`${base}data/recipe-result-collections.json`),
+    fetchJson(`${base}data/inventory-presets.json`),
   ])
-  return parseGeneratedData(itemsPayload, inventoryItemsPayload, recipesPayload, collectionsPayload)
+  return parseGeneratedData(
+    itemsPayload,
+    inventoryItemsPayload,
+    recipesPayload,
+    collectionsPayload,
+    inventoryPresetsPayload,
+  )
 }

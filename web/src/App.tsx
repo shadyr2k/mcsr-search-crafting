@@ -18,7 +18,7 @@ import {
   saveCustomInventorySlot,
   saveTargetWorkspace,
 } from './persistence/storage'
-import { BUILT_IN_INVENTORY_PRESETS } from './presets/builtInPresets'
+import { builtInInventoryPresets } from './presets/builtInPresets'
 
 function normalizeWorkspaceGridSizes(workspace: TargetWorkspace, data: GeneratedData): TargetWorkspace {
   let changed = false
@@ -154,7 +154,7 @@ function App() {
         inventoryItemIds={inventoryItemIds}
         inventoryName={inventoryName}
         customSlots={customSlots}
-        builtInPresets={BUILT_IN_INVENTORY_PRESETS}
+        builtInPresets={builtInInventoryPresets(data)}
         onInventoryItemIdsChange={setInventoryItemIds}
         onInventoryNameChange={setInventoryName}
         onLoadPreset={loadPreset}

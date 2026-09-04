@@ -51,6 +51,7 @@ export interface GeneratedData {
   inventoryItems: Map<string, InventoryItem>
   recipes: CraftingRecipe[]
   collections: Map<string, RecipeResultCollection>
+  presets: Map<string, InventoryPreset>
 }
 
 export interface InventoryPreset {

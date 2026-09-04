@@ -17,6 +17,7 @@ from mcsr_data.models import (
     RecipeResultCollection,
     SearchItem,
 )
+from mcsr_data.presets import load_inventory_presets
 from mcsr_data.validation import ValidationReport
 
 
@@ -30,10 +31,18 @@ def fixture_data(tmp_path):
     (source / "recipes").mkdir(parents=True)
     (source / "tags" / "items").mkdir(parents=True)
     (source / "lang").mkdir()
-    (source / "lang" / "en_us.json").write_text(json.dumps({
+    translations = {
         "block.minecraft.crafting_table": "Crafting Table",
         "block.minecraft.oak_planks": "Oak Planks",
-    }), encoding="utf-8")
+    }
+    for preset in load_inventory_presets():
+        for item_id in preset.item_ids:
+            namespace, path = item_id.split(":", 1)
+            translations.setdefault(
+                f"item.{namespace}.{path}",
+                path.replace("_", " ").title(),
+            )
+    (source / "lang" / "en_us.json").write_text(json.dumps(translations), encoding="utf-8")
     (source / "recipes" / "crafting_table.json").write_text(json.dumps({
         "type": "minecraft:crafting_shaped",
         "group": "fixture_group",
@@ -62,14 +71,21 @@ def test_generate_writes_stable_versioned_files(fixture_data, tmp_path):
     collections = json.loads(
         (output / "recipe-result-collections.json").read_text(encoding="utf-8")
     )
+    presets = json.loads((output / "inventory-presets.json").read_text(encoding="utf-8"))
     report = json.loads((output / "validation-report.json").read_text(encoding="utf-8"))
     assert items["schema_version"] == 3
-    assert inventory_items == {
-        "items": {"minecraft:oak_planks": {"name": "Oak Planks"}},
-        "schema_version": 3,
-    }
+    assert inventory_items["schema_version"] == 3
+    assert inventory_items["items"]["minecraft:oak_planks"] == {"name": "Oak Planks"}
+    assert inventory_items["items"]["minecraft:bucket"] == {"name": "Bucket"}
     assert recipes["schema_version"] == 3
     assert collections["schema_version"] == 3
+    assert [preset["id"] for preset in presets["presets"]] == [
+        "nether-bastion",
+        "nether-fortress",
+        "overworld",
+    ]
+    assert presets["presets"][0]["item_ids"][8] == "minecraft:bucket"
+    assert presets["presets"][2]["item_ids"][1] == "minecraft:oak_leaves"
     assert report["schema_version"] == 3
     assert recipes["recipes"][0]["recipe_group"] == "fixture_group"
     assert recipes["recipes"][0]["recipe_book_category"] == "crafting_building_blocks"
@@ -78,7 +94,7 @@ def test_generate_writes_stable_versioned_files(fixture_data, tmp_path):
     assert collections["language"] == "en_us"
     assert summary.error_count == 0
     assert summary.recipe_count == 1
-    assert summary.inventory_item_count == 1
+    assert summary.inventory_item_count == 28
     assert summary.collection_count == 1
     assert list(items["items"]) == sorted(items["items"])
     assert recipes["recipes"][0]["output_count"] == 1
@@ -117,6 +133,7 @@ def test_generate_preserves_existing_outputs_when_validation_fails(fixture_data,
         for filename in (
             "search-items.json",
             "inventory-items.json",
+            "inventory-presets.json",
             "crafting-recipes.json",
             "recipe-result-collections.json",
             "validation-report.json",
@@ -296,6 +313,7 @@ def test_atomic_publish_restores_all_artifacts_after_an_intermediate_replacement
     filenames = (
         "search-items.json",
         "inventory-items.json",
+        "inventory-presets.json",
         "crafting-recipes.json",
         "recipe-result-collections.json",
         "validation-report.json",
@@ -364,7 +382,7 @@ def test_production_cli_enforces_the_pinned_recipe_and_output_counts(
     assert "baseline_output_count" in captured.err
     assert "expected 562" in captured.err
     assert "baseline_inventory_count" in captured.err
-    assert "expected 281" in captured.err
+    assert "expected 283" in captured.err
     assert "baseline_collection_count" in captured.err
     assert "expected 354" in captured.err
     assert "validation-failure-report.json" in captured.err
@@ -413,10 +431,15 @@ def test_real_inventory_catalog_covers_every_concrete_ingredient_with_english_na
 
     assert summary.recipe_count == 634
     assert summary.output_item_count == 562
-    assert summary.inventory_item_count == 281
+    assert summary.inventory_item_count == 283
     assert summary.collection_count == 354
-    assert set(inventory_items) == ingredient_ids
+    assert set(inventory_items) == ingredient_ids | {
+        "minecraft:oak_leaves",
+        "minecraft:bucket",
+    }
     assert inventory_items["minecraft:oak_log"]["name"] == "Oak Log"
     assert inventory_items["minecraft:cobblestone"]["name"] == "Cobblestone"
+    assert inventory_items["minecraft:oak_leaves"]["name"] == "Oak Leaves"
+    assert inventory_items["minecraft:bucket"]["name"] == "Bucket"
     assert "minecraft:oak_log" not in search_items
     assert "minecraft:cobblestone" not in search_items

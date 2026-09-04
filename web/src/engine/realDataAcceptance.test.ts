@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import craftingRecipesPayload from '../../public/data/crafting-recipes.json'
 import inventoryItemsPayload from '../../public/data/inventory-items.json'
+import inventoryPresetsPayload from '../../public/data/inventory-presets.json'
 import recipeResultCollectionsPayload from '../../public/data/recipe-result-collections.json'
 import searchItemsPayload from '../../public/data/search-items.json'
 import { parseGeneratedData } from '../data/schema'
@@ -14,6 +15,7 @@ const data = parseGeneratedData(
   inventoryItemsPayload,
   craftingRecipesPayload,
   recipeResultCollectionsPayload,
+  inventoryPresetsPayload,
 )
 
 const groupedInventory = [

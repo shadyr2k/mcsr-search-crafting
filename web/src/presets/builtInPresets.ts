@@ -1,4 +1,5 @@
-import type { InventoryPreset } from '../domain/types'
+import type { GeneratedData, InventoryPreset } from '../domain/types'
 
-// Add user-supplied built-in inventory presets to this list.
-export const BUILT_IN_INVENTORY_PRESETS: readonly InventoryPreset[] = []
+export function builtInInventoryPresets(data: GeneratedData): readonly InventoryPreset[] {
+  return [...data.presets.values()].sort((left, right) => left.id.localeCompare(right.id))
+}
