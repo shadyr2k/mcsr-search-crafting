@@ -106,8 +106,8 @@ function App() {
     <header className="app-header"><p className="eyebrow">Minecraft Java Edition 1.16.1</p><h1>MCSR Search Crafting</h1></header>
     {warning && <p role="alert">{warning}</p>}{error && <p role="alert">{error}</p>}
     {data && icons && <div className="workspace-grid">
-      <LanguageRanking aggregate={aggregate} />
       <ItemSetWorkspace entries={workspace.entries} items={data.items} icons={icons} onWorkspaceChange={setWorkspace} onEdit={openEdit} onAdd={openAdd} />
+      <LanguageRanking aggregate={aggregate} />
       <section className="results-column" aria-label={editor ? (editor.kind === 'new' ? 'New item set' : `Edit item set ${editorNumber}`) : 'Calculated searches'}>
         {editor ? <ItemSetEditor
           state={editor} entryNumber={editorNumber} data={data} icons={icons} customSlots={customSlots}

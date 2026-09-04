@@ -19,6 +19,22 @@ function stubData(icons: Record<string, string> = { 'minecraft:stick': 'minecraf
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear() })
 
 describe('App workspace composition', () => {
+  test('places item sets before the narrower language column', async () => {
+    localStorage.setItem(workspaceKey, JSON.stringify({
+      schemaVersion: 2,
+      entries: [{ id: 'saved', targetIds: ['minecraft:stick'], inventoryItemIds: [], enabled: true, gridSize: 3, order: 0 }],
+    }))
+    stubData()
+    render(<App />)
+    await screen.findByRole('region', { name: 'Language ranking' })
+
+    expect([...document.querySelector('.workspace-grid')!.children].map((element) => element.className)).toEqual([
+      'item-set-workspace',
+      'language-ranking',
+      'results-column',
+    ])
+  })
+
   test('opens a draft editor and persists a new set only after Save', async () => {
     stubData()
     render(<App />)
