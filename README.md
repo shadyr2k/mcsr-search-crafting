@@ -2,6 +2,8 @@
 
 MCSR Search Crafting is a static React application that ranks Minecraft Java Edition 1.16.1 recipe-book searches for an explicit, infinite inventory. It loads deterministic JSON produced by the repository's Python generator, determines which crafting outputs are visible in a selected 2x2 or 3x3 grid, and compares complete single-query and overlapping-query routes for each enabled target set.
 
+The workspace is English-only and organized as three responsive columns: the combined English score, saved item sets, and their calculated searches. Each item set owns an independent infinite inventory and grid size. Draft edits are isolated until **Save**; Cancel leaves the saved calculation and browser data unchanged. Rows show the best three unified single/overlap routes by default, with up to ten on expansion. Native 16×16 Minecraft item icons are imported from the pinned client; see [the exporter workflow](docs/icon-exporter.md).
+
 Version 1 is intentionally English-only (`en_us`) and Minecraft 1.16.1-only. It includes shaped and shapeless crafting-table recipes; it does not infer materials recursively, track quantities, simulate recipe unlocks, or include furnace, blasting, smoking, campfire, stonecutting, or smithing recipes.
 
 ## Prerequisites
@@ -74,7 +76,7 @@ pnpm --dir web run build
 pnpm --dir web run e2e
 ```
 
-The browser tests start Vite on `127.0.0.1` and run Chromium at an explicit 1440×1000 desktop viewport. The real-data path uses accessible roles and labels, verifies keyboard focus order, selects ingredient-only `minecraft:oak_log` and `minecraft:cobblestone` from the real catalog, confirms ingredient-only IDs are not target choices, checks representative queries, target coverage, and scores in both ranked categories, excludes a disabled set from the aggregate, then reloads to verify target membership, enabled state, grid size, and set order persisted. A deterministic routed data fixture passes through the real App and `ResultPanel` boundary to verify both Unicode-safe UTF-16 spans and collection alias explanations that distinguish the matched member from the visible craftable output. The generated-data acceptance suite locks the confirmed `wn`, `wn `, `re`, `ngo`, `ro`, and `oe` queries, including White Wool isolation and White Bed candidate generation.
+The browser tests start Vite on `127.0.0.1` and run Chromium at an explicit 1440×1000 desktop viewport. They verify independent row inventories, save-gated drafts, 2×2 selection, disabled-row aggregate exclusion, reload persistence, and the narrow stacked layout. The generated-data acceptance suite locks the confirmed `wn`, `wn `, `re`, `ngo`, `ro`, and `oe` queries, including White Wool isolation and White Bed candidate generation.
 
 The production build is emitted to the ignored `web/dist/` directory. Its files use relative asset paths and can be hosted by an ordinary static-file server.
 
@@ -94,13 +96,13 @@ The React application never contacts a live game or backend. Changing the explic
 
 ## Inventories, presets, and browser storage
 
-The inventory is a set of exact item IDs, each available in infinite quantity. Its choices come from the concrete ingredient union in `inventory-items.json`, while target choices remain the recipe outputs in `search-items.json`. Selecting `minecraft:oak_log`, for example, does not imply planks, sticks, or any other derived item.
+Every item set has a set of exact item IDs, each available in infinite quantity. Its choices come from the concrete ingredient union in `inventory-items.json`, while target choices remain the recipe outputs in `search-items.json`. Selecting `minecraft:oak_log`, for example, does not imply planks, sticks, or any other derived item. Empty inventories are valid and produce a finite no-viable result when a goal cannot be searched.
 
 Built-in presets are generated from `generator/src/mcsr_data/inventory_presets.json`. Each has a stable `id`, a display `name`, and exact item IDs. Loading one creates an editable working inventory; it does not mutate the preset.
 
 The browser exposes exactly three custom inventory slots. Each stores only a name and exact item-ID list and can be saved, overwritten, loaded, or cleared. They are versioned in local storage under `mcsr.inventory-slots.v1`.
 
-Target sets are stored separately as one auto-saved workspace under `mcsr.target-workspace.v1`. That record preserves every set's ID, targets, enabled state, grid size, and display order. Disabled sets stay visible and saved but do not contribute to optimization or the aggregate score. Enabled empty sets are likewise saved and editable but remain non-scoring until a target is added. Malformed members are isolated where possible; unrecoverable raw records are copied to `mcsr.recovery.*` keys before safe defaults are restored.
+Target sets are stored separately as one auto-saved workspace under `mcsr.target-workspace.v1`. Schema-v1 rows are migrated with an empty per-row inventory; schema-v2 preserves each set's ID, targets, inventory, enabled state, grid size, and display order. Disabled sets stay visible and saved but do not contribute to optimization or the aggregate score. Enabled empty sets are likewise saved and editable but remain non-scoring until a target is added. Malformed members are isolated where possible; unrecoverable raw records are copied to `mcsr.recovery.*` keys before safe defaults are restored.
 
 Browser storage read, quota, or permission failures do not discard the active editor state. The app keeps the latest values in memory for the current page and surfaces a warning that they may be lost after reload.
 
@@ -123,7 +125,7 @@ score                 = sum of those penalties
 
 Overlap results order useful queries to cover new targets. The first query uses the same length penalty; each transition charges only newly typed characters after the longest retained prefix. Backspaces are free. Junk presence and distinct junk are charged independently at every step, so the same junk item can be charged again later.
 
-Single-query and overlap rankings remain separate. Each enabled target set contributes its lower complete score to the aggregate; if neither method completes, it contributes a deterministic finite failure score above every possible complete result for the same target and visible-output counts. Ties prefer fewer junk appearances, fewer steps, fewer typed characters, then alphabetical query sequence.
+Single-query and overlap routes share one deterministic ranking. Each enabled target set contributes its lowest ranked complete score to the English aggregate; if neither method completes, it contributes a deterministic finite failure score above every possible complete result for the same target and visible-output counts. Ties prefer fewer junk appearances, fewer steps, fewer typed characters, then alphabetical query sequence.
 
 ## Validation boundary
 
