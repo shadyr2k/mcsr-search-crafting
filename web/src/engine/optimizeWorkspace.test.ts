@@ -8,7 +8,7 @@ import type {
   TargetWorkspaceEntry,
 } from '../domain/types'
 import { incompleteScore } from './scoring'
-import { optimizeWorkspace } from './optimizeWorkspace'
+import { optimizeWorkspace, optimizeWorkspaceEntry } from './optimizeWorkspace'
 
 function item(id: string, text: string): SearchItem {
   return {
@@ -134,6 +134,29 @@ const data = generatedData([alpha, beta, hidden], [recipe(alpha.id, true), recip
 const inventory = new Set(['ingredient:shared'])
 
 describe('optimizeWorkspace', () => {
+  test('optimizes each entry from only its own exact inventory', async () => {
+    const craftable = await optimizeWorkspaceEntry(data, entry('craftable', [alpha.id], {
+      inventoryItemIds: ['ingredient:shared'],
+    }))
+    const empty = await optimizeWorkspaceEntry(data, entry('empty', [alpha.id], {
+      inventoryItemIds: [],
+    }))
+
+    expect(craftable.kind).toBe('ranked')
+    expect(empty).toMatchObject({
+      kind: 'no-viable',
+      bestScore: incompleteScore(1, 0),
+    })
+  })
+
+  test('does not convert an unexpected optimizer rejection into no-viable', async () => {
+    const corruptData = { ...data, collections: new Map() }
+
+    await expect(optimizeWorkspaceEntry(corruptData, entry('corrupt', [alpha.id], {
+      inventoryItemIds: ['ingredient:shared'],
+    }))).rejects.toThrow()
+  })
+
   test('preserves enabled empty sets as non-scoring editor state', async () => {
     const result = await optimizeWorkspace(data, inventory, [
       entry('empty', [], { order: 0 }),

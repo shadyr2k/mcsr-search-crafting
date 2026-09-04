@@ -81,3 +81,54 @@ export interface TargetWorkspace {
 export type ItemSetDraft = Omit<TargetWorkspaceEntry, 'id' | 'order'> & {
   sourceEntryId?: string
 }
+
+export interface RankedSearchStep {
+  query: string
+  retainedPrefix: string
+  freeBackspaceCount: number
+  typedSuffix: string
+  coveredTargetIds: string[]
+  newTargetIds: string[]
+  junkItemIds: string[]
+  explanations: import('../engine/search').CollectionMatchExplanation[]
+  score: {
+    typingPenalty: number
+    junkPresencePenalty: number
+    junkCountPenalty: number
+    total: number
+  }
+}
+
+export interface RankedSearch {
+  kind: 'single' | 'overlap'
+  queries: string[]
+  steps: RankedSearchStep[]
+  coveredTargetIds: string[]
+  totalJunkAppearances: number
+  totalTypedCharacters: number
+  totalScore: number
+}
+
+export type EntryOptimizationOutcome =
+  | {
+      kind: 'ranked'
+      entryId: string
+      rankedSearches: RankedSearch[]
+      bestScore: number
+      visibleItemIds: string[]
+    }
+  | {
+      kind: 'no-viable'
+      entryId: string
+      rankedSearches: []
+      bestScore: number
+      visibleItemIds: string[]
+      matchedTargetIds: string[]
+      unmatchedTargetIds: string[]
+    }
+
+export type RowOptimizationState =
+  | { status: 'idle' }
+  | { status: 'pending'; fingerprint: string; progress?: import('../engine/optimizeWorkspace').WorkspaceOptimizationProgress }
+  | { status: 'ready'; fingerprint: string; outcome: EntryOptimizationOutcome }
+  | { status: 'error'; fingerprint: string; message: string }

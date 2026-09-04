@@ -1,8 +1,14 @@
-import type { GeneratedData, TargetWorkspaceEntry } from '../domain/types'
+import type {
+  EntryOptimizationOutcome,
+  GeneratedData,
+  RowOptimizationState,
+  TargetWorkspaceEntry,
+} from '../domain/types'
 
 import { eligibleRecipes } from './craftability'
 import { optimizeOverlapPreparedCooperatively, type OverlapResult } from './overlapOptimizer'
 import { incompleteScore } from './scoring'
+import { rankSearches } from './rankedSearch'
 import {
   optimizeSinglePrepared,
   prepareOptimizationCooperatively,
@@ -142,6 +148,60 @@ async function optimizeEntry(
       bestSingleScore ?? Number.POSITIVE_INFINITY,
       bestOverlapScore ?? Number.POSITIVE_INFINITY,
       incomplete?.score ?? Number.POSITIVE_INFINITY,
+    ),
+  }
+}
+
+export async function optimizeWorkspaceEntry(
+  data: GeneratedData,
+  entry: TargetWorkspaceEntry,
+  options: OptimizeWorkspaceOptions = {},
+): Promise<EntryOptimizationOutcome> {
+  const inventory = new Set(entry.inventoryItemIds)
+  const legacy = await optimizeEntry(
+    data,
+    inventory,
+    entry,
+    0,
+    0,
+    1,
+    { ...options, yieldControl: options.yieldControl ?? yieldToBrowser },
+  )
+  const rankedSearches = rankSearches(legacy.single, legacy.overlap)
+  if (rankedSearches.length > 0) {
+    return {
+      kind: 'ranked',
+      entryId: entry.id,
+      rankedSearches,
+      bestScore: rankedSearches[0].totalScore,
+      visibleItemIds: legacy.visibleItemIds,
+    }
+  }
+  return {
+    kind: 'no-viable',
+    entryId: entry.id,
+    rankedSearches: [],
+    bestScore: legacy.incomplete?.score ?? incompleteScore(legacy.targetIds.length, legacy.visibleItemIds.length),
+    visibleItemIds: legacy.visibleItemIds,
+    matchedTargetIds: legacy.incomplete?.matchedTargetIds ?? [],
+    unmatchedTargetIds: legacy.incomplete?.unmatchedTargetIds ?? legacy.targetIds,
+  }
+}
+
+export function aggregateEnglishScore(
+  entries: readonly TargetWorkspaceEntry[],
+  states: ReadonlyMap<string, RowOptimizationState>,
+): { status: 'blank' | 'pending' | 'unavailable' | 'ready'; score?: number } {
+  const scoreable = entries.filter((entry) => entry.enabled && entry.targetIds.length > 0)
+  if (scoreable.length === 0) return { status: 'blank' }
+  const relevantStates = scoreable.map((entry) => states.get(entry.id))
+  if (relevantStates.some((state) => state?.status === 'pending')) return { status: 'pending' }
+  if (relevantStates.some((state) => state?.status !== 'ready')) return { status: 'unavailable' }
+  return {
+    status: 'ready',
+    score: relevantStates.reduce(
+      (sum, state) => sum + (state?.status === 'ready' ? state.outcome.bestScore : 0),
+      0,
     ),
   }
 }
