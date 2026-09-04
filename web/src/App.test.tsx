@@ -40,6 +40,15 @@ const inventoryItemsPayload = {
   },
 }
 
+const inventoryPresetsPayload = {
+  schema_version: 3,
+  presets: [{
+    id: 'overworld',
+    name: 'Overworld',
+    item_ids: ['minecraft:oak_log', 'minecraft:oak_planks', 'minecraft:stick'],
+  }],
+}
+
 const recipesPayload = {
   schema_version: 3,
   recipes: [
@@ -80,6 +89,8 @@ function stubGeneratedData(recipes: unknown = recipesPayload, collections: unkno
       ? itemsPayload
       : url.includes('inventory-items')
         ? inventoryItemsPayload
+        : url.includes('inventory-presets')
+          ? inventoryPresetsPayload
         : url.includes('crafting-recipes')
           ? recipes
           : collections,
@@ -109,6 +120,7 @@ describe('App persistence', () => {
 
     expect(await screen.findByRole('article', { name: 'Target set 1' })).toBeTruthy()
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('recipe-result-collections.json'))
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('inventory-presets.json'))
     await waitFor(() => expect(screen.getByText('Aggregate score: 0')).toBeTruthy())
     expect(screen.getByText('1 enabled empty target set is saved but not scored.')).toBeTruthy()
     expect(screen.queryByText(/Maximum failure score:/)).toBeNull()
