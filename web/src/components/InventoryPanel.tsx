@@ -51,8 +51,8 @@ export function InventoryPanel({
     <ItemPicker
       items={items}
       label="Search inventory items"
-      selectedItemIds={inventoryItemIds}
-      onSelectedItemIdsChange={onInventoryItemIdsChange}
+      selectedIds={inventoryItemIds}
+      onChange={onInventoryItemIdsChange}
     />
 
     <p className="selection-count">{inventoryItemIds.length} selected item{inventoryItemIds.length === 1 ? '' : 's'}</p>

@@ -45,11 +45,17 @@ export function normalizeDraftGrid(
     : draft
 }
 
-export function validateItemSetDraft(draft: ItemSetDraft): boolean {
+export function validateItemSetDraft(
+  draft: ItemSetDraft,
+  items?: ReadonlyMap<string, { id: string }>,
+  inventoryItems?: ReadonlyMap<string, { id: string }>,
+): boolean {
   return typeof draft.enabled === 'boolean'
     && (draft.gridSize === 2 || draft.gridSize === 3)
     && draft.targetIds.length > 0
     && draft.targetIds.every((itemId) => typeof itemId === 'string' && itemId.length > 0)
     && draft.inventoryItemIds.every((itemId) => typeof itemId === 'string' && itemId.length > 0)
     && (draft.sourceEntryId === undefined || typeof draft.sourceEntryId === 'string')
+    && (items === undefined || draft.targetIds.every((itemId) => items.has(itemId)))
+    && (inventoryItems === undefined || draft.inventoryItemIds.every((itemId) => inventoryItems.has(itemId)))
 }

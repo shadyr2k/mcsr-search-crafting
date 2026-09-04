@@ -1,0 +1,42 @@
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+
+import { parseIconManifest } from '../data/iconManifest'
+import type { SearchItem, TargetWorkspaceEntry } from '../domain/types'
+import { ItemSetWorkspace } from './ItemSetWorkspace'
+
+afterEach(cleanup)
+
+const items = new Map<string, SearchItem>([
+  ['minecraft:stick', { id: 'minecraft:stick', name: 'Stick', confidence: 'exact', searchLines: [] }],
+])
+const icons = parseIconManifest({
+  schema_version: 1,
+  minecraft_version: '1.16.1',
+  icon_width: 16,
+  icon_height: 16,
+  icons: { 'minecraft:stick': 'minecraft/stick.png' },
+})
+const entry: TargetWorkspaceEntry = {
+  id: 'saved', targetIds: ['minecraft:stick'], inventoryItemIds: [], enabled: true, gridSize: 2, order: 0,
+}
+
+describe('ItemSetWorkspace', () => {
+  test('emits enabled changes immediately while edits remain explicit', () => {
+    const onWorkspaceChange = vi.fn()
+    const onEdit = vi.fn()
+    render(<ItemSetWorkspace
+      entries={[entry]}
+      items={items}
+      icons={icons}
+      onWorkspaceChange={onWorkspaceChange}
+      onEdit={onEdit}
+      onAdd={vi.fn()}
+    />)
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Enable item set 1' }))
+    expect(onWorkspaceChange).toHaveBeenCalledWith({ entries: [expect.objectContaining({ enabled: false })] })
+    fireEvent.click(screen.getByRole('button', { name: 'Edit item set 1' }))
+    expect(onEdit).toHaveBeenCalledWith('saved')
+  })
+})
