@@ -117,7 +117,7 @@ function App() {
           onDelete={editor.entryId ? () => { setWorkspace((current) => deleteEntry(current, editor.entryId!)); setEditor(null) } : undefined}
           onSaveCustomSlot={saveSlot} onClearCustomSlot={clearSlot}
         /> : entries.map((entry, index) => <CalculatedSearchRow
-          key={entry.id} entry={entry} entryNumber={index + 1} state={states.get(entry.id)} items={data.items} icons={icons} onRetry={() => retry(entry.id)}
+          key={entry.id} entry={entry} entryNumber={index + 1} state={states.get(entry.id)} items={data.items} icons={icons} collections={data.collections} onRetry={() => retry(entry.id)}
         />)}
       </section>
     </div>}

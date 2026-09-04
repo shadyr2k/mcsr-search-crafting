@@ -3,6 +3,7 @@ import { useId } from 'react'
 import type { IconManifest } from '../data/iconManifest'
 import type { SearchItem } from '../domain/types'
 import type { CollectionMatchExplanation } from '../engine/search'
+import { ArrowSprite } from './ArrowSprite'
 import { ItemIcon } from './ItemIcon'
 
 interface MatchEvidenceProps {
@@ -38,7 +39,7 @@ export function MatchEvidence({ explanation, items: _items, icons }: MatchEviden
       ? <ItemIcon itemId={explanation.visibleOutputItemId} name={explanation.visibleOutputName} manifest={icons} />
       : <span aria-label={`matches craftable ${explanation.matchedMemberName}`}>
         <ItemIcon itemId={explanation.matchedMemberItemId} name={explanation.matchedMemberName} manifest={icons} />
-        <span aria-hidden="true">⏩</span>
+        <ArrowSprite direction="right" />
         <ItemIcon itemId={explanation.visibleOutputItemId} name={explanation.visibleOutputName} manifest={icons} />
       </span>}
     <span>

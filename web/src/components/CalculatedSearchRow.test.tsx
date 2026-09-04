@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { parseIconManifest } from '../data/iconManifest'
-import type { RankedSearch, SearchItem, TargetWorkspaceEntry } from '../domain/types'
+import type { RankedSearch, RecipeResultCollection, SearchItem, TargetWorkspaceEntry } from '../domain/types'
 import type { CollectionMatchExplanation } from '../engine/search'
 import { CalculatedSearchRow } from './CalculatedSearchRow'
 
@@ -44,7 +44,7 @@ describe('CalculatedSearchRow', () => {
     render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches, bestScore: 1, visibleItemIds: [] } }} items={items} icons={icons} />)
 
     expect(screen.getByRole('listitem', { name: 'Regular craft: wn' })).toBeTruthy()
-    expect(screen.getByRole('listitem', { name: 'Overlap craft: aw, 2 backspaces, be' })).toBeTruthy()
+    expect(screen.getByRole('listitem', { name: 'Overlap craft: aw, Shift+Home, be' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Regular crafts' })).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
@@ -52,7 +52,7 @@ describe('CalculatedSearchRow', () => {
     expect(screen.getByRole('heading', { name: 'Regular crafts' })).toBeTruthy()
     const overlapCategory = screen.getByRole('region', { name: 'Overlap crafts' })
     expect(screen.getByRole('heading', { name: 'Overlap crafts' })).toBeTruthy()
-    expect(within(overlapCategory).getAllByText('⏪')).toHaveLength(2)
+    expect(within(overlapCategory).getByRole('img', { name: 'Shift+Home' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Hide crafts for item set 1' }).getAttribute('aria-expanded')).toBe('true')
   })
 
@@ -80,7 +80,7 @@ describe('CalculatedSearchRow', () => {
 
     expect(screen.getByText('_be')).toBeTruthy()
     expect(screen.queryByText('an_be')).toBeNull()
-    expect(screen.getAllByText('⏪')).toHaveLength(1)
+    expect(screen.getByRole('img', { name: 'Backspace' })).toBeTruthy()
   })
 
   test('shows a compact junk preview and target-only evidence after expansion', () => {
@@ -99,9 +99,48 @@ describe('CalculatedSearchRow', () => {
     expect(within(craftRow).getByLabelText('2 more junk items')).toBeTruthy()
 
     fireEvent.click(within(craftRow).getByRole('button', { name: 'Show why Regular craft: wn' }))
-    expect(within(craftRow).getByLabelText('All junk: 5 items')).toBeTruthy()
+    expect(within(craftRow).getByLabelText('Remaining junk: 2 items')).toBeTruthy()
+    expect(within(craftRow).queryByLabelText('All matched items and junk')).toBeNull()
     expect(within(craftRow).getByTitle(/line Brown Bed/)).toBeTruthy()
     expect(within(craftRow).queryByTitle(/line Brown Stick/)).toBeNull()
+  })
+
+  test('summarizes a fully matched result collection instead of listing every member', () => {
+    const bedIds = ['minecraft:black_bed', 'minecraft:blue_bed', 'minecraft:green_bed', 'minecraft:red_bed']
+    const bedItems = new Map<string, SearchItem>([...items, ...bedIds.map((itemId): [string, SearchItem] => [itemId, {
+      id: itemId,
+      name: `${itemId.split(':')[1].split('_')[0].replace(/^./, (letter) => letter.toUpperCase())} Bed`,
+      confidence: 'exact',
+      searchLines: [],
+    }])])
+    const bedIcons = parseIconManifest({
+      schema_version: 1,
+      minecraft_version: '1.16.1',
+      icon_width: 16,
+      icon_height: 16,
+      icons: Object.fromEntries(bedIds.map((itemId) => [itemId, `${itemId.slice('minecraft:'.length)}.png`])),
+    })
+    const bedCollection: RecipeResultCollection = {
+      id: 'collection:beds', recipeBookCategory: 'crafting_building_blocks', recipeGroup: 'bed', recipeIds: [], outputItemIds: bedIds,
+    }
+    const craft = search(['be'], 1)
+    craft.steps[0] = {
+      ...craft.steps[0],
+      coveredTargetIds: bedIds,
+      explanations: bedIds.map((itemId) => ({
+        ...explanation(`${bedItems.get(itemId)?.name}`, 0),
+        query: 'be', collectionId: bedCollection.id, matchedMemberItemId: itemId, matchedMemberName: bedItems.get(itemId)!.name,
+        visibleOutputItemId: itemId, visibleOutputName: bedItems.get(itemId)!.name, matchedSpan: { start: 0, end: 2, text: 'be' },
+      })),
+    }
+
+    render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [craft], bestScore: 1, visibleItemIds: [] } }} items={bedItems} icons={bedIcons} collections={new Map([[bedCollection.id, bedCollection]])} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show why Regular craft: be' }))
+    expect(screen.getByLabelText('All beds')).toBeTruthy()
+    expect(screen.getAllByRole('img', { name: /Bed/ })).toHaveLength(7)
+    expect(screen.getByText('be', { selector: 'mark' })).toBeTruthy()
   })
 
   test('limits each expanded category to three crafts until its top-ten control is used', () => {

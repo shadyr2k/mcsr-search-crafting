@@ -1,8 +1,9 @@
 import { Fragment, useId, useMemo, useState } from 'react'
 
 import type { IconManifest } from '../data/iconManifest'
-import type { RankedSearch, RowOptimizationState, SearchItem, TargetWorkspaceEntry } from '../domain/types'
+import type { RankedSearch, RecipeResultCollection, RowOptimizationState, SearchItem, TargetWorkspaceEntry } from '../domain/types'
 import type { CollectionMatchExplanation } from '../engine/search'
+import { ArrowSprite } from './ArrowSprite'
 import { ItemIcon } from './ItemIcon'
 import { MatchEvidence } from './MatchEvidence'
 
@@ -12,6 +13,7 @@ interface CalculatedSearchRowProps {
   state: RowOptimizationState | undefined
   items: ReadonlyMap<string, SearchItem>
   icons: IconManifest
+  collections?: ReadonlyMap<string, RecipeResultCollection>
   onRetry?: () => void
 }
 
@@ -33,6 +35,10 @@ interface CraftContents {
   junkItemIds: string[]
 }
 
+type CraftExplanation =
+  | { kind: 'item'; explanation: CollectionMatchExplanation }
+  | { kind: 'collection'; explanation: CollectionMatchExplanation; itemIds: string[]; label: string }
+
 function categoryName(kind: RankedSearch['kind']): string {
   return kind === 'single' ? 'Regular' : 'Overlap'
 }
@@ -41,20 +47,26 @@ function displayQuery(text: string): string {
   return text.replaceAll(' ', '_')
 }
 
+function replacesWholeQuery(step: RankedSearch['steps'][number], previousQuery: string | undefined): boolean {
+  return previousQuery !== undefined && step.retainedPrefix.length === 0 && step.freeBackspaceCount >= previousQuery.length
+}
+
 function searchDescription(search: RankedSearch): string {
   return search.steps.map((step, index) => index === 0
     ? displayQuery(step.query)
-    : `${step.freeBackspaceCount} backspace${step.freeBackspaceCount === 1 ? '' : 's'}, ${displayQuery(step.typedSuffix)}`).join(', ')
+    : `${replacesWholeQuery(step, search.steps[index - 1]?.query) ? 'Shift+Home' : `${step.freeBackspaceCount} backspace${step.freeBackspaceCount === 1 ? '' : 's'}`}, ${displayQuery(step.typedSuffix)}`).join(', ')
 }
 
 function SearchQuery({ search }: { search: RankedSearch }) {
   return <span className="craft-query" aria-label={searchDescription(search)}>
     {search.steps.map((step, index) => <Fragment key={`${step.query}-${index}`}>
-      {index > 0 && (step.freeBackspaceCount > 0
+      {index > 0 && (replacesWholeQuery(step, search.steps[index - 1]?.query)
+        ? <ArrowSprite direction="shift-home" />
+        : step.freeBackspaceCount > 0
         ? <span className="craft-query__backspaces" aria-label={`${step.freeBackspaceCount} backspaces`}>
-          {Array.from({ length: step.freeBackspaceCount }, (_, arrowIndex) => <span key={arrowIndex} aria-hidden="true">⏪</span>)}
+          {Array.from({ length: step.freeBackspaceCount }, (_, arrowIndex) => <ArrowSprite key={arrowIndex} direction="backspace" />)}
         </span>
-        : <span className="craft-query__advance" aria-hidden="true">⏩</span>)}
+        : <ArrowSprite direction="right" className="craft-query__advance" />)}
       <span className="craft-query__term">{displayQuery(index === 0 ? step.query : step.typedSuffix)}</span>
     </Fragment>)}
   </span>
@@ -87,25 +99,64 @@ function craftContents(craft: CraftGroup): CraftContents {
   return { targetItemIds: [...targetIds], junkItemIds }
 }
 
-function craftExplanations(craft: CraftGroup, targetItemIds: readonly string[]): CollectionMatchExplanation[] {
+function collectionLabel(collection: RecipeResultCollection, items: ReadonlyMap<string, SearchItem>): string {
+  const names = collection.outputItemIds.map((itemId) => items.get(itemId)?.name.toLocaleLowerCase().split(' ') ?? [])
+  let suffix = names[0] ?? []
+  while (suffix.length > 0 && !names.every((name) => name.slice(-suffix.length).join(' ') === suffix.join(' '))) suffix = suffix.slice(1)
+  const base = suffix.join(' ') || collection.recipeGroup?.replaceAll('_', ' ') || 'items'
+  return base.endsWith('s') ? base : `${base}s`
+}
+
+function craftExplanations(
+  craft: CraftGroup,
+  targetItemIds: readonly string[],
+  collections: ReadonlyMap<string, RecipeResultCollection> | undefined,
+  items: ReadonlyMap<string, SearchItem>,
+): CraftExplanation[] {
   const targets = new Set(targetItemIds)
   const unique = new Map<string, CollectionMatchExplanation>()
   for (const search of craft.searches) for (const explanation of search.steps.flatMap((step) => step.explanations)) {
-    if (!targets.has(explanation.visibleOutputItemId)) continue
     unique.set(JSON.stringify(explanation), explanation)
   }
-  return [...unique.values()]
+  const allExplanations = [...unique.values()]
+  const matchedOutputIds = new Map<string, Set<string>>()
+  for (const explanation of allExplanations) {
+    const key = `${explanation.collectionId}\u0000${explanation.query}`
+    const outputIds = matchedOutputIds.get(key) ?? new Set<string>()
+    outputIds.add(explanation.visibleOutputItemId)
+    matchedOutputIds.set(key, outputIds)
+  }
+  const summarized = new Map<string, CraftExplanation>()
+  for (const [key, outputIds] of matchedOutputIds) {
+    const [collectionId] = key.split('\u0000')
+    const collection = collections?.get(collectionId)
+    if (!collection || collection.outputItemIds.length < 2 || !collection.outputItemIds.every((itemId) => outputIds.has(itemId)) || !collection.outputItemIds.some((itemId) => targets.has(itemId))) continue
+    const explanation = allExplanations.find((candidate) => `${candidate.collectionId}\u0000${candidate.query}` === key)
+    if (explanation) summarized.set(key, { kind: 'collection', explanation, itemIds: collection.outputItemIds.slice(0, 3), label: collectionLabel(collection, items) })
+  }
+  const result: CraftExplanation[] = []
+  const emittedSummaries = new Set<string>()
+  for (const explanation of allExplanations) {
+    const key = `${explanation.collectionId}\u0000${explanation.query}`
+    const summary = summarized.get(key)
+    if (summary) {
+      if (!emittedSummaries.has(key)) {
+        emittedSummaries.add(key)
+        result.push(summary)
+      }
+    } else if (targets.has(explanation.visibleOutputItemId)) result.push({ kind: 'item', explanation })
+  }
+  return result
 }
 
-function CraftItems({ contents, items, icons, compact = false }: {
+function CraftItems({ contents, items, icons }: {
   contents: CraftContents
   items: ReadonlyMap<string, SearchItem>
   icons: IconManifest
-  compact?: boolean
 }) {
-  const visibleJunk = compact ? contents.junkItemIds.slice(0, 3) : contents.junkItemIds
+  const visibleJunk = contents.junkItemIds.slice(0, 3)
   const remainingJunkCount = contents.junkItemIds.length - visibleJunk.length
-  return <span className="craft-result__items" aria-label={compact ? 'Matched items and junk preview' : 'All matched items and junk'}>
+  return <span className="craft-result__items" aria-label="Matched items and junk preview">
     <span className="craft-result__targets" aria-label={`Matched targets: ${contents.targetItemIds.length} items`}>
       {contents.targetItemIds.map((itemId) => {
         const item = items.get(itemId)
@@ -114,7 +165,7 @@ function CraftItems({ contents, items, icons, compact = false }: {
     </span>
     {contents.junkItemIds.length > 0 && <span
       className="craft-result__junk"
-      aria-label={compact ? `Junk preview: ${visibleJunk.length} of ${contents.junkItemIds.length} items` : `All junk: ${contents.junkItemIds.length} items`}
+      aria-label={`Junk preview: ${visibleJunk.length} of ${contents.junkItemIds.length} items`}
     >
       {visibleJunk.map((itemId, index) => {
         const item = items.get(itemId)
@@ -125,20 +176,43 @@ function CraftItems({ contents, items, icons, compact = false }: {
   </span>
 }
 
-function CraftDetail({ craft, items, icons }: {
+function RemainingJunk({ itemIds, items, icons }: { itemIds: readonly string[]; items: ReadonlyMap<string, SearchItem>; icons: IconManifest }) {
+  return <span className="craft-result__remaining-junk" aria-label={`Remaining junk: ${itemIds.length} items`}>
+    {itemIds.map((itemId, index) => {
+      const item = items.get(itemId)
+      return <ItemIcon key={`${itemId}-${index}`} itemId={itemId} name={item?.name ?? itemId} manifest={icons} />
+    })}
+  </span>
+}
+
+function CollectionEvidence({ explanation, itemIds, label, items, icons }: Extract<CraftExplanation, { kind: 'collection' }> & { items: ReadonlyMap<string, SearchItem>; icons: IconManifest }) {
+  const matchStart = label.indexOf(explanation.query.toLocaleLowerCase())
+  const matchEnd = matchStart + explanation.query.length
+  return <span className="match-evidence match-evidence--collection" aria-label={`All ${label}`} title={`All ${label} match ${explanation.query}`}>
+    {itemIds.map((itemId) => {
+      const item = items.get(itemId)
+      return <ItemIcon key={itemId} itemId={itemId} name={item?.name ?? itemId} manifest={icons} />
+    })}
+    <span>all {matchStart < 0 ? label : <>{label.slice(0, matchStart)}<mark>{label.slice(matchStart, matchEnd)}</mark>{label.slice(matchEnd)}</>}</span>
+  </span>
+}
+
+function CraftDetail({ craft, items, icons, collections }: {
   craft: CraftGroup
   items: ReadonlyMap<string, SearchItem>
   icons: IconManifest
+  collections: ReadonlyMap<string, RecipeResultCollection> | undefined
 }) {
   const [showEvidence, setShowEvidence] = useState(false)
   const evidenceId = useId()
   const contents = useMemo(() => craftContents(craft), [craft])
-  const explanations = useMemo(() => craftExplanations(craft, contents.targetItemIds), [craft, contents.targetItemIds])
+  const remainingJunkItemIds = contents.junkItemIds.slice(3)
+  const explanations = useMemo(() => craftExplanations(craft, contents.targetItemIds, collections, items), [craft, contents.targetItemIds, collections, items])
   const name = `${categoryName(craft.kind)} craft: ${searchDescription(craft.search)}`
-  const canExpand = contents.junkItemIds.length > 0 || explanations.length > 0
+  const canExpand = remainingJunkItemIds.length > 0 || explanations.length > 0
   const bar = <>
     <SearchQuery search={craft.search} />
-    <CraftItems contents={contents} items={items} icons={icons} compact />
+    <CraftItems contents={contents} items={items} icons={icons} />
   </>
 
   return <li className="craft-result" aria-label={name}>
@@ -152,27 +226,25 @@ function CraftDetail({ craft, items, icons }: {
         onClick={() => setShowEvidence((current) => !current)}
       >
         {bar}
-        <span className="craft-result__toggle-mark" aria-hidden="true">{showEvidence ? '⌃' : '⌄'}</span>
+        <span className="craft-result__toggle-mark"><ArrowSprite direction={showEvidence ? 'up' : 'down'} /></span>
       </button>
       : <div className="craft-result__bar">{bar}</div>}
     {showEvidence && <div id={evidenceId} className="craft-result__details">
-      <CraftItems contents={contents} items={items} icons={icons} />
+      {remainingJunkItemIds.length > 0 && <RemainingJunk itemIds={remainingJunkItemIds} items={items} icons={icons} />}
       {explanations.length > 0 && <div className="craft-result__evidence">
-        {explanations.map((explanation) => <MatchEvidence
-        key={JSON.stringify(explanation)}
-        explanation={explanation}
-        items={items}
-        icons={icons}
-        />)}
+        {explanations.map((explanation) => explanation.kind === 'collection'
+          ? <CollectionEvidence key={`collection:${explanation.explanation.collectionId}:${explanation.explanation.query}`} {...explanation} items={items} icons={icons} />
+          : <MatchEvidence key={JSON.stringify(explanation.explanation)} explanation={explanation.explanation} items={items} icons={icons} />)}
       </div>}
     </div>}
   </li>
 }
 
-function CraftCategory({ category, items, icons }: {
+function CraftCategory({ category, items, icons, collections }: {
   category: SearchCategory
   items: ReadonlyMap<string, SearchItem>
   icons: IconManifest
+  collections: ReadonlyMap<string, RecipeResultCollection> | undefined
 }) {
   const [showTopTen, setShowTopTen] = useState(false)
   const visibleCrafts = category.crafts.slice(0, showTopTen ? 10 : 3)
@@ -181,7 +253,7 @@ function CraftCategory({ category, items, icons }: {
   return <section className="craft-category" aria-label={category.name}>
     <h3>{category.name}</h3>
     <ol>
-      {visibleCrafts.map((craft) => <CraftDetail key={craft.key} craft={craft} items={items} icons={icons} />)}
+      {visibleCrafts.map((craft) => <CraftDetail key={craft.key} craft={craft} items={items} icons={icons} collections={collections} />)}
     </ol>
     {category.crafts.length > 3 && <button
       type="button"
@@ -189,7 +261,7 @@ function CraftCategory({ category, items, icons }: {
       aria-label={`${showTopTen ? 'Show top 3' : 'Show top 10'} ${categoryLabel}`}
       onClick={() => setShowTopTen((current) => !current)}
     >
-      {showTopTen ? 'Show top 3' : 'Show top 10'} <span aria-hidden="true">{showTopTen ? '⌃' : '⌄'}</span>
+      {showTopTen ? 'Show top 3' : 'Show top 10'} <span><ArrowSprite direction={showTopTen ? 'up' : 'down'} /></span>
     </button>}
   </section>
 }
@@ -207,7 +279,7 @@ function TargetItems({ entry, items, icons }: {
   </span>
 }
 
-export function CalculatedSearchRow({ entry, entryNumber, state, items, icons, onRetry }: CalculatedSearchRowProps) {
+export function CalculatedSearchRow({ entry, entryNumber, state, items, icons, collections, onRetry }: CalculatedSearchRowProps) {
   const [expanded, setExpanded] = useState(false)
   const listId = useId()
   const label = `item set ${entryNumber}`
@@ -255,7 +327,7 @@ export function CalculatedSearchRow({ entry, entryNumber, state, items, icons, o
       </button>
     </div>
     {expanded && <div id={listId} className="craft-categories">
-      {availableCategories.map((category) => <CraftCategory key={category.kind} category={category} items={items} icons={icons} />)}
+      {availableCategories.map((category) => <CraftCategory key={category.kind} category={category} items={items} icons={icons} collections={collections} />)}
     </div>}
   </section>
 }
