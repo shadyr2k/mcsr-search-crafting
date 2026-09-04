@@ -52,7 +52,7 @@ describe('CalculatedSearchRow', () => {
     expect(screen.getByRole('heading', { name: 'Regular crafts' })).toBeTruthy()
     const overlapCategory = screen.getByRole('region', { name: 'Overlap crafts' })
     expect(screen.getByRole('heading', { name: 'Overlap crafts' })).toBeTruthy()
-    expect(within(overlapCategory).getAllByText('↞')).toHaveLength(2)
+    expect(within(overlapCategory).getAllByText('⏪')).toHaveLength(2)
     expect(screen.getByRole('button', { name: 'Hide crafts for item set 1' }).getAttribute('aria-expanded')).toBe('true')
   })
 
@@ -80,7 +80,28 @@ describe('CalculatedSearchRow', () => {
 
     expect(screen.getByText('_be')).toBeTruthy()
     expect(screen.queryByText('an_be')).toBeNull()
-    expect(screen.getAllByText('↞')).toHaveLength(1)
+    expect(screen.getAllByText('⏪')).toHaveLength(1)
+  })
+
+  test('shows a compact junk preview and target-only evidence after expansion', () => {
+    const craft = search(['wn'], 1)
+    craft.steps[0].junkItemIds = Array.from({ length: 5 }, () => 'minecraft:stick')
+    craft.steps[0].explanations = [
+      explanation('Brown Bed', 3),
+      { ...explanation('Brown Stick', 3), visibleOutputItemId: 'minecraft:stick', visibleOutputName: 'Stick' },
+    ]
+    render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [craft], bestScore: 1, visibleItemIds: [] } }} items={items} icons={icons} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
+    const regularCategory = screen.getByRole('region', { name: 'Regular crafts' })
+    const craftRow = within(regularCategory).getByRole('listitem', { name: 'Regular craft: wn' })
+    expect(within(craftRow).getByLabelText('Junk preview: 3 of 5 items')).toBeTruthy()
+    expect(within(craftRow).getByLabelText('2 more junk items')).toBeTruthy()
+
+    fireEvent.click(within(craftRow).getByRole('button', { name: 'Show why Regular craft: wn' }))
+    expect(within(craftRow).getByLabelText('All junk: 5 items')).toBeTruthy()
+    expect(within(craftRow).getByTitle(/line Brown Bed/)).toBeTruthy()
+    expect(within(craftRow).queryByTitle(/line Brown Stick/)).toBeNull()
   })
 
   test('limits each expanded category to three crafts until its top-ten control is used', () => {

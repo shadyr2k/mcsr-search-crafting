@@ -28,6 +28,11 @@ interface SearchCategory {
   crafts: CraftGroup[]
 }
 
+interface CraftContents {
+  targetItemIds: string[]
+  junkItemIds: string[]
+}
+
 function categoryName(kind: RankedSearch['kind']): string {
   return kind === 'single' ? 'Regular' : 'Overlap'
 }
@@ -47,9 +52,9 @@ function SearchQuery({ search }: { search: RankedSearch }) {
     {search.steps.map((step, index) => <Fragment key={`${step.query}-${index}`}>
       {index > 0 && (step.freeBackspaceCount > 0
         ? <span className="craft-query__backspaces" aria-label={`${step.freeBackspaceCount} backspaces`}>
-          {Array.from({ length: step.freeBackspaceCount }, (_, arrowIndex) => <span key={arrowIndex} aria-hidden="true">↞</span>)}
+          {Array.from({ length: step.freeBackspaceCount }, (_, arrowIndex) => <span key={arrowIndex} aria-hidden="true">⏪</span>)}
         </span>
-        : <span className="craft-query__advance" aria-hidden="true">⟶</span>)}
+        : <span className="craft-query__advance" aria-hidden="true">⏩</span>)}
       <span className="craft-query__term">{displayQuery(index === 0 ? step.query : step.typedSuffix)}</span>
     </Fragment>)}
   </span>
@@ -72,12 +77,52 @@ function compactPreviews(regular: readonly CraftGroup[], overlap: readonly Craft
   return (regular.length > 0 ? regular : overlap).slice(0, 2)
 }
 
-function craftExplanations(craft: CraftGroup): CollectionMatchExplanation[] {
+function craftContents(craft: CraftGroup): CraftContents {
+  const targetIds = new Set<string>()
+  const junkItemIds: string[] = []
+  for (const search of craft.searches) for (const step of search.steps) {
+    for (const itemId of step.coveredTargetIds) targetIds.add(itemId)
+    junkItemIds.push(...step.junkItemIds)
+  }
+  return { targetItemIds: [...targetIds], junkItemIds }
+}
+
+function craftExplanations(craft: CraftGroup, targetItemIds: readonly string[]): CollectionMatchExplanation[] {
+  const targets = new Set(targetItemIds)
   const unique = new Map<string, CollectionMatchExplanation>()
   for (const search of craft.searches) for (const explanation of search.steps.flatMap((step) => step.explanations)) {
+    if (!targets.has(explanation.visibleOutputItemId)) continue
     unique.set(JSON.stringify(explanation), explanation)
   }
   return [...unique.values()]
+}
+
+function CraftItems({ contents, items, icons, compact = false }: {
+  contents: CraftContents
+  items: ReadonlyMap<string, SearchItem>
+  icons: IconManifest
+  compact?: boolean
+}) {
+  const visibleJunk = compact ? contents.junkItemIds.slice(0, 3) : contents.junkItemIds
+  const remainingJunkCount = contents.junkItemIds.length - visibleJunk.length
+  return <span className="craft-result__items" aria-label={compact ? 'Matched items and junk preview' : 'All matched items and junk'}>
+    <span className="craft-result__targets" aria-label={`Matched targets: ${contents.targetItemIds.length} items`}>
+      {contents.targetItemIds.map((itemId) => {
+        const item = items.get(itemId)
+        return <ItemIcon key={itemId} itemId={itemId} name={item?.name ?? itemId} manifest={icons} />
+      })}
+    </span>
+    {contents.junkItemIds.length > 0 && <span
+      className="craft-result__junk"
+      aria-label={compact ? `Junk preview: ${visibleJunk.length} of ${contents.junkItemIds.length} items` : `All junk: ${contents.junkItemIds.length} items`}
+    >
+      {visibleJunk.map((itemId, index) => {
+        const item = items.get(itemId)
+        return <ItemIcon key={`${itemId}-${index}`} itemId={itemId} name={item?.name ?? itemId} manifest={icons} />
+      })}
+      {remainingJunkCount > 0 && <span className="craft-result__more-junk" aria-label={`${remainingJunkCount} more junk items`}>+{remainingJunkCount}</span>}
+    </span>}
+  </span>
 }
 
 function CraftDetail({ craft, items, icons }: {
@@ -87,11 +132,17 @@ function CraftDetail({ craft, items, icons }: {
 }) {
   const [showEvidence, setShowEvidence] = useState(false)
   const evidenceId = useId()
-  const explanations = useMemo(() => craftExplanations(craft), [craft])
+  const contents = useMemo(() => craftContents(craft), [craft])
+  const explanations = useMemo(() => craftExplanations(craft, contents.targetItemIds), [craft, contents.targetItemIds])
   const name = `${categoryName(craft.kind)} craft: ${searchDescription(craft.search)}`
+  const canExpand = contents.junkItemIds.length > 0 || explanations.length > 0
+  const bar = <>
+    <SearchQuery search={craft.search} />
+    <CraftItems contents={contents} items={items} icons={icons} compact />
+  </>
 
   return <li className="craft-result" aria-label={name}>
-    {explanations.length > 0
+    {canExpand
       ? <button
         type="button"
         className="craft-result__toggle"
@@ -100,17 +151,20 @@ function CraftDetail({ craft, items, icons }: {
         aria-expanded={showEvidence}
         onClick={() => setShowEvidence((current) => !current)}
       >
-        <SearchQuery search={craft.search} />
+        {bar}
         <span className="craft-result__toggle-mark" aria-hidden="true">{showEvidence ? '⌃' : '⌄'}</span>
       </button>
-      : <SearchQuery search={craft.search} />}
-    {showEvidence && <div id={evidenceId} className="craft-result__evidence">
-      {explanations.map((explanation) => <MatchEvidence
+      : <div className="craft-result__bar">{bar}</div>}
+    {showEvidence && <div id={evidenceId} className="craft-result__details">
+      <CraftItems contents={contents} items={items} icons={icons} />
+      {explanations.length > 0 && <div className="craft-result__evidence">
+        {explanations.map((explanation) => <MatchEvidence
         key={JSON.stringify(explanation)}
         explanation={explanation}
         items={items}
         icons={icons}
-      />)}
+        />)}
+      </div>}
     </div>}
   </li>
 }

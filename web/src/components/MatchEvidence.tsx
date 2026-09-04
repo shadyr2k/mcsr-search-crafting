@@ -38,7 +38,7 @@ export function MatchEvidence({ explanation, items: _items, icons }: MatchEviden
       ? <ItemIcon itemId={explanation.visibleOutputItemId} name={explanation.visibleOutputName} manifest={icons} />
       : <span aria-label={`matches craftable ${explanation.matchedMemberName}`}>
         <ItemIcon itemId={explanation.matchedMemberItemId} name={explanation.matchedMemberName} manifest={icons} />
-        <span aria-hidden="true">⟶</span>
+        <span aria-hidden="true">⏩</span>
         <ItemIcon itemId={explanation.visibleOutputItemId} name={explanation.visibleOutputName} manifest={icons} />
       </span>}
     <span>
