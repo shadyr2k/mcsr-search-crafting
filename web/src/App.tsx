@@ -1,177 +1,125 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import './App.css'
-import { InventoryPanel } from './components/InventoryPanel'
-import { ResultPanel } from './components/ResultPanel'
-import { TargetSetList } from './components/TargetSetList'
+import { CalculatedSearchRow } from './components/CalculatedSearchRow'
+import { ItemSetEditor, type ItemSetEditorCommit, type ItemSetEditorState } from './components/ItemSetEditor'
+import { ItemSetWorkspace } from './components/ItemSetWorkspace'
+import { LanguageRanking } from './components/LanguageRanking'
+import { assertIconCoverage, loadIconManifest, type IconManifest } from './data/iconManifest'
 import { loadGeneratedData } from './data/schema'
-import type { CustomInventoryPreset, GeneratedData, TargetWorkspace } from './domain/types'
-import {
-  optimizeWorkspace,
-  type WorkspaceOptimizationProgress,
-  type WorkspaceResult,
-} from './engine/optimizeWorkspace'
-import {
-  clearCustomInventorySlot,
-  loadCustomInventorySlots,
-  loadTargetWorkspace,
-  saveCustomInventorySlot,
-  saveTargetWorkspace,
-} from './persistence/storage'
-import { builtInInventoryPresets } from './presets/builtInPresets'
+import type { CustomInventoryPreset, GeneratedData, ItemSetDraft, TargetWorkspace, TargetWorkspaceEntry } from './domain/types'
+import { useRowOptimizations } from './hooks/useRowOptimizations'
+import { clearCustomInventorySlot, loadCustomInventorySlots, loadTargetWorkspace, saveCustomInventorySlot, saveTargetWorkspace } from './persistence/storage'
+import { draftFromEntry, newItemSetDraft } from './workspace/entryDraft'
+
+type OpenEditor = (ItemSetEditorState & { entryId?: string }) | null
+
+function orderedEntries(entries: readonly TargetWorkspaceEntry[]): TargetWorkspaceEntry[] {
+  return [...entries].sort((left, right) => left.order - right.order || left.id.localeCompare(right.id))
+}
 
 function normalizeWorkspaceGridSizes(workspace: TargetWorkspace, data: GeneratedData): TargetWorkspace {
-  let changed = false
-  const entries = workspace.entries.map((entry) => {
-    const supports2x2 = entry.targetIds.every((targetId) => data.recipes.some((recipe) =>
-      recipe.outputItemId === targetId && recipe.fits2x2,
-    ))
-    if (entry.gridSize === 2 && !supports2x2) {
-      changed = true
-      return { ...entry, gridSize: 3 as const }
-    }
-    return entry
-  })
-  return changed ? { entries } : workspace
+  return { entries: workspace.entries.map((entry) => {
+    const supports2x2 = entry.targetIds.every((targetId) => data.recipes.some((recipe) => recipe.outputItemId === targetId && recipe.fits2x2))
+    return entry.gridSize === 2 && !supports2x2 ? { ...entry, gridSize: 3 as const } : entry
+  }) }
+}
+
+function nextEntryId(entries: readonly TargetWorkspaceEntry[]): string {
+  const ids = new Set(entries.map((entry) => entry.id))
+  for (let number = 1; ; number += 1) if (!ids.has(`item-set-${number}`)) return `item-set-${number}`
+}
+
+export function commitDraft(workspace: TargetWorkspace, commit: ItemSetEditorCommit): TargetWorkspace {
+  const existing = commit.draft.sourceEntryId === undefined ? undefined : workspace.entries.find((entry) => entry.id === commit.draft.sourceEntryId)
+  const entry: TargetWorkspaceEntry = existing
+    ? { ...commit.draft, id: existing.id, order: existing.order }
+    : { ...commit.draft, id: nextEntryId(workspace.entries), order: workspace.entries.length }
+  const entries = existing ? workspace.entries.map((candidate) => candidate.id === existing.id ? entry : candidate) : [...workspace.entries, entry]
+  return { entries: orderedEntries(entries).map((candidate, order) => ({ ...candidate, order })) }
+}
+
+function deleteEntry(workspace: TargetWorkspace, entryId: string): TargetWorkspace {
+  return { entries: orderedEntries(workspace.entries.filter((entry) => entry.id !== entryId)).map((entry, order) => ({ ...entry, order })) }
 }
 
 function combineWarnings(current: string | undefined, next: string | undefined): string | undefined {
-  if (!next) return current
-  if (!current) return next
-  return current.includes(next) ? current : `${current} ${next}`
+  if (!next || current?.includes(next)) return current
+  return current ? `${current} ${next}` : next
 }
 
 function App() {
-  const [data, setData] = useState<GeneratedData | undefined>()
-  const [error, setError] = useState<string | undefined>()
-  const [inventoryItemIds, setInventoryItemIds] = useState<string[]>([])
-  const [inventoryName, setInventoryName] = useState('Working inventory')
-  const [customSlots, setCustomSlots] = useState<Array<CustomInventoryPreset | null>>([null, null, null])
+  const [data, setData] = useState<GeneratedData>()
+  const [icons, setIcons] = useState<IconManifest>()
+  const [error, setError] = useState<string>()
+  const [warning, setWarning] = useState<string>()
   const [workspace, setWorkspace] = useState<TargetWorkspace>({ entries: [] })
+  const [customSlots, setCustomSlots] = useState<Array<CustomInventoryPreset | null>>([null, null, null])
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false)
-  const [warning, setWarning] = useState<string | undefined>()
-  const [optimization, setOptimization] = useState<WorkspaceResult | undefined>()
-  const [optimizationPending, setOptimizationPending] = useState(false)
-  const [optimizationProgress, setOptimizationProgress] = useState<WorkspaceOptimizationProgress | undefined>()
-  const [optimizationError, setOptimizationError] = useState<string | undefined>()
-  const optimizationRequestId = useRef(0)
+  const [editor, setEditor] = useState<OpenEditor>(null)
+  const { states, aggregate, retry } = useRowOptimizations(data, workspace.entries)
 
   useEffect(() => {
-    const slotsResult = loadCustomInventorySlots()
-    const workspaceResult = loadTargetWorkspace()
-    setCustomSlots(slotsResult.value)
-    setWorkspace(workspaceResult.value)
-    const persistenceWarning = [slotsResult.warning, workspaceResult.warning]
-      .filter((message): message is string => Boolean(message))
-      .join(' ')
-    setWarning(persistenceWarning || undefined)
+    const slots = loadCustomInventorySlots()
+    const saved = loadTargetWorkspace()
+    setCustomSlots(slots.value)
+    setWorkspace(saved.value)
+    setWarning([slots.warning, saved.warning].filter(Boolean).join(' ') || undefined)
     setWorkspaceLoaded(true)
-
-    loadGeneratedData().then((loadedData) => {
+    Promise.all([loadGeneratedData(), loadIconManifest()]).then(([loadedData, loadedIcons]) => {
+      assertIconCoverage(loadedIcons, loadedData)
       setWorkspace((current) => normalizeWorkspaceGridSizes(current, loadedData))
       setData(loadedData)
-    }).catch((loadError: unknown) => {
-      setError(loadError instanceof Error ? loadError.message : 'The crafting data could not be loaded.')
-    })
+      setIcons(loadedIcons)
+    }).catch((loadError: unknown) => setError(loadError instanceof Error ? loadError.message : 'The crafting data could not be loaded.'))
   }, [])
 
   useEffect(() => {
-    if (workspaceLoaded && data) {
-      const saveResult = saveTargetWorkspace(workspace)
-      setWarning((current) => combineWarnings(current, saveResult.warning))
-    }
+    if (!workspaceLoaded || !data) return
+    const result = saveTargetWorkspace(workspace)
+    setWarning((current) => combineWarnings(current, result.warning))
   }, [data, workspace, workspaceLoaded])
 
-  useEffect(() => {
-    if (!data) return
-
-    const requestId = ++optimizationRequestId.current
-    const controller = new AbortController()
-    setOptimization(undefined)
-    setOptimizationProgress(undefined)
-    setOptimizationError(undefined)
-    setOptimizationPending(true)
-
-    optimizeWorkspace(data, new Set(inventoryItemIds), workspace.entries, {
-      signal: controller.signal,
-      onProgress: (progress) => {
-        if (requestId === optimizationRequestId.current && !controller.signal.aborted) {
-          setOptimizationProgress(progress)
-        }
-      },
-    })
-      .then((result) => {
-        if (requestId !== optimizationRequestId.current) return
-        setOptimization(result)
-        setOptimizationProgress(undefined)
-        setOptimizationPending(false)
-      })
-      .catch((optimizationFailure: unknown) => {
-        if (controller.signal.aborted || requestId !== optimizationRequestId.current) return
-        setOptimizationError(optimizationFailure instanceof Error
-          ? optimizationFailure.message
-          : 'Workspace optimization failed.')
-        setOptimizationProgress(undefined)
-        setOptimizationPending(false)
-      })
-
-    return () => controller.abort()
-  }, [data, inventoryItemIds, workspace])
-
-  function loadPreset(preset: { name: string, itemIds: readonly string[] }) {
-    setInventoryName(preset.name)
-    setInventoryItemIds([...new Set(preset.itemIds)].sort())
+  function openEdit(entryId: string) {
+    if (editor) return
+    const entry = workspace.entries.find((candidate) => candidate.id === entryId)
+    if (entry) setEditor({ kind: 'existing', entryId, draft: draftFromEntry(entry) })
   }
 
-  function saveSlot(index: number) {
-    const preset = { name: inventoryName.trim() || `Inventory ${index + 1}`, itemIds: [...inventoryItemIds] }
-    const saveResult = saveCustomInventorySlot(index, preset)
+  function openAdd() { if (!editor) setEditor({ kind: 'new', draft: newItemSetDraft() }) }
+  function updateDraft(draft: ItemSetDraft) { setEditor((current) => current ? { ...current, draft } : null) }
+  function saveSlot(index: number, preset: CustomInventoryPreset) {
+    const result = saveCustomInventorySlot(index, preset)
     setCustomSlots((current) => current.map((slot, slotIndex) => slotIndex === index ? preset : slot))
-    setWarning((current) => combineWarnings(current, saveResult.warning))
+    setWarning((current) => combineWarnings(current, result.warning))
   }
-
-  function loadSlot(index: number) {
-    const preset = customSlots[index]
-    if (preset) loadPreset(preset)
-  }
-
   function clearSlot(index: number) {
-    const saveResult = clearCustomInventorySlot(index)
+    const result = clearCustomInventorySlot(index)
     setCustomSlots((current) => current.map((slot, slotIndex) => slotIndex === index ? null : slot))
-    setWarning((current) => combineWarnings(current, saveResult.warning))
+    setWarning((current) => combineWarnings(current, result.warning))
   }
 
+  const entries = orderedEntries(workspace.entries)
+  const editorNumber = editor?.entryId === undefined ? undefined : entries.findIndex((entry) => entry.id === editor.entryId) + 1
   return <main className="app-shell">
-    <header className="app-header">
-      <p className="eyebrow">Minecraft Java Edition 1.16.1</p>
-      <h1>MCSR Search Crafting</h1>
-      <p>Build an exact infinite inventory, then compare craftable search targets.</p>
-    </header>
-
-    {data && <div className="tool-grid">
-      <InventoryPanel
-        items={data.inventoryItems}
-        inventoryItemIds={inventoryItemIds}
-        inventoryName={inventoryName}
-        customSlots={customSlots}
-        builtInPresets={builtInInventoryPresets(data)}
-        onInventoryItemIdsChange={setInventoryItemIds}
-        onInventoryNameChange={setInventoryName}
-        onLoadPreset={loadPreset}
-        onSaveCustomSlot={saveSlot}
-        onLoadCustomSlot={loadSlot}
-        onClearCustomSlot={clearSlot}
-      />
-      <TargetSetList items={data.items} recipes={data.recipes} workspace={workspace} onWorkspaceChange={setWorkspace} />
+    <header className="app-header"><p className="eyebrow">Minecraft Java Edition 1.16.1</p><h1>MCSR Search Crafting</h1></header>
+    {warning && <p role="alert">{warning}</p>}{error && <p role="alert">{error}</p>}
+    {data && icons && <div className="workspace-grid">
+      <LanguageRanking aggregate={aggregate} />
+      <ItemSetWorkspace entries={workspace.entries} items={data.items} icons={icons} onWorkspaceChange={setWorkspace} onEdit={openEdit} onAdd={openAdd} />
+      <section className="results-column" aria-label={editor ? (editor.kind === 'new' ? 'New item set' : `Edit item set ${editorNumber}`) : 'Calculated searches'}>
+        {editor ? <ItemSetEditor
+          state={editor} entryNumber={editorNumber} data={data} icons={icons} customSlots={customSlots}
+          onDraftChange={updateDraft}
+          onSave={(commit) => { setWorkspace((current) => commitDraft(current, commit)); setEditor(null) }}
+          onCancel={() => setEditor(null)}
+          onDelete={editor.entryId ? () => { setWorkspace((current) => deleteEntry(current, editor.entryId!)); setEditor(null) } : undefined}
+          onSaveCustomSlot={saveSlot} onClearCustomSlot={clearSlot}
+        /> : entries.map((entry, index) => <CalculatedSearchRow
+          key={entry.id} entry={entry} entryNumber={index + 1} state={states.get(entry.id)} items={data.items} icons={icons} onRetry={() => retry(entry.id)}
+        />)}
+      </section>
     </div>}
-    <ResultPanel
-      items={data?.items ?? new Map()}
-      result={optimization}
-      pending={(!data && !error) || optimizationPending}
-      progress={optimizationProgress}
-      warning={warning}
-      error={error ?? optimizationError}
-    />
   </main>
 }
 
