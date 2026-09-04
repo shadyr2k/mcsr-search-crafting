@@ -188,10 +188,16 @@ export async function optimizeWorkspaceEntry(
   }
 }
 
+export type EnglishAggregate =
+  | { status: 'blank' }
+  | { status: 'pending' }
+  | { status: 'unavailable' }
+  | { status: 'ready'; score: number }
+
 export function aggregateEnglishScore(
   entries: readonly TargetWorkspaceEntry[],
   states: ReadonlyMap<string, RowOptimizationState>,
-): { status: 'blank' | 'pending' | 'unavailable' | 'ready'; score?: number } {
+): EnglishAggregate {
   const scoreable = entries.filter((entry) => entry.enabled && entry.targetIds.length > 0)
   if (scoreable.length === 0) return { status: 'blank' }
   const relevantStates = scoreable.map((entry) => states.get(entry.id))
