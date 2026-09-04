@@ -18,8 +18,21 @@ interface VersionedInventorySlots {
   slots: Array<CustomInventoryPreset | null>
 }
 
-interface VersionedTargetWorkspace extends TargetWorkspace {
+interface TargetWorkspaceEntryV1 {
+  id: string
+  targetIds: string[]
+  enabled: boolean
+  gridSize: 2 | 3
+  order: number
+}
+
+interface VersionedTargetWorkspaceV1 {
   schemaVersion: 1
+  entries: TargetWorkspaceEntryV1[]
+}
+
+interface VersionedTargetWorkspaceV2 extends TargetWorkspace {
+  schemaVersion: 2
 }
 
 const volatileRecordsByStorage = new WeakMap<Storage, Map<string, string | null>>()
@@ -139,7 +152,7 @@ function isCustomInventoryPreset(value: unknown): value is CustomInventoryPreset
     && Object.keys(value).every((key) => key === 'name' || key === 'itemIds')
 }
 
-function isTargetWorkspaceEntry(value: unknown): value is TargetWorkspaceEntry {
+function isTargetWorkspaceEntryV1(value: unknown): value is TargetWorkspaceEntryV1 {
   return isRecord(value)
     && typeof value.id === 'string'
     && isStringArray(value.targetIds)
@@ -147,6 +160,20 @@ function isTargetWorkspaceEntry(value: unknown): value is TargetWorkspaceEntry {
     && (value.gridSize === 2 || value.gridSize === 3)
     && typeof value.order === 'number'
     && Number.isInteger(value.order)
+}
+
+function isTargetWorkspaceEntry(value: unknown): value is TargetWorkspaceEntry {
+  if (!isRecord(value) || !isTargetWorkspaceEntryV1(value) || !isStringArray(value.inventoryItemIds)) {
+    return false
+  }
+  return Object.keys(value).every((key) => (
+      key === 'id'
+      || key === 'targetIds'
+      || key === 'inventoryItemIds'
+      || key === 'enabled'
+      || key === 'gridSize'
+      || key === 'order'
+  ))
 }
 
 function assertSlotIndex(index: number): void {
@@ -268,8 +295,16 @@ export function clearCustomInventorySlot(index: number, storage?: Storage): Pers
   return { warning: combineWarnings(loaded.warning, target.warning) }
 }
 
-function encodeWorkspace(workspace: TargetWorkspace): VersionedTargetWorkspace {
-  return { schemaVersion: 1, entries: workspace.entries }
+function normalizeWorkspaceEntry(entry: TargetWorkspaceEntry): TargetWorkspaceEntry {
+  return {
+    ...entry,
+    targetIds: [...new Set(entry.targetIds)].sort(),
+    inventoryItemIds: [...new Set(entry.inventoryItemIds)].sort(),
+  }
+}
+
+function encodeWorkspace(workspace: TargetWorkspace): VersionedTargetWorkspaceV2 {
+  return { schemaVersion: 2, entries: workspace.entries.map(normalizeWorkspaceEntry) }
 }
 
 function saveWorkspace(workspace: TargetWorkspace, storage: ResilientStorage): void {
@@ -282,16 +317,34 @@ function loadWorkspace(target: ResilientStorage): PersistenceLoadResult<TargetWo
 
   try {
     const parsed = parseJson(target, TARGET_WORKSPACE_KEY)
-    if (!isRecord(parsed) || !Array.isArray(parsed.entries)
-      || (parsed.schemaVersion !== 0 && parsed.schemaVersion !== 1)) {
+    if (!isRecord(parsed) || !Array.isArray(parsed.entries)) {
       return recover(target, TARGET_WORKSPACE_KEY, 'target-workspace', raw, defaultWorkspace())
     }
 
+    if (parsed.schemaVersion === 0 || parsed.schemaVersion === 1) {
+      const entries = parsed.entries.filter(isTargetWorkspaceEntryV1)
+      const workspace = { entries: entries.map((entry) => ({ ...entry, inventoryItemIds: [] })) }
+      if (workspace.entries.length !== parsed.entries.length) {
+        return recoverInvalidMembers(target, 'target-workspace', raw, workspace, saveWorkspace)
+      }
+      target.setItem(recoveryKey('target-workspace', target), raw)
+      saveWorkspace(workspace, target)
+      return {
+        value: workspace,
+        warning: combineWarnings(
+          'Saved target-workspace data was migrated to the current format. The original data was preserved for recovery.',
+          target.warning,
+        ),
+      }
+    }
+
+    if (parsed.schemaVersion !== 2) {
+      return recover(target, TARGET_WORKSPACE_KEY, 'target-workspace', raw, defaultWorkspace())
+    }
     const workspace = { entries: parsed.entries.filter(isTargetWorkspaceEntry) }
     if (workspace.entries.length !== parsed.entries.length) {
       return recoverInvalidMembers(target, 'target-workspace', raw, workspace, saveWorkspace)
     }
-    if (parsed.schemaVersion === 0) saveWorkspace(workspace, target)
     return { value: workspace, warning: target.warning }
   } catch {
     return recover(target, TARGET_WORKSPACE_KEY, 'target-workspace', raw, defaultWorkspace())

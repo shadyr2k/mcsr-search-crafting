@@ -64,7 +64,8 @@ function workspace() {
     entries: [
       {
         id: 'tools',
-        targetIds: ['minecraft:stick', 'minecraft:crafting_table'],
+        targetIds: ['minecraft:crafting_table', 'minecraft:stick'],
+        inventoryItemIds: ['minecraft:oak_log'],
         enabled: false,
         gridSize: 2 as const,
         order: 4,
@@ -72,6 +73,7 @@ function workspace() {
       {
         id: 'weapons',
         targetIds: ['minecraft:iron_sword'],
+        inventoryItemIds: ['minecraft:iron_ingot'],
         enabled: true,
         gridSize: 3 as const,
         order: 9,
@@ -170,10 +172,62 @@ describe('custom inventory slot persistence', () => {
 })
 
 describe('target workspace persistence', () => {
+  test('migrates every valid version-one row with an empty exact inventory', () => {
+    const storage = new MemoryStorage()
+    const raw = JSON.stringify({
+      schemaVersion: 1,
+      entries: [{ id: 'late', targetIds: ['minecraft:stick'], enabled: true, gridSize: 2, order: 4 }],
+    })
+    storage.setItem('mcsr.target-workspace.v1', raw)
+
+    const loaded = loadTargetWorkspace(storage)
+
+    expect(loaded.value.entries[0]).toEqual({
+      id: 'late', targetIds: ['minecraft:stick'], inventoryItemIds: [], enabled: true, gridSize: 2, order: 4,
+    })
+    expect(JSON.parse(storage.getItem('mcsr.target-workspace.v1')!).schemaVersion).toBe(2)
+    expect(recoveryValue(storage, 'target-workspace')).toBe(raw)
+  })
+
+  test('round trips independent version-two inventories without changing custom slots', () => {
+    const storage = new MemoryStorage()
+    const originalSlots = JSON.stringify({ schemaVersion: 1, slots: [inventory('wood', ['minecraft:oak_log']), null, null] })
+    storage.setItem('mcsr.inventory-slots.v1', originalSlots)
+    const saved = {
+      entries: [
+        { id: 'a', targetIds: ['minecraft:stick'], inventoryItemIds: ['minecraft:oak_log', 'minecraft:oak_log'], enabled: true, gridSize: 2 as const, order: 0 },
+        { id: 'b', targetIds: ['minecraft:bucket'], inventoryItemIds: ['minecraft:bucket'], enabled: true, gridSize: 3 as const, order: 1 },
+      ],
+    }
+
+    saveTargetWorkspace(saved, storage)
+
+    expect(loadTargetWorkspace(storage).value.entries.map((entry) => entry.inventoryItemIds)).toEqual([
+      ['minecraft:oak_log'],
+      ['minecraft:bucket'],
+    ])
+    expect(storage.getItem('mcsr.inventory-slots.v1')).toBe(originalSlots)
+  })
+
+  test('recovers an unsupported workspace schema version without touching custom slots', () => {
+    const storage = new MemoryStorage()
+    const raw = JSON.stringify({ schemaVersion: 3, entries: [] })
+    const originalSlots = JSON.stringify({ schemaVersion: 1, slots: [null, null, null] })
+    storage.setItem('mcsr.target-workspace.v1', raw)
+    storage.setItem('mcsr.inventory-slots.v1', originalSlots)
+
+    const loaded = loadTargetWorkspace(storage)
+
+    expect(loaded.value).toEqual({ entries: [] })
+    expect(loaded.warning).toMatch(/workspace/i)
+    expect(recoveryValue(storage, 'target-workspace')).toBe(raw)
+    expect(storage.getItem('mcsr.inventory-slots.v1')).toBe(originalSlots)
+  })
+
   test('round trips an enabled empty entry without turning it into a scoreable target', () => {
     const storage = new MemoryStorage()
     const emptyWorkspace = {
-      entries: [{ id: 'empty', targetIds: [], enabled: true, gridSize: 3 as const, order: 0 }],
+      entries: [{ id: 'empty', targetIds: [], inventoryItemIds: [], enabled: true, gridSize: 3 as const, order: 0 }],
     }
 
     saveTargetWorkspace(emptyWorkspace, storage)
@@ -190,12 +244,12 @@ describe('target workspace persistence', () => {
     expect(storage.getItem('mcsr.inventory-slots.v1')).toBeNull()
     expect(loadTargetWorkspace(storage)).toEqual({ value: saved, warning: undefined })
     expect(JSON.parse(storage.getItem('mcsr.target-workspace.v1')!)).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       ...saved,
     })
   })
 
-  test('migrates supported version-zero records to version one', () => {
+  test('migrates supported version-zero records to version two', () => {
     const storage = new MemoryStorage()
     storage.setItem('mcsr.inventory-slots.v1', JSON.stringify({
       schemaVersion: 0,
@@ -203,13 +257,13 @@ describe('target workspace persistence', () => {
     }))
     storage.setItem('mcsr.target-workspace.v1', JSON.stringify({
       schemaVersion: 0,
-      ...workspace(),
+      entries: workspace().entries.map(({ inventoryItemIds: _inventoryItemIds, ...entry }) => entry),
     }))
 
     expect(loadCustomInventorySlots(storage).value[0]).toEqual(inventory('wood', ['minecraft:oak_log']))
-    expect(loadTargetWorkspace(storage).value).toEqual(workspace())
+    expect(loadTargetWorkspace(storage).value.entries.map((entry) => entry.inventoryItemIds)).toEqual([[], []])
     expect(JSON.parse(storage.getItem('mcsr.inventory-slots.v1')!).schemaVersion).toBe(1)
-    expect(JSON.parse(storage.getItem('mcsr.target-workspace.v1')!).schemaVersion).toBe(1)
+    expect(JSON.parse(storage.getItem('mcsr.target-workspace.v1')!).schemaVersion).toBe(2)
   })
 
   test('isolates corrupt records, preserves raw recovery data, and returns a warning', () => {
@@ -229,7 +283,7 @@ describe('target workspace persistence', () => {
     const storage = new MemoryStorage()
     const saved = workspace()
     const raw = JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       entries: [saved.entries[0], { ...saved.entries[1], gridSize: 4 }],
     })
     storage.setItem('mcsr.target-workspace.v1', raw)

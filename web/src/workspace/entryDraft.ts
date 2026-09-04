@@ -1,0 +1,55 @@
+import type {
+  CraftingRecipe,
+  InventoryPreset,
+  ItemSetDraft,
+  TargetWorkspaceEntry,
+} from '../domain/types'
+
+function sortedUnique(itemIds: readonly string[]): string[] {
+  return [...new Set(itemIds)].sort()
+}
+
+export function newItemSetDraft(): ItemSetDraft {
+  return { targetIds: [], inventoryItemIds: [], enabled: true, gridSize: 3 }
+}
+
+export function draftFromEntry(entry: TargetWorkspaceEntry): ItemSetDraft {
+  return {
+    sourceEntryId: entry.id,
+    targetIds: [...entry.targetIds],
+    inventoryItemIds: [...entry.inventoryItemIds],
+    enabled: entry.enabled,
+    gridSize: entry.gridSize,
+  }
+}
+
+export function applyInventoryPreset(
+  draft: ItemSetDraft,
+  preset: Pick<InventoryPreset, 'itemIds'>,
+): ItemSetDraft {
+  return { ...draft, inventoryItemIds: sortedUnique(preset.itemIds) }
+}
+
+export function canDraftUse2x2(draft: ItemSetDraft, recipes: readonly CraftingRecipe[]): boolean {
+  return draft.targetIds.every((targetId) => recipes.some((recipe) => (
+    recipe.outputItemId === targetId && recipe.fits2x2
+  )))
+}
+
+export function normalizeDraftGrid(
+  draft: ItemSetDraft,
+  recipes: readonly CraftingRecipe[],
+): ItemSetDraft {
+  return draft.gridSize === 2 && !canDraftUse2x2(draft, recipes)
+    ? { ...draft, gridSize: 3 }
+    : draft
+}
+
+export function validateItemSetDraft(draft: ItemSetDraft): boolean {
+  return typeof draft.enabled === 'boolean'
+    && (draft.gridSize === 2 || draft.gridSize === 3)
+    && draft.targetIds.length > 0
+    && draft.targetIds.every((itemId) => typeof itemId === 'string' && itemId.length > 0)
+    && draft.inventoryItemIds.every((itemId) => typeof itemId === 'string' && itemId.length > 0)
+    && (draft.sourceEntryId === undefined || typeof draft.sourceEntryId === 'string')
+}

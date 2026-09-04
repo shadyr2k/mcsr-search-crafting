@@ -68,6 +68,7 @@ export interface CustomInventoryPreset {
 export interface TargetWorkspaceEntry {
   id: string
   targetIds: string[]
+  inventoryItemIds: string[]
   enabled: boolean
   gridSize: 2 | 3
   order: number
@@ -75,4 +76,8 @@ export interface TargetWorkspaceEntry {
 
 export interface TargetWorkspace {
   entries: TargetWorkspaceEntry[]
+}
+
+export type ItemSetDraft = Omit<TargetWorkspaceEntry, 'id' | 'order'> & {
+  sourceEntryId?: string
 }

@@ -38,7 +38,7 @@ function entry(
   targetIds: string[],
   overrides: Partial<TargetWorkspaceEntry> = {},
 ): TargetWorkspaceEntry {
-  return { id, targetIds, enabled: true, gridSize: 3, order: 0, ...overrides }
+  return { id, targetIds, inventoryItemIds: [], enabled: true, gridSize: 3, order: 0, ...overrides }
 }
 
 const alpha = item('target:alpha', 'ax')

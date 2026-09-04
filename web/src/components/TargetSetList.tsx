@@ -46,6 +46,7 @@ export function TargetSetList({ items, recipes, workspace, onWorkspaceChange }: 
       entries: [...workspace.entries, {
         id,
         targetIds: [],
+        inventoryItemIds: [],
         enabled: true,
         gridSize: 3,
         order: workspace.entries.length,
