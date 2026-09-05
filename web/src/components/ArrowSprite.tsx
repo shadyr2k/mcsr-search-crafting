@@ -1,5 +1,6 @@
 import horizontalChevron from '../assets/ui/chevron-horizontal.png'
 import verticalChevron from '../assets/ui/chevron-vertical.png'
+import compactVerticalChevron from '../assets/ui/chevron-vertical-16.png'
 import keyBackspace from '../assets/ui/key-backspace.png'
 import keyHome from '../assets/ui/key-home.png'
 import keyShift from '../assets/ui/key-shift.png'
@@ -26,10 +27,14 @@ const labelByDirection: Record<ArrowDirection, string> = {
   shift: 'Shift',
 }
 
-export function ArrowSprite({ direction, className }: { direction: ArrowDirection; className?: string }) {
+export function ArrowSprite({ direction, className, compact = false }: { direction: ArrowDirection; className?: string; compact?: boolean }) {
+  const source = compact && (direction === 'up' || direction === 'down')
+    ? compactVerticalChevron
+    : spriteByDirection[direction]
+
   return <img
-    src={spriteByDirection[direction]}
+    src={source}
     alt={labelByDirection[direction]}
-    className={['arrow-sprite', `arrow-sprite--${direction}`, className].filter(Boolean).join(' ')}
+    className={['arrow-sprite', `arrow-sprite--${direction}`, compact && 'arrow-sprite--compact', className].filter(Boolean).join(' ')}
   />
 }

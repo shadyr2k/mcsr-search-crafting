@@ -236,7 +236,7 @@ function CraftDetail({ craft, items, icons, collections }: {
         onClick={() => setShowEvidence((current) => !current)}
       >
         {bar}
-        <span className="craft-result__toggle-mark"><ArrowSprite direction={showEvidence ? 'up' : 'down'} /></span>
+        <span className="craft-result__toggle-mark"><ArrowSprite direction={showEvidence ? 'up' : 'down'} compact /></span>
       </button>
       : <div className="craft-result__bar">{bar}</div>}
     {showEvidence && <div id={evidenceId} className="craft-result__details">
@@ -271,7 +271,7 @@ function CraftCategory({ category, items, icons, collections }: {
       aria-label={`${showTopTen ? 'Show top 3' : 'Show top 10'} ${categoryLabel}`}
       onClick={() => setShowTopTen((current) => !current)}
     >
-      {showTopTen ? 'Show top 3' : 'Show top 10'} <span><ArrowSprite direction={showTopTen ? 'up' : 'down'} /></span>
+      {showTopTen ? 'Show top 3' : 'Show top 10'} <span><ArrowSprite direction={showTopTen ? 'up' : 'down'} compact /></span>
     </button>}
   </section>
 }
