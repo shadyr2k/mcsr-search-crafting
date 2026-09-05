@@ -52,7 +52,8 @@ describe('CalculatedSearchRow', () => {
     expect(screen.getByRole('heading', { name: 'Regular crafts' })).toBeTruthy()
     const overlapCategory = screen.getByRole('region', { name: 'Overlap crafts' })
     expect(screen.getByRole('heading', { name: 'Overlap crafts' })).toBeTruthy()
-    expect(within(overlapCategory).getByRole('img', { name: 'Shift+Home' })).toBeTruthy()
+    expect(within(overlapCategory).getByRole('img', { name: 'Shift' })).toBeTruthy()
+    expect(within(overlapCategory).getByRole('img', { name: 'Home' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Hide crafts for item set 1' }).getAttribute('aria-expanded')).toBe('true')
   })
 
@@ -81,6 +82,20 @@ describe('CalculatedSearchRow', () => {
     expect(screen.getByText('_be')).toBeTruthy()
     expect(screen.queryByText('an_be')).toBeNull()
     expect(screen.getByRole('img', { name: 'Backspace' })).toBeTruthy()
+  })
+
+  test('combines repeated spans for the same item into one explanation', () => {
+    const craft = search(['w'], 1)
+    craft.steps[0].explanations = [
+      { ...explanation('White Wool', 0), query: 'w', matchedSpan: { start: 0, end: 1, text: 'W' } },
+      { ...explanation('White Wool', 6), query: 'w', matchedSpan: { start: 6, end: 7, text: 'W' } },
+    ]
+    render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [craft], bestScore: 1, visibleItemIds: [] } }} items={items} icons={icons} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show why Regular craft: w' }))
+    expect(screen.getAllByText('W', { selector: 'mark' })).toHaveLength(2)
+    expect(screen.getAllByTitle(/line White Wool/)).toHaveLength(1)
   })
 
   test('shows a compact junk preview and target-only evidence after expansion', () => {

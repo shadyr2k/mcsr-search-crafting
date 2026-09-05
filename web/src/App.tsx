@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import './App.css'
 import { CalculatedSearchRow } from './components/CalculatedSearchRow'
+import { ItemIcon } from './components/ItemIcon'
 import { ItemSetEditor, type ItemSetEditorCommit, type ItemSetEditorState } from './components/ItemSetEditor'
 import { ItemSetWorkspace } from './components/ItemSetWorkspace'
 import { LanguageRanking } from './components/LanguageRanking'
@@ -103,7 +104,10 @@ function App() {
   const entries = orderedEntries(workspace.entries)
   const editorNumber = editor?.entryId === undefined ? undefined : entries.findIndex((entry) => entry.id === editor.entryId) + 1
   return <main className="app-shell">
-    <header className="app-header"><p className="eyebrow">Minecraft Java Edition 1.16.1</p><h1>MCSR Search Crafting</h1></header>
+    <header className="app-header">
+      {icons && <ItemIcon itemId="minecraft:smithing_table" name="smithing table" manifest={icons} size="detail" className="app-header__icon" />}
+      <h1>MCSR search crafting</h1>
+    </header>
     {warning && <p role="alert">{warning}</p>}{error && <p role="alert">{error}</p>}
     {data && icons && <div className="workspace-grid">
       <ItemSetWorkspace entries={workspace.entries} items={data.items} icons={icons} onWorkspaceChange={setWorkspace} onEdit={openEdit} onAdd={openAdd} />

@@ -1,17 +1,19 @@
-import backspace from '../assets/ui/backspace.png'
 import horizontalChevron from '../assets/ui/chevron-horizontal.png'
 import verticalChevron from '../assets/ui/chevron-vertical.png'
-import shiftHome from '../assets/ui/shift-home.png'
+import keyBackspace from '../assets/ui/key-backspace.png'
+import keyHome from '../assets/ui/key-home.png'
+import keyShift from '../assets/ui/key-shift.png'
 
-export type ArrowDirection = 'left' | 'right' | 'up' | 'down' | 'backspace' | 'shift-home'
+export type ArrowDirection = 'left' | 'right' | 'up' | 'down' | 'backspace' | 'home' | 'shift'
 
 const spriteByDirection: Record<ArrowDirection, string> = {
   left: horizontalChevron,
   right: horizontalChevron,
   up: verticalChevron,
   down: verticalChevron,
-  backspace,
-  'shift-home': shiftHome,
+  backspace: keyBackspace,
+  home: keyHome,
+  shift: keyShift,
 }
 
 const labelByDirection: Record<ArrowDirection, string> = {
@@ -20,7 +22,8 @@ const labelByDirection: Record<ArrowDirection, string> = {
   up: 'Up',
   down: 'Down',
   backspace: 'Backspace',
-  'shift-home': 'Shift+Home',
+  home: 'Home',
+  shift: 'Shift',
 }
 
 export function ArrowSprite({ direction, className }: { direction: ArrowDirection; className?: string }) {

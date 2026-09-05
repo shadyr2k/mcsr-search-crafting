@@ -23,4 +23,9 @@ describe('MatchEvidence', () => {
     expect(screen.getByRole('img', { name: 'Fast forward' })).toBeTruthy()
     expect(screen.getByText('wn', { selector: 'mark' })).toBeTruthy()
   })
+
+  test('keeps an alias chain together with its explanation text', () => {
+    render(<MatchEvidence explanation={explanation} items={items} icons={icons} />)
+    expect(screen.getByLabelText('matches craftable White Bed').className).toContain('match-evidence__alias')
+  })
 })

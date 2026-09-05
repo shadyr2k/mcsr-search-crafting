@@ -36,7 +36,7 @@ interface CraftContents {
 }
 
 type CraftExplanation =
-  | { kind: 'item'; explanation: CollectionMatchExplanation }
+  | { kind: 'item'; explanation: CollectionMatchExplanation; explanations: CollectionMatchExplanation[] }
   | { kind: 'collection'; explanation: CollectionMatchExplanation; itemIds: string[]; label: string }
 
 function categoryName(kind: RankedSearch['kind']): string {
@@ -61,7 +61,7 @@ function SearchQuery({ search }: { search: RankedSearch }) {
   return <span className="craft-query" aria-label={searchDescription(search)}>
     {search.steps.map((step, index) => <Fragment key={`${step.query}-${index}`}>
       {index > 0 && (replacesWholeQuery(step, search.steps[index - 1]?.query)
-        ? <ArrowSprite direction="shift-home" />
+        ? <span className="craft-query__shortcut" aria-label="Shift+Home"><ArrowSprite direction="shift" /><ArrowSprite direction="home" /></span>
         : step.freeBackspaceCount > 0
         ? <span className="craft-query__backspaces" aria-label={`${step.freeBackspaceCount} backspaces`}>
           {Array.from({ length: step.freeBackspaceCount }, (_, arrowIndex) => <ArrowSprite key={arrowIndex} direction="backspace" />)}
@@ -136,6 +136,7 @@ function craftExplanations(
   }
   const result: CraftExplanation[] = []
   const emittedSummaries = new Set<string>()
+  const emittedItems = new Set<string>()
   for (const explanation of allExplanations) {
     const key = `${explanation.collectionId}\u0000${explanation.query}`
     const summary = summarized.get(key)
@@ -144,7 +145,16 @@ function craftExplanations(
         emittedSummaries.add(key)
         result.push(summary)
       }
-    } else if (targets.has(explanation.visibleOutputItemId)) result.push({ kind: 'item', explanation })
+    } else if (targets.has(explanation.visibleOutputItemId)) {
+      const itemKey = `${explanation.visibleOutputItemId}\u0000${explanation.matchedMemberItemId}\u0000${explanation.source}\u0000${explanation.line}`
+      if (emittedItems.has(itemKey)) continue
+      emittedItems.add(itemKey)
+      result.push({
+        kind: 'item',
+        explanation,
+        explanations: allExplanations.filter((candidate) => `${candidate.visibleOutputItemId}\u0000${candidate.matchedMemberItemId}\u0000${candidate.source}\u0000${candidate.line}` === itemKey),
+      })
+    }
   }
   return result
 }
@@ -234,7 +244,7 @@ function CraftDetail({ craft, items, icons, collections }: {
       {explanations.length > 0 && <div className="craft-result__evidence">
         {explanations.map((explanation) => explanation.kind === 'collection'
           ? <CollectionEvidence key={`collection:${explanation.explanation.collectionId}:${explanation.explanation.query}`} {...explanation} items={items} icons={icons} />
-          : <MatchEvidence key={JSON.stringify(explanation.explanation)} explanation={explanation.explanation} items={items} icons={icons} />)}
+          : <MatchEvidence key={JSON.stringify(explanation.explanation)} explanation={explanation.explanation} explanations={explanation.explanations} items={items} icons={icons} />)}
       </div>}
     </div>}
   </li>
@@ -318,12 +328,13 @@ export function CalculatedSearchRow({ entry, entryNumber, state, items, icons, c
       </ul>
       <button
         type="button"
+        className="calculated-search-row__toggle"
         aria-label={`${expanded ? 'Hide' : 'Show all'} crafts for item set ${entryNumber}`}
         aria-controls={listId}
         aria-expanded={expanded}
         onClick={() => setExpanded((current) => !current)}
       >
-        {expanded ? 'Hide crafts' : 'Show crafts'}
+        <ArrowSprite direction={expanded ? 'up' : 'down'} />
       </button>
     </div>
     {expanded && <div id={listId} className="craft-categories">
