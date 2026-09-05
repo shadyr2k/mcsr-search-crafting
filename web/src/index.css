@@ -4,7 +4,8 @@
 
 :root { font-family: 'Geom', system-ui, sans-serif; color: #5b2030; background: #fff2f4; --page: #fff2f4; --panel: #ffe1e6; --panel-selected: #ffcbd5; --border: #d98798; --accent: #d9586c; --accent-strong: #ad344d; --text: #5b2030; --muted: #875565; --match: #ffd27d; --error: #9f233d; --focus: #7b2746; }
 * { box-sizing: border-box; }
-body { margin: 0; background: radial-gradient(circle at 12% 8%, #ffd8e0 0, #ffd8e000 27rem), radial-gradient(circle at 88% 78%, #f5bbc9 0, #f5bbc900 32rem), linear-gradient(145deg, #f6c6d1, #e99caf); background-attachment: fixed; text-transform: lowercase; }
+html, body, #root { min-height: 100%; }
+body { min-height: 100vh; margin: 0; background: radial-gradient(circle at 12% 8%, #ffd8e0 0, #ffd8e000 27rem), radial-gradient(circle at 88% 78%, #f5bbc9 0, #f5bbc900 32rem), linear-gradient(145deg, #f6c6d1, #e99caf); background-attachment: fixed; text-transform: lowercase; }
 button, input, select { font: inherit; }
 button, input, select { border: 2px solid var(--border); border-radius: .5rem; color: var(--text); background: #fff8f9; min-height: 2.75rem; }
 button { padding: .45rem .7rem; cursor: pointer; background: var(--panel); }
