@@ -1,5 +1,6 @@
 import horizontalChevron from '../assets/ui/chevron-horizontal.png'
 import verticalChevron from '../assets/ui/chevron-vertical.png'
+import compactHorizontalChevron from '../assets/ui/chevron-horizontal-16.png'
 import compactVerticalChevron from '../assets/ui/chevron-vertical-16.png'
 import keyBackspace from '../assets/ui/key-backspace.png'
 import keyHome from '../assets/ui/key-home.png'
@@ -28,8 +29,12 @@ const labelByDirection: Record<ArrowDirection, string> = {
 }
 
 export function ArrowSprite({ direction, className, compact = false }: { direction: ArrowDirection; className?: string; compact?: boolean }) {
-  const source = compact && (direction === 'up' || direction === 'down')
-    ? compactVerticalChevron
+  const source = compact
+    ? direction === 'left' || direction === 'right'
+      ? compactHorizontalChevron
+      : direction === 'up' || direction === 'down'
+        ? compactVerticalChevron
+        : spriteByDirection[direction]
     : spriteByDirection[direction]
 
   return <img

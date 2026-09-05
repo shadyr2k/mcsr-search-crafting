@@ -141,11 +141,11 @@ describe('CalculatedSearchRow', () => {
     const craft = search(['be'], 1)
     craft.steps[0] = {
       ...craft.steps[0],
-      coveredTargetIds: bedIds,
+      coveredTargetIds: [bedIds[0]],
       explanations: bedIds.map((itemId) => ({
         ...explanation(`${bedItems.get(itemId)?.name}`, 0),
         query: 'be', collectionId: bedCollection.id, matchedMemberItemId: itemId, matchedMemberName: bedItems.get(itemId)!.name,
-        visibleOutputItemId: itemId, visibleOutputName: bedItems.get(itemId)!.name, matchedSpan: { start: 0, end: 2, text: 'be' },
+        visibleOutputItemId: bedIds[0], visibleOutputName: bedItems.get(bedIds[0])!.name, matchedSpan: { start: 0, end: 2, text: 'be' },
       })),
     }
 
@@ -154,7 +154,7 @@ describe('CalculatedSearchRow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
     fireEvent.click(screen.getByRole('button', { name: 'Show why Regular craft: be' }))
     expect(screen.getByLabelText('All beds')).toBeTruthy()
-    expect(screen.getAllByRole('img', { name: /Bed/ })).toHaveLength(7)
+    expect(screen.getAllByRole('img', { name: /Bed/ })).toHaveLength(2)
     expect(screen.getByText('be', { selector: 'mark' })).toBeTruthy()
   })
 

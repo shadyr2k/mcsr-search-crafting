@@ -119,20 +119,20 @@ function craftExplanations(
     unique.set(JSON.stringify(explanation), explanation)
   }
   const allExplanations = [...unique.values()]
-  const matchedOutputIds = new Map<string, Set<string>>()
+  const matchedMemberIds = new Map<string, Set<string>>()
   for (const explanation of allExplanations) {
     const key = `${explanation.collectionId}\u0000${explanation.query}`
-    const outputIds = matchedOutputIds.get(key) ?? new Set<string>()
-    outputIds.add(explanation.visibleOutputItemId)
-    matchedOutputIds.set(key, outputIds)
+    const memberIds = matchedMemberIds.get(key) ?? new Set<string>()
+    memberIds.add(explanation.matchedMemberItemId)
+    matchedMemberIds.set(key, memberIds)
   }
   const summarized = new Map<string, CraftExplanation>()
-  for (const [key, outputIds] of matchedOutputIds) {
+  for (const [key, memberIds] of matchedMemberIds) {
     const [collectionId] = key.split('\u0000')
     const collection = collections?.get(collectionId)
-    if (!collection || collection.outputItemIds.length < 2 || !collection.outputItemIds.every((itemId) => outputIds.has(itemId)) || !collection.outputItemIds.some((itemId) => targets.has(itemId))) continue
+    if (!collection || collection.outputItemIds.length < 2 || !collection.outputItemIds.every((itemId) => memberIds.has(itemId)) || !collection.outputItemIds.some((itemId) => targets.has(itemId))) continue
     const explanation = allExplanations.find((candidate) => `${candidate.collectionId}\u0000${candidate.query}` === key)
-    if (explanation) summarized.set(key, { kind: 'collection', explanation, itemIds: collection.outputItemIds.slice(0, 3), label: collectionLabel(collection, items) })
+    if (explanation) summarized.set(key, { kind: 'collection', explanation, itemIds: [explanation.visibleOutputItemId], label: collectionLabel(collection, items) })
   }
   const result: CraftExplanation[] = []
   const emittedSummaries = new Set<string>()

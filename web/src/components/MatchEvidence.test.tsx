@@ -20,7 +20,7 @@ describe('MatchEvidence', () => {
     expect(screen.getByRole('img', { name: 'Brown Bed' })).toBeTruthy()
     expect(screen.getByLabelText('matches craftable White Bed')).toBeTruthy()
     expect(screen.getByRole('img', { name: 'White Bed' })).toBeTruthy()
-    expect(screen.getByRole('img', { name: 'Fast forward' })).toBeTruthy()
+    expect(screen.getByRole('img', { name: 'Fast forward' }).className).toContain('arrow-sprite--compact')
     expect(screen.getByText('wn', { selector: 'mark' })).toBeTruthy()
   })
 

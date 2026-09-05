@@ -24,6 +24,8 @@
 }
 
 /* Compact controls use the supplied native 16px sprite; the result-row control stays 32px. */
+.arrow-sprite--compact.arrow-sprite--left,
+.arrow-sprite--compact.arrow-sprite--right,
 .arrow-sprite--compact.arrow-sprite--up,
 .arrow-sprite--compact.arrow-sprite--down {
   width: 16px !important;
@@ -32,7 +34,7 @@
 
 /* A craft row needs room for its fixed-size target and junk previews. */
 .craft-categories {
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 h1, h2, h3 { -webkit-text-stroke-width: .15em; }.arrow-sprite--left, .arrow-sprite--right, .arrow-sprite--up, .arrow-sprite--down { width: 16px !important; height: 16px !important; }.calculated-search-row__toggle .arrow-sprite--up, .calculated-search-row__toggle .arrow-sprite--down { width: 32px !important; height: 32px !important; }.craft-result__toggle, .craft-result__bar { grid-template-columns: fit-content(55%) max-content auto; }.craft-result__toggle .craft-result__items, .craft-result__bar .craft-result__items { flex-wrap: nowrap; }.craft-result__details { gap: 0; padding: 0; }.craft-result__remaining-junk { padding: .7rem .8rem; }.craft-result__evidence, .craft-result__remaining-junk + .craft-result__evidence { padding: .7rem .8rem; border-top: 1px solid var(--border); }
 @media (max-width: 42rem) { .craft-result__toggle, .craft-result__bar { grid-template-columns: minmax(0, 1fr) auto; }.craft-result__items { grid-column: 1 / -1; } }

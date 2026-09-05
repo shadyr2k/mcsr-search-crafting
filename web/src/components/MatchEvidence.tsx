@@ -54,7 +54,7 @@ export function MatchEvidence({ explanation, explanations = [explanation], items
       ? <ItemIcon itemId={explanation.visibleOutputItemId} name={explanation.visibleOutputName} manifest={icons} />
       : <span className="match-evidence__alias" aria-label={`matches craftable ${explanation.matchedMemberName}`}>
         <ItemIcon itemId={explanation.matchedMemberItemId} name={explanation.matchedMemberName} manifest={icons} />
-        <ArrowSprite direction="right" />
+        <ArrowSprite direction="right" compact />
         <ItemIcon itemId={explanation.visibleOutputItemId} name={explanation.visibleOutputName} manifest={icons} />
       </span>}
     <span><HighlightedLine line={explanation.line} spans={spans} /></span>
