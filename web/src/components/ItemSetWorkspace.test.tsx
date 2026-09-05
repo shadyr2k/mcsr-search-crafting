@@ -39,4 +39,19 @@ describe('ItemSetWorkspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit item set 1' }))
     expect(onEdit).toHaveBeenCalledWith('saved')
   })
+
+  test('uses a compact add control without changing its accessible name', () => {
+    const onAdd = vi.fn()
+    render(<ItemSetWorkspace
+      entries={[]}
+      items={items}
+      icons={icons}
+      onWorkspaceChange={vi.fn()}
+      onEdit={vi.fn()}
+      onAdd={onAdd}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add item set' }))
+    expect(onAdd).toHaveBeenCalledOnce()
+  })
 })

@@ -45,7 +45,7 @@ export function ItemSetRow({
       />
       Enabled
     </label>
-    <button type="button" disabled={!canMoveUp} onClick={() => onMove(-1)} aria-label={`Move item set ${entryNumber} up`}>↑</button>
-    <button type="button" disabled={!canMoveDown} onClick={() => onMove(1)} aria-label={`Move item set ${entryNumber} down`}>↓</button>
+      <button type="button" disabled={!canMoveUp} onClick={() => onMove(-1)} aria-label={`Move item set ${entryNumber} up`}>↑</button>
+      <button type="button" disabled={!canMoveDown} onClick={() => onMove(1)} aria-label={`Move item set ${entryNumber} down`}>↓</button>
   </article>
 }

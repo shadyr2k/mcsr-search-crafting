@@ -38,7 +38,7 @@ export function ItemSetWorkspace({ entries, items, icons, onWorkspaceChange, onE
   return <section className="item-set-workspace" aria-label="Item sets">
     <header>
       <h2>Item sets</h2>
-      <button type="button" onClick={onAdd}>Add item set</button>
+      <button type="button" className="item-set-workspace__add" onClick={onAdd} aria-label="Add item set"><span aria-hidden="true">+</span></button>
     </header>
     {visibleEntries.map((entry, index) => <ItemSetRow
       key={entry.id}

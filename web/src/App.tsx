@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import './App.css'
 import { CalculatedSearchRow } from './components/CalculatedSearchRow'
+import { ItemIcon } from './components/ItemIcon'
 import { ItemSetEditor, type ItemSetEditorCommit, type ItemSetEditorState } from './components/ItemSetEditor'
 import { ItemSetWorkspace } from './components/ItemSetWorkspace'
 import { LanguageRanking } from './components/LanguageRanking'
@@ -31,10 +32,11 @@ function nextEntryId(entries: readonly TargetWorkspaceEntry[]): string {
 }
 
 export function commitDraft(workspace: TargetWorkspace, commit: ItemSetEditorCommit): TargetWorkspace {
-  const existing = commit.draft.sourceEntryId === undefined ? undefined : workspace.entries.find((entry) => entry.id === commit.draft.sourceEntryId)
+  const { sourceEntryId, ...draft } = commit.draft
+  const existing = sourceEntryId === undefined ? undefined : workspace.entries.find((entry) => entry.id === sourceEntryId)
   const entry: TargetWorkspaceEntry = existing
-    ? { ...commit.draft, id: existing.id, order: existing.order }
-    : { ...commit.draft, id: nextEntryId(workspace.entries), order: workspace.entries.length }
+    ? { ...draft, id: existing.id, order: existing.order }
+    : { ...draft, id: nextEntryId(workspace.entries), order: workspace.entries.length }
   const entries = existing ? workspace.entries.map((candidate) => candidate.id === existing.id ? entry : candidate) : [...workspace.entries, entry]
   return { entries: orderedEntries(entries).map((candidate, order) => ({ ...candidate, order })) }
 }
@@ -102,11 +104,14 @@ function App() {
   const entries = orderedEntries(workspace.entries)
   const editorNumber = editor?.entryId === undefined ? undefined : entries.findIndex((entry) => entry.id === editor.entryId) + 1
   return <main className="app-shell">
-    <header className="app-header"><p className="eyebrow">Minecraft Java Edition 1.16.1</p><h1>MCSR Search Crafting</h1></header>
+    <header className="app-header">
+      {icons && <ItemIcon itemId="minecraft:smithing_table" name="smithing table" manifest={icons} size="detail" className="app-header__icon" />}
+      <h1>MCSR search crafting</h1>
+    </header>
     {warning && <p role="alert">{warning}</p>}{error && <p role="alert">{error}</p>}
     {data && icons && <div className="workspace-grid">
-      <LanguageRanking aggregate={aggregate} />
       <ItemSetWorkspace entries={workspace.entries} items={data.items} icons={icons} onWorkspaceChange={setWorkspace} onEdit={openEdit} onAdd={openAdd} />
+      <LanguageRanking aggregate={aggregate} />
       <section className="results-column" aria-label={editor ? (editor.kind === 'new' ? 'New item set' : `Edit item set ${editorNumber}`) : 'Calculated searches'}>
         {editor ? <ItemSetEditor
           state={editor} entryNumber={editorNumber} data={data} icons={icons} customSlots={customSlots}
@@ -116,7 +121,7 @@ function App() {
           onDelete={editor.entryId ? () => { setWorkspace((current) => deleteEntry(current, editor.entryId!)); setEditor(null) } : undefined}
           onSaveCustomSlot={saveSlot} onClearCustomSlot={clearSlot}
         /> : entries.map((entry, index) => <CalculatedSearchRow
-          key={entry.id} entry={entry} entryNumber={index + 1} state={states.get(entry.id)} items={data.items} icons={icons} onRetry={() => retry(entry.id)}
+          key={entry.id} entry={entry} entryNumber={index + 1} state={states.get(entry.id)} items={data.items} icons={icons} collections={data.collections} onRetry={() => retry(entry.id)}
         />)}
       </section>
     </div>}

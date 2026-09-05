@@ -24,6 +24,15 @@ const icons = parseIconManifest({
 })
 
 describe('ItemPicker', () => {
+  test('keeps suggestions closed until the search field receives focus', async () => {
+    const user = userEvent.setup()
+    render(<ItemPicker items={items} selectedIds={[]} manifest={icons} onChange={vi.fn()} label="Inventory" />)
+
+    expect(screen.queryByRole('list', { name: 'Inventory results' })).toBeNull()
+    await user.click(screen.getByRole('searchbox', { name: 'Search Inventory' }))
+    expect(screen.getByRole('list', { name: 'Inventory results' })).toBeTruthy()
+  })
+
   test('searches names and IDs but presents selectable icons with accessible names', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
