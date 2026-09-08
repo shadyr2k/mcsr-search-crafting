@@ -3,8 +3,12 @@ import { describe, expect, test } from 'vitest'
 import {
   clearCustomInventorySlot,
   loadCustomInventorySlots,
+  loadLanguagePreferences,
+  loadThemePreference,
   loadTargetWorkspace,
   saveCustomInventorySlot,
+  saveLanguagePreferences,
+  saveThemePreference,
   saveTargetWorkspace,
 } from './storage'
 
@@ -314,5 +318,73 @@ describe('target workspace persistence', () => {
     expect(saveResult.warning).toMatch(/browser storage.*write/i)
     expect(saveResult.warning).toMatch(/memory/i)
     expect(loadTargetWorkspace(storage).value).toEqual(saved)
+  })
+})
+
+describe('language preference persistence', () => {
+  const locales = new Set(['en_us', 'de_de', 'ja_jp'])
+
+  test('round trips the selected locale and manually enabled banned locales', () => {
+    const storage = new MemoryStorage()
+
+    saveLanguagePreferences({ selectedLocale: 'ja_jp', enabledBannedLocales: ['ja_jp'] }, storage)
+
+    expect(loadLanguagePreferences(locales, storage)).toEqual({
+      value: { selectedLocale: 'ja_jp', enabledBannedLocales: ['ja_jp'] },
+      warning: undefined,
+    })
+  })
+
+  test('preserves target insertion order and the retained-craft-order preference', () => {
+    const storage = new MemoryStorage()
+    const value = {
+      entries: [{
+        id: 'ordered',
+        targetIds: ['minecraft:tripwire_hook', 'minecraft:crossbow'],
+        inventoryItemIds: [],
+        enabled: true,
+        gridSize: 3 as const,
+        retainCraftOrder: true,
+        order: 0,
+      }],
+    }
+
+    saveTargetWorkspace(value, storage)
+
+    expect(loadTargetWorkspace(storage).value).toEqual(value)
+  })
+
+  test('falls back to en_us when the saved locale is unavailable', () => {
+    const storage = new MemoryStorage()
+    storage.setItem('mcsr.language-preferences.v1', JSON.stringify({
+      schemaVersion: 1,
+      selectedLocale: 'removed_locale',
+      enabledBannedLocales: ['removed_locale', 'ja_jp'],
+    }))
+
+    expect(loadLanguagePreferences(locales, storage)).toEqual({
+      value: { selectedLocale: 'en_us', enabledBannedLocales: ['ja_jp'] },
+      warning: expect.stringMatching(/unavailable.*en_us/i),
+    })
+  })
+})
+
+describe('theme preference persistence', () => {
+  test('round trips the selected theme', () => {
+    const storage = new MemoryStorage()
+
+    saveThemePreference('dark', storage)
+
+    expect(loadThemePreference(storage)).toEqual({ value: 'dark', warning: undefined })
+  })
+
+  test('falls back to light for an invalid saved theme', () => {
+    const storage = new MemoryStorage()
+    storage.setItem('mcsr.theme-preference.v1', JSON.stringify({ schemaVersion: 1, theme: 'purple' }))
+
+    expect(loadThemePreference(storage)).toEqual({
+      value: 'light',
+      warning: expect.stringMatching(/theme-preference.*reset/i),
+    })
   })
 })

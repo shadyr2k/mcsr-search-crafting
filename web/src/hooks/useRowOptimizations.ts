@@ -15,6 +15,7 @@ interface RequestRecord {
   requestId: number
   fingerprint: string
   retryToken: number
+  data: GeneratedData
   controller: AbortController
 }
 
@@ -31,9 +32,10 @@ function isAbortError(error: unknown): boolean {
 
 export function entryOptimizationFingerprint(entry: TargetWorkspaceEntry): string {
   return JSON.stringify({
-    targetIds: [...new Set(entry.targetIds)].sort(),
+    targetIds: entry.retainCraftOrder ? [...new Set(entry.targetIds)] : [...new Set(entry.targetIds)].sort(),
     inventoryItemIds: [...new Set(entry.inventoryItemIds)].sort(),
     gridSize: entry.gridSize,
+    retainCraftOrder: entry.retainCraftOrder === true,
   })
 }
 
@@ -91,6 +93,7 @@ export function useRowOptimizations(
       if (
         request?.fingerprint === fingerprint
         && request.retryToken === retryToken
+        && request.data === data
         && (current?.status === 'pending' || current?.status === 'ready')
       ) continue
       if (
@@ -107,7 +110,7 @@ export function useRowOptimizations(
       settledRef.current.delete(entry.id)
       const controller = new AbortController()
       const requestId = ++nextRequestId.current
-      requestsRef.current.set(entry.id, { requestId, fingerprint, retryToken, controller })
+      requestsRef.current.set(entry.id, { requestId, fingerprint, retryToken, data, controller })
       publish(entry.id, { status: 'pending', fingerprint })
       const options: OptimizeWorkspaceOptions = { signal: controller.signal }
 

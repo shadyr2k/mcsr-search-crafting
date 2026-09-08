@@ -4,6 +4,11 @@ import type {
   IngredientSlot,
   InventoryItem,
   InventoryPreset,
+  LanguageMetadata,
+  LanguageInfoEntry,
+  LanguageInfoSection,
+  LocalizedLanguageInfo,
+  LocalizedLanguageInfoValue,
   RecipeBookCategory,
   RecipeResultCollection,
   SearchItem,
@@ -12,6 +17,8 @@ import type {
 
 type JsonRecord = Record<string, unknown>
 const GENERATED_SCHEMA_VERSION = 3
+const LOCALIZED_SEARCH_SCHEMA_VERSION = 1
+const LOCALIZED_LANGUAGE_INFO_SCHEMA_VERSION = 1
 
 interface IndexedRecipe {
   recipe: CraftingRecipe
@@ -546,6 +553,147 @@ export function parseGeneratedData(
   }
 }
 
+export function parseLocalizedGeneratedData(
+  localizedPayload: unknown,
+  locale: string,
+  baseData: GeneratedData,
+): GeneratedData {
+  const errors: string[] = []
+  const root = getRecord(localizedPayload, 'localizedSearchData', errors)
+  if (!root) throw new GeneratedDataError(errors)
+  if (root.schema_version !== LOCALIZED_SEARCH_SCHEMA_VERSION) {
+    errors.push(`localizedSearchData.schema_version: expected ${LOCALIZED_SEARCH_SCHEMA_VERSION}`)
+  }
+  const locales = getRecord(root.locales, 'localizedSearchData.locales', errors)
+  const localeData = locales === undefined ? undefined : getRecord(locales[locale], `localizedSearchData.locales.${locale}`, errors)
+  if (!localeData) throw new GeneratedDataError(errors)
+
+  const items = parseItems({ schema_version: GENERATED_SCHEMA_VERSION, items: localeData.search_items }, errors)
+  const inventoryItems = parseInventoryItems(
+    { schema_version: GENERATED_SCHEMA_VERSION, items: localeData.inventory_items },
+    errors,
+  )
+  const indexedRecipes = baseData.recipes.map((recipe, sourceIndex) => ({ recipe, sourceIndex }))
+  const indexedCollections = [...baseData.collections.values()].map((collection, sourceIndex) => ({ collection, sourceIndex }))
+  validateRecipeReferences(indexedRecipes, items, inventoryItems, errors)
+  validateCollectionGraph(indexedRecipes, indexedCollections, items, errors)
+  if (errors.length > 0) throw new GeneratedDataError(errors)
+
+  return {
+    schemaVersion: GENERATED_SCHEMA_VERSION,
+    items,
+    inventoryItems,
+    recipes: baseData.recipes,
+    collections: baseData.collections,
+    presets: baseData.presets,
+  }
+}
+
+export function parseLanguageMetadata(payload: unknown): LanguageMetadata[] {
+  const errors: string[] = []
+  const root = getRecord(payload, 'languageMetadata', errors)
+  if (!root) throw new GeneratedDataError(errors)
+  if (root.schema_version !== LOCALIZED_SEARCH_SCHEMA_VERSION) {
+    errors.push(`languageMetadata.schema_version: expected ${LOCALIZED_SEARCH_SCHEMA_VERSION}`)
+  }
+  const locales = getRecord(root.locales, 'languageMetadata.locales', errors)
+  const metadata: LanguageMetadata[] = []
+  if (locales) Object.entries(locales).forEach(([locale, value]) => {
+    const record = getRecord(value, `languageMetadata.locales.${locale}`, errors)
+    const name = record === undefined ? undefined : getNonEmptyString(record.name, `languageMetadata.locales.${locale}.name`, errors)
+    const region = record === undefined ? undefined : getNonEmptyString(record.region, `languageMetadata.locales.${locale}.region`, errors)
+    const script = record?.script
+    if (script !== 'latin' && script !== 'non_latin') {
+      errors.push(`languageMetadata.locales.${locale}.script: expected latin or non_latin`)
+    }
+    if (name !== undefined && region !== undefined && (script === 'latin' || script === 'non_latin')) {
+      metadata.push({ locale, name, region, script })
+    }
+  })
+  if (errors.length > 0) throw new GeneratedDataError(errors)
+  return metadata.sort((left, right) => left.locale.localeCompare(right.locale))
+}
+
+export function parseLocalizedLanguageInfo(payload: unknown): LocalizedLanguageInfo {
+  const errors: string[] = []
+  const root = getRecord(payload, 'localizedLanguageInfo', errors)
+  if (!root) throw new GeneratedDataError(errors)
+  if (root.schema_version !== LOCALIZED_LANGUAGE_INFO_SCHEMA_VERSION) {
+    errors.push(`localizedLanguageInfo.schema_version: expected ${LOCALIZED_LANGUAGE_INFO_SCHEMA_VERSION}`)
+  }
+
+  const rawSections = getRecord(root.sections, 'localizedLanguageInfo.sections', errors)
+  const sections: LanguageInfoSection[] = []
+  if (rawSections) Object.entries(rawSections).forEach(([sectionId, rawEntries]) => {
+    const sectionPath = `localizedLanguageInfo.sections.${sectionId}`
+    if (!Array.isArray(rawEntries) || rawEntries.length === 0) {
+      errors.push(`${sectionPath}: expected a non-empty array`)
+      return
+    }
+    const entries: LanguageInfoEntry[] = []
+    rawEntries.forEach((rawEntry, index) => {
+      const entryPath = `${sectionPath}[${index}]`
+      const entry = getRecord(rawEntry, entryPath, errors)
+      if (!entry) return
+      const id = getNonEmptyString(entry.id, `${entryPath}.id`, errors)
+      const key = getNonEmptyString(entry.key, `${entryPath}.key`, errors)
+      const english = getNonEmptyString(entry.english, `${entryPath}.english`, errors)
+      const requirementKey = entry.requirement_key === undefined
+        ? undefined
+        : getNonEmptyString(entry.requirement_key, `${entryPath}.requirement_key`, errors)
+      const englishRequirement = entry.english_requirement === undefined
+        ? undefined
+        : getNonEmptyString(entry.english_requirement, `${entryPath}.english_requirement`, errors)
+      if ((requirementKey === undefined) !== (englishRequirement === undefined)) {
+        errors.push(`${entryPath}: requirement_key and english_requirement must be provided together`)
+      }
+      if (
+        id !== undefined
+        && key !== undefined
+        && english !== undefined
+        && ((requirementKey === undefined && englishRequirement === undefined)
+          || (requirementKey !== undefined && englishRequirement !== undefined))
+      ) {
+        entries.push({ id, key, english, requirementKey, englishRequirement })
+      }
+    })
+    if (entries.length === rawEntries.length) sections.push({ id: sectionId, entries })
+  })
+
+  const rawLocales = getRecord(root.locales, 'localizedLanguageInfo.locales', errors)
+  const locales = new Map<string, Map<string, Map<string, LocalizedLanguageInfoValue>>>()
+  if (rawLocales) Object.entries(rawLocales).forEach(([locale, rawLocale]) => {
+    const localePath = `localizedLanguageInfo.locales.${locale}`
+    const localeRecord = getRecord(rawLocale, localePath, errors)
+    if (!localeRecord) return
+    const localizedSections = new Map<string, Map<string, LocalizedLanguageInfoValue>>()
+    sections.forEach((section) => {
+      const rawEntries = getRecord(localeRecord[section.id], `${localePath}.${section.id}`, errors)
+      if (!rawEntries) return
+      const localizedEntries = new Map<string, LocalizedLanguageInfoValue>()
+      section.entries.forEach((definition) => {
+        const entryPath = `${localePath}.${section.id}.${definition.id}`
+        const entry = getRecord(rawEntries[definition.id], entryPath, errors)
+        if (!entry) return
+        const name = getNonEmptyString(entry.name, `${entryPath}.name`, errors)
+        const requirement = definition.requirementKey === undefined
+          ? undefined
+          : getNonEmptyString(entry.requirement, `${entryPath}.requirement`, errors)
+        if (name !== undefined && (definition.requirementKey === undefined || requirement !== undefined)) {
+          localizedEntries.set(definition.id, { name, requirement })
+        }
+      })
+      if (localizedEntries.size === section.entries.length) localizedSections.set(section.id, localizedEntries)
+    })
+    if (localizedSections.size === sections.length) locales.set(locale, localizedSections)
+  })
+
+  if (!locales.has('en_us')) errors.push('localizedLanguageInfo.locales.en_us: expected a complete locale')
+  if (sections.length === 0) errors.push('localizedLanguageInfo.sections: expected at least one section')
+  if (errors.length > 0) throw new GeneratedDataError(errors)
+  return { sections, locales }
+}
+
 async function fetchJson(url: string): Promise<unknown> {
   const response = await fetch(url)
   if (!response.ok) {
@@ -574,5 +722,44 @@ export async function loadGeneratedData(baseUrl = import.meta.env.BASE_URL): Pro
     recipesPayload,
     collectionsPayload,
     inventoryPresetsPayload,
+  )
+}
+
+let localizedPayloadPromise: Promise<unknown> | undefined
+let localizedLanguageInfoPayloadPromise: Promise<unknown> | undefined
+
+export async function loadLocalizedSearchPayload(baseUrl = import.meta.env.BASE_URL): Promise<unknown> {
+  if (localizedPayloadPromise === undefined) {
+    const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
+    localizedPayloadPromise = fetchJson(`${base}data/localized-search-data.json`)
+      .finally(() => { localizedPayloadPromise = undefined })
+  }
+  return localizedPayloadPromise
+}
+
+export async function loadLanguageMetadata(baseUrl = import.meta.env.BASE_URL): Promise<LanguageMetadata[]> {
+  const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
+  return parseLanguageMetadata(await fetchJson(`${base}data/language-metadata.json`))
+}
+
+export async function loadLocalizedLanguageInfo(baseUrl = import.meta.env.BASE_URL): Promise<LocalizedLanguageInfo> {
+  if (localizedLanguageInfoPayloadPromise === undefined) {
+    const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
+    localizedLanguageInfoPayloadPromise = fetchJson(`${base}data/localized-language-info.json`)
+      .finally(() => { localizedLanguageInfoPayloadPromise = undefined })
+  }
+  return parseLocalizedLanguageInfo(await localizedLanguageInfoPayloadPromise)
+}
+
+export async function loadLocalizedGeneratedData(
+  locale: string,
+  baseData: GeneratedData,
+  baseUrl = import.meta.env.BASE_URL,
+): Promise<GeneratedData> {
+  if (locale === 'en_us') return baseData
+  return parseLocalizedGeneratedData(
+    await loadLocalizedSearchPayload(baseUrl),
+    locale,
+    baseData,
   )
 }

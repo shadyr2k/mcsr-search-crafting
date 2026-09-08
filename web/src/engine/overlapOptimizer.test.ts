@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest'
 
 import type { CraftingRecipe, RecipeResultCollection, SearchItem } from '../domain/types'
-import { optimizeOverlap, type OverlapResult } from './overlapOptimizer'
-import type { OptimizeInput } from './singleOptimizer'
+import { MAXIMUM_ORDINARY_BACKSPACES, optimizeOverlap, optimizeOverlapPrepared, transitionPresentation, type OverlapResult } from './overlapOptimizer'
+import type { OptimizeInput, PreparedCandidate } from './singleOptimizer'
 
 function item(id: string, text: string): SearchItem {
   return {
@@ -74,6 +74,17 @@ function findSequence(results: OverlapResult[], queries: string[]): OverlapResul
   return result!
 }
 
+function preparedCandidate(query: string, targetIndex: number, junkCount = 0): PreparedCandidate {
+  const targetId = `target:${targetIndex}`
+  return {
+    query,
+    targetMask: 1n << BigInt(targetIndex),
+    coveredTargetIds: [targetId],
+    junkItemIds: Array.from({ length: junkCount }, (_, index) => `junk:${targetIndex}:${index}`),
+    explanations: [],
+  }
+}
+
 describe('optimizeOverlap', () => {
   test('reports retained prefixes, free backspaces, typed suffixes, and match explanations', () => {
     const targets = [item('target:bed', 'bed'), item('target:bow', 'bow')]
@@ -133,6 +144,79 @@ describe('optimizeOverlap', () => {
     expect(results.indexOf(bowThenA)).toBeLessThan(results.indexOf(aThenBow))
   })
 
+  test('uses Shift+Home when retyping a query is no longer than the required backspaces', () => {
+    expect(transitionPresentation('abcde', 'ab')).toEqual({
+      retainedPrefix: '',
+      freeBackspaceCount: 5,
+      typedSuffix: 'ab',
+    })
+    expect(transitionPresentation('bed', 'bow')).toEqual({
+      retainedPrefix: 'b',
+      freeBackspaceCount: 2,
+      typedSuffix: 'ow',
+    })
+  })
+
+  test('does not consider transitions that need more than three ordinary backspaces', () => {
+    const prepared = {
+      targetIds: ['target:0', 'target:1'],
+      candidates: [
+        preparedCandidate('abcdefghi', 0),
+        preparedCandidate('abcde12345', 1),
+        preparedCandidate('xy', 1),
+      ],
+    }
+
+    const results = optimizeOverlapPrepared(prepared)
+
+    expect(MAXIMUM_ORDINARY_BACKSPACES).toBe(3)
+    expect(results.map(sequence)).not.toContainEqual(['abcdefghi', 'abcde12345'])
+    expect(results.map(sequence)).toContainEqual(['abcdefghi', 'xy'])
+  })
+
+  test('can retain the selected target order for overlap paths', () => {
+    const prepared = {
+      targetIds: ['target:0', 'target:1'],
+      candidates: [preparedCandidate('first', 0), preparedCandidate('second', 1)],
+    }
+
+    const unrestricted = optimizeOverlapPrepared(prepared)
+    const ordered = optimizeOverlapPrepared(prepared, { retainTargetOrder: true })
+
+    expect(unrestricted.map(sequence)).toContainEqual(['second', 'first'])
+    expect(ordered.map(sequence)).toEqual([['first', 'second']])
+  })
+
+  test('ranks fewer ordinary correction keys ahead of a lexically earlier tie', () => {
+    const results = optimizeOverlapPrepared({
+      targetIds: ['target:0', 'target:1'],
+      candidates: [
+        preparedCandidate('aq', 0),
+        preparedCandidate('all', 1),
+        preparedCandidate('aqu', 0),
+      ],
+    })
+
+    expect(sequence(results[0])).toEqual(['aq', 'all'])
+    expect(results[0].score.total).toBe(2)
+    expect(results.find((result) => sequence(result).join('\0') === 'all\0aq')?.score.total).toBe(2)
+  })
+
+  test('discards overlap paths that exceed the remaining 40-result capacity with junk', () => {
+    const targets = ['target:0', 'target:1']
+    const withinLimit = optimizeOverlapPrepared({
+      targetIds: targets,
+      candidates: [preparedCandidate('first', 0, 38), preparedCandidate('second', 1)],
+    })
+    const overLimit = optimizeOverlapPrepared({
+      targetIds: targets,
+      candidates: [preparedCandidate('first', 0, 38), preparedCandidate('second', 1, 1)],
+    })
+
+    expect(withinLimit.map(sequence)).toContainEqual(['first', 'second'])
+    expect(overLimit).toEqual([])
+  })
+
   test('charges repeated junk independently at every step but combines it once for context', () => {
     const targets = [item('target:ax', 'ax'), item('target:by', 'by')]
     const sharedJunk = item('junk:shared', 'ax by')
@@ -173,6 +257,21 @@ describe('optimizeOverlap', () => {
       ['c', 'b'],
     ])
     expect(results.find((result) => result.steps.at(-1)?.query === 'a')?.steps[0].query).toBe('c')
+  })
+
+  test('retains the equal-cost path with more reused query characters', () => {
+    const results = optimizeOverlapPrepared({
+      targetIds: ['target:0', 'target:1'],
+      candidates: [
+        preparedCandidate('+5 at', 0),
+        preparedCandidate('on sw', 0),
+        preparedCandidate('d sw', 1),
+      ],
+    })
+
+    const preferred = findSequence(results, ['on sw', 'd sw'])
+    expect(preferred.characterReuseCount).toBe(3)
+    expect(results.map(sequence)).not.toContainEqual(['+5 at', 'd sw'])
   })
 
   test('carries alias-aware explanations through every overlap step', () => {

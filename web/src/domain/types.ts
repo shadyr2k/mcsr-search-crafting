@@ -54,6 +54,42 @@ export interface GeneratedData {
   presets: Map<string, InventoryPreset>
 }
 
+export interface LanguageMetadata {
+  locale: string
+  name: string
+  region: string
+  script: 'latin' | 'non_latin'
+}
+
+export interface LanguageInfoEntry {
+  id: string
+  key: string
+  english: string
+  requirementKey?: string
+  englishRequirement?: string
+}
+
+export interface LanguageInfoSection {
+  id: string
+  entries: LanguageInfoEntry[]
+}
+
+export interface LocalizedLanguageInfoValue {
+  name: string
+  requirement?: string
+}
+
+export interface LocalizedLanguageInfo {
+  sections: LanguageInfoSection[]
+  locales: Map<string, Map<string, Map<string, LocalizedLanguageInfoValue>>>
+}
+
+export type LanguageScoreState =
+  | { status: 'pending' }
+  | { status: 'ready'; score: number }
+  | { status: 'unavailable' }
+  | { status: 'disabled' }
+
 export interface InventoryPreset {
   id: string
   name: string
@@ -71,6 +107,8 @@ export interface TargetWorkspaceEntry {
   inventoryItemIds: string[]
   enabled: boolean
   gridSize: 2 | 3
+  /** Limit overlap paths to the targets' displayed, insertion order. */
+  retainCraftOrder?: boolean
   order: number
 }
 

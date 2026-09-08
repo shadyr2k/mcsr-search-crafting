@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import type { IconManifest } from '../data/iconManifest'
 import { ItemIcon } from './ItemIcon'
@@ -13,7 +13,9 @@ interface ItemPickerProps {
   label: string
   selectedIds: readonly string[]
   manifest?: IconManifest
+  preserveSelectionOrder?: boolean
   allowSelection?: (item: PickerItem) => boolean
+  onOpenChange?: (open: boolean) => void
   onChange: (itemIds: string[]) => void
 }
 
@@ -26,18 +28,26 @@ export function ItemPicker({
   label,
   selectedIds,
   manifest,
+  preserveSelectionOrder = false,
   allowSelection = () => true,
+  onOpenChange,
   onChange,
 }: ItemPickerProps) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
+  const pickerRef = useRef<HTMLDivElement>(null)
   const searchId = useId()
   const searchLabel = label.startsWith('Search ') ? label : `Search ${label}`
   const selected = useMemo(() => new Set(selectedIds), [selectedIds])
   const normalizedQuery = query.trim().toLocaleLowerCase()
-  const selectedItems = useMemo(() => sortItems(
-    selectedIds.map((itemId) => items.get(itemId)).filter((item): item is PickerItem => item !== undefined),
-  ), [items, selectedIds])
+  const selectedItems = useMemo(() => {
+    const uniqueSelectedIds = [...new Set(selectedIds)]
+    const selectedItems = uniqueSelectedIds
+      .map((itemId) => items.get(itemId))
+      .filter((item): item is PickerItem => item !== undefined)
+
+    return preserveSelectionOrder ? selectedItems : sortItems(selectedItems)
+  }, [items, preserveSelectionOrder, selectedIds])
   const matches = useMemo(() => sortItems(items.values()).filter((item) =>
     !selected.has(item.id)
     && (normalizedQuery === ''
@@ -45,7 +55,28 @@ export function ItemPicker({
       || item.id.toLocaleLowerCase().includes(normalizedQuery)),
   ).slice(0, 40), [items, normalizedQuery, selected])
 
+  useEffect(() => {
+    function closeWhenPointerLeavesPicker(event: PointerEvent) {
+      if (pickerRef.current && event.target instanceof Node && !pickerRef.current.contains(event.target)) setOpen(false)
+    }
+
+    window.addEventListener('pointerdown', closeWhenPointerLeavesPicker)
+    return () => window.removeEventListener('pointerdown', closeWhenPointerLeavesPicker)
+  }, [])
+
+  useEffect(() => {
+    onOpenChange?.(open)
+  }, [onOpenChange, open])
+
   function toggleItem(itemId: string) {
+    if (preserveSelectionOrder) {
+      const uniqueSelectedIds = [...new Set(selectedIds)]
+      onChange(selected.has(itemId)
+        ? uniqueSelectedIds.filter((selectedItemId) => selectedItemId !== itemId)
+        : [...uniqueSelectedIds, itemId])
+      return
+    }
+
     const next = new Set(selected)
     if (next.has(itemId)) next.delete(itemId)
     else next.add(itemId)
@@ -54,31 +85,44 @@ export function ItemPicker({
 
   function option(item: PickerItem) {
     const selectable = allowSelection(item)
-    const accessibleName = `${item.name} ${item.id}`
     return <li key={item.id}>
-      <label className="item-picker__option">
-        <input
-          type="checkbox"
-          aria-label={accessibleName}
-          checked={selected.has(item.id)}
-          disabled={!selectable}
-          onChange={() => toggleItem(item.id)}
-        />
-        {manifest && <ItemIcon itemId={item.id} name={item.name} manifest={manifest} size="picker" />}
+      <button
+        type="button"
+        className="item-picker__option"
+        aria-label={item.name}
+        disabled={!selectable}
+        onClick={() => toggleItem(item.id)}
+      >
+        {manifest && <ItemIcon itemId={item.id} name={item.name} manifest={manifest} size="compact" />}
         <span>{item.name}</span>
-        <code>{item.id}</code>
-      </label>
+      </button>
     </li>
   }
 
   return <div
+    ref={pickerRef}
     className="item-picker"
-    onFocusCapture={() => setOpen(true)}
     onBlurCapture={(event) => {
       if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false)
     }}
   >
     <label htmlFor={searchId}>{searchLabel}</label>
+    <div className="item-picker__selected" role="region" aria-label={`${label} selected items`}>
+      {selectedItems.length === 0
+        ? <span className="item-picker__empty">none selected</span>
+        : selectedItems.map((item) => <button
+            key={item.id}
+            type="button"
+            className="item-picker__selected-item"
+            aria-label={`Remove ${item.name}`}
+            title={`Remove ${item.name}`}
+            onClick={() => toggleItem(item.id)}
+          >
+            {manifest
+              ? <ItemIcon itemId={item.id} name={item.name} manifest={manifest} size="compact" />
+              : <span>{item.name}</span>}
+          </button>)}
+    </div>
     <input
       id={searchId}
       type="search"
@@ -88,7 +132,6 @@ export function ItemPicker({
       onChange={(event) => setQuery(event.target.value)}
     />
     {open && <ul className="item-picker__results" aria-label={`${label} results`}>
-      {selectedItems.map(option)}
       {matches.map(option)}
     </ul>}
   </div>

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { parseIconManifest } from '../data/iconManifest'
@@ -6,7 +6,10 @@ import type { RankedSearch, RecipeResultCollection, SearchItem, TargetWorkspaceE
 import type { CollectionMatchExplanation } from '../engine/search'
 import { CalculatedSearchRow } from './CalculatedSearchRow'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
 
 const entry: TargetWorkspaceEntry = { id: 'a', targetIds: ['minecraft:bow'], inventoryItemIds: [], enabled: true, gridSize: 3, order: 0 }
 const items = new Map<string, SearchItem>([
@@ -35,26 +38,104 @@ function explanation(line: string, start: number): CollectionMatchExplanation {
 }
 
 describe('CalculatedSearchRow', () => {
-  test('balances compact previews and groups every craft category on expansion', () => {
+  test('does not render a search-crafts row for a disabled item set', () => {
+    render(<CalculatedSearchRow entry={{ ...entry, enabled: false }} entryNumber={1} state={{ status: 'idle' }} items={items} icons={icons} />)
+
+    expect(screen.queryByLabelText('Calculated searches for item set 1')).toBeNull()
+  })
+
+  test('shows two regular previews before an uncomplicated overlap and groups every craft category on expansion', () => {
+    const nonShiftHomeOverlap = search(['ab', 'be'], 4, 'overlap')
+    nonShiftHomeOverlap.steps[1] = { ...nonShiftHomeOverlap.steps[1], freeBackspaceCount: 1 }
     const rankedSearches = [
       search(['wn'], 1),
       search(['aw', 'be'], 2, 'overlap'),
       search(['re'], 3),
+      nonShiftHomeOverlap,
     ]
     render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches, bestScore: 1, visibleItemIds: [] } }} items={items} icons={icons} />)
 
-    expect(screen.getByRole('listitem', { name: 'Regular craft: wn' })).toBeTruthy()
-    expect(screen.getByRole('listitem', { name: 'Overlap craft: aw, Shift+Home, be' })).toBeTruthy()
+    expect(screen.getAllByRole('listitem', { name: 'Regular craft: wn' })).toHaveLength(1)
+    expect(screen.getAllByRole('listitem', { name: 'Regular craft: re' })).toHaveLength(1)
+    expect(screen.queryByRole('listitem', { name: 'Overlap craft: aw, Shift+Home, be' })).toBeNull()
+    expect(screen.getByRole('listitem', { name: 'Overlap craft: ab, 1 backspace, be' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Regular crafts' })).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
 
-    expect(screen.getByRole('heading', { name: 'Regular crafts' })).toBeTruthy()
     const overlapCategory = screen.getByRole('region', { name: 'Overlap crafts' })
-    expect(screen.getByRole('heading', { name: 'Overlap crafts' })).toBeTruthy()
+    expect(within(overlapCategory).getByRole('listitem', { name: 'Overlap craft: aw, Shift+Home, be' })).toBeTruthy()
+    expect(within(overlapCategory).getByRole('listitem', { name: 'Overlap craft: ab, 1 backspace, be' })).toBeTruthy()
+    expect(within(overlapCategory).getAllByRole('listitem')[0].getAttribute('aria-label')).toBe('Overlap craft: ab, 1 backspace, be')
     expect(within(overlapCategory).getByRole('img', { name: 'Shift' })).toBeTruthy()
     expect(within(overlapCategory).getByRole('img', { name: 'Home' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Hide crafts for item set 1' }).getAttribute('aria-expanded')).toBe('true')
+  })
+
+  test('uses a junkless Shift+Home overlap when every ordinary-backspace overlap has junk', () => {
+    const backspaceWithJunk = search(['junk', 'mask'], 1, 'overlap')
+    const shiftHomeJunkless = search(['move', 'home'], 2, 'overlap')
+    shiftHomeJunkless.steps[1] = { ...shiftHomeJunkless.steps[1], freeBackspaceCount: 4, junkItemIds: [] }
+    render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [backspaceWithJunk, shiftHomeJunkless], bestScore: 1, visibleItemIds: [] } }} items={items} icons={icons} />)
+
+    expect(screen.getAllByRole('listitem', { name: 'Overlap craft: move, Shift+Home, home' })[0]).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
+    const overlapCategory = screen.getByRole('region', { name: 'Overlap crafts' })
+    expect(within(overlapCategory).getAllByRole('listitem', { name: /Overlap craft:/ })[0].getAttribute('aria-label')).toBe('Overlap craft: move, Shift+Home, home')
+  })
+
+  test('keeps a junkless ordinary-backspace overlap ahead of a junkless Shift+Home overlap', () => {
+    const backspaceWithJunk = search(['junk', 'mask'], 1, 'overlap')
+    const shiftHomeJunkless = search(['move', 'home'], 2, 'overlap')
+    shiftHomeJunkless.steps[1] = { ...shiftHomeJunkless.steps[1], freeBackspaceCount: 4, junkItemIds: [] }
+    const backspaceJunkless = search(['keep', 'key'], 3, 'overlap')
+    backspaceJunkless.steps[1] = { ...backspaceJunkless.steps[1], freeBackspaceCount: 1, junkItemIds: [] }
+    render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [backspaceWithJunk, shiftHomeJunkless, backspaceJunkless], bestScore: 1, visibleItemIds: [] } }} items={items} icons={icons} />)
+
+    expect(screen.getAllByRole('listitem', { name: 'Overlap craft: keep, 1 backspace, key' })[0]).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
+    const overlapCategory = screen.getByRole('region', { name: 'Overlap crafts' })
+    expect(within(overlapCategory).getAllByRole('listitem', { name: /Overlap craft:/ })[0].getAttribute('aria-label')).toBe('Overlap craft: keep, 1 backspace, key')
+  })
+
+  test('uses craft color classes instead of visible category badges and stars only junkless previews', () => {
+    const first = search(['st'], 1)
+    const second = search(['ic'], 2)
+    const overlap = search(['ab', 'be'], 3, 'overlap')
+    overlap.steps[1] = { ...overlap.steps[1], freeBackspaceCount: 1 }
+    render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [first, second, overlap], bestScore: 1, visibleItemIds: [] } }} items={items} icons={icons} />)
+
+    const previews = screen.getByLabelText('Craft previews for item set 1')
+    expect(within(previews).getAllByRole('listitem')).toHaveLength(3)
+    expect(within(previews).getAllByLabelText('Junkless craft')).toHaveLength(2)
+    expect(within(previews).queryByText('Regular')).toBeNull()
+    expect(within(previews).queryByText('Overlap')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
+    expect(within(screen.getByRole('region', { name: 'Regular crafts' })).getByRole('listitem', { name: 'Regular craft: st' }).classList.contains('craft-result--single-craft')).toBe(true)
+    expect(within(screen.getByRole('region', { name: 'Overlap crafts' })).getByRole('listitem', { name: 'Overlap craft: ab, 1 backspace, be' }).classList.contains('craft-result--overlap-craft')).toBe(true)
+    expect(screen.queryByRole('heading', { name: 'Regular crafts' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Overlap crafts' })).toBeNull()
+    expect(screen.queryAllByLabelText('Junkless craft').filter((star) => star.closest('.craft-category') !== null)).toHaveLength(0)
+  })
+
+  test('keeps craft disclosures mounted while collapsed so both directions can animate', () => {
+    const craft = search(['bow'], 1)
+    craft.steps[0] = { ...craft.steps[0], junkItemIds: ['minecraft:stick'] }
+    render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [craft], bestScore: 1, visibleItemIds: [] } }} items={items} icons={icons} />)
+
+    const rowToggle = screen.getByRole('button', { name: 'Show all crafts for item set 1' })
+    const categoriesId = rowToggle.getAttribute('aria-controls')!
+    fireEvent.click(rowToggle)
+    const detailToggle = screen.getByRole('button', { name: 'Show why Regular craft: bow' })
+    const detailId = detailToggle.getAttribute('aria-controls')!
+    fireEvent.click(detailToggle)
+    expect(document.getElementById(detailId)?.getAttribute('aria-hidden')).toBe('false')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide why Regular craft: bow' }))
+    expect(document.getElementById(detailId)?.getAttribute('aria-hidden')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: 'Hide crafts for item set 1' }))
+    expect(document.getElementById(categoriesId)?.getAttribute('aria-hidden')).toBe('true')
   })
 
   test('combines repeated regular queries and reveals their match evidence on demand', () => {
@@ -84,6 +165,43 @@ describe('CalculatedSearchRow', () => {
     expect(screen.getByRole('img', { name: 'Backspace' })).toBeTruthy()
   })
 
+  test('shows one overlap craft for reordered versions of the same query set', () => {
+    const first = search(['aw', 'be'], 1, 'overlap')
+    const reordered = search(['be', 'aw'], 2, 'overlap')
+    first.steps[1] = { ...first.steps[1], freeBackspaceCount: 1 }
+    reordered.steps[1] = { ...reordered.steps[1], freeBackspaceCount: 1 }
+    render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [first, reordered], bestScore: 1, visibleItemIds: [] } }} items={items} icons={icons} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
+    expect(within(screen.getByRole('region', { name: 'Overlap crafts' })).getAllByRole('listitem', { name: /Overlap craft:/ })).toHaveLength(1)
+  })
+
+  test('keeps each overlap step and its full junk list together after expansion', () => {
+    const overlap = search(['bo', 'st'], 1, 'overlap')
+    overlap.steps[0] = {
+      ...overlap.steps[0],
+      coveredTargetIds: ['minecraft:bow'],
+      newTargetIds: ['minecraft:bow'],
+      junkItemIds: Array.from({ length: 4 }, () => 'minecraft:stick'),
+    }
+    overlap.steps[1] = {
+      ...overlap.steps[1],
+      coveredTargetIds: ['minecraft:stick'],
+      newTargetIds: ['minecraft:stick'],
+      junkItemIds: Array.from({ length: 5 }, () => 'minecraft:bow'),
+    }
+    render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [overlap], bestScore: 1, visibleItemIds: [] } }} items={items} icons={icons} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
+    const craftRow = within(screen.getByRole('region', { name: 'Overlap crafts' })).getByRole('listitem', { name: /Overlap craft: bo/ })
+    expect(within(screen.getByLabelText('Search step 1')).getByLabelText('Junk preview: 2 of 4 items')).toBeTruthy()
+    expect(within(screen.getByLabelText('Search step 2')).getByLabelText('Junk preview: 2 of 5 items')).toBeTruthy()
+
+    fireEvent.click(within(craftRow).getByRole('button', { name: /Show why Overlap craft: bo/ }))
+    expect(within(screen.getByLabelText('Search step 1')).getByLabelText('All junk for bo: 4 items')).toBeTruthy()
+    expect(within(screen.getByLabelText('Search step 2')).getByLabelText('All junk for st: 5 items')).toBeTruthy()
+  })
+
   test('combines repeated spans for the same item into one explanation', () => {
     const craft = search(['w'], 1)
     craft.steps[0].explanations = [
@@ -110,17 +228,49 @@ describe('CalculatedSearchRow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
     const regularCategory = screen.getByRole('region', { name: 'Regular crafts' })
     const craftRow = within(regularCategory).getByRole('listitem', { name: 'Regular craft: wn' })
-    expect(within(craftRow).getByLabelText('Junk preview: 3 of 5 items')).toBeTruthy()
-    expect(within(craftRow).getByLabelText('2 more junk items')).toBeTruthy()
+    expect(within(craftRow).getByLabelText('Junk preview: 2 of 5 items')).toBeTruthy()
+    expect(within(craftRow).getByLabelText('3 more junk items')).toBeTruthy()
 
     fireEvent.click(within(craftRow).getByRole('button', { name: 'Show why Regular craft: wn' }))
-    expect(within(craftRow).getByLabelText('Remaining junk: 2 items')).toBeTruthy()
+    expect(within(craftRow).getByLabelText('All junk: 5 items')).toBeTruthy()
     expect(within(craftRow).queryByLabelText('All matched items and junk')).toBeNull()
     expect(within(craftRow).getByTitle(/line Brown Bed/)).toBeTruthy()
     expect(within(craftRow).queryByTitle(/line Brown Stick/)).toBeNull()
   })
 
-  test('summarizes a fully matched result collection instead of listing every member', () => {
+  test('uses a text-only compact row when the item preview cannot fit three icons', () => {
+    const craft = search(['very long query', 'another long query', 'final query'], 1)
+    craft.steps[0].junkItemIds = Array.from({ length: 5 }, () => 'minecraft:stick')
+    const originalClientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
+    const originalScrollWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollWidth')
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+      configurable: true,
+      get() { return this.classList?.contains('craft-result__item-preview') ? 80 : 0 },
+    })
+    Object.defineProperty(HTMLElement.prototype, 'scrollWidth', {
+      configurable: true,
+      get() { return this.classList?.contains('craft-result__item-preview') ? 160 : 0 },
+    })
+
+    try {
+      render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [craft], bestScore: 1, visibleItemIds: [] } }} items={items} icons={icons} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
+      const craftRow = within(screen.getByRole('region', { name: 'Regular crafts' })).getByRole('listitem', { name: /Regular craft: very_long_query/ })
+
+      expect(craftRow.classList.contains('craft-result--items-overflow')).toBe(true)
+      fireEvent.click(within(craftRow).getByRole('button', { name: /Show why Regular craft: very_long_query/ }))
+      expect(craftRow.classList.contains('craft-result--items-overflow')).toBe(false)
+      expect(within(craftRow).getByLabelText('All junk: 5 items')).toBeTruthy()
+    } finally {
+      if (originalClientWidth) Object.defineProperty(HTMLElement.prototype, 'clientWidth', originalClientWidth)
+      else delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth
+      if (originalScrollWidth) Object.defineProperty(HTMLElement.prototype, 'scrollWidth', originalScrollWidth)
+      else delete (HTMLElement.prototype as { scrollWidth?: number }).scrollWidth
+    }
+  })
+
+  test('cycles every matched member of a collection capture group instead of listing them separately', () => {
+    vi.useFakeTimers()
     const bedIds = ['minecraft:black_bed', 'minecraft:blue_bed', 'minecraft:green_bed', 'minecraft:red_bed']
     const bedItems = new Map<string, SearchItem>([...items, ...bedIds.map((itemId): [string, SearchItem] => [itemId, {
       id: itemId,
@@ -142,7 +292,7 @@ describe('CalculatedSearchRow', () => {
     craft.steps[0] = {
       ...craft.steps[0],
       coveredTargetIds: [bedIds[0]],
-      explanations: bedIds.map((itemId) => ({
+      explanations: bedIds.slice(0, 3).map((itemId) => ({
         ...explanation(`${bedItems.get(itemId)?.name}`, 0),
         query: 'be', collectionId: bedCollection.id, matchedMemberItemId: itemId, matchedMemberName: bedItems.get(itemId)!.name,
         visibleOutputItemId: bedIds[0], visibleOutputName: bedItems.get(bedIds[0])!.name, matchedSpan: { start: 0, end: 2, text: 'be' },
@@ -153,9 +303,34 @@ describe('CalculatedSearchRow', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
     fireEvent.click(screen.getByRole('button', { name: 'Show why Regular craft: be' }))
-    expect(screen.getByLabelText('All beds')).toBeTruthy()
+    expect(screen.getByLabelText('Black Bed')).toBeTruthy()
+    expect(screen.queryByText('all beds')).toBeNull()
     expect(screen.getAllByRole('img', { name: /Bed/ })).toHaveLength(2)
-    expect(screen.getByText('be', { selector: 'mark' })).toBeTruthy()
+    expect(screen.getAllByRole('img', { name: 'Black Bed' })).toHaveLength(2)
+    act(() => vi.advanceTimersByTime(800))
+    expect(screen.getByLabelText('Blue Bed')).toBeTruthy()
+    expect(screen.getByRole('img', { name: 'Blue Bed' })).toBeTruthy()
+    expect(screen.getByText(/be/i, { selector: 'mark' })).toBeTruthy()
+  })
+
+  test('shows the matched attribute instead of an unhighlighted name for a single collection member', () => {
+    const helmetCollection: RecipeResultCollection = {
+      id: 'collection:helmet', recipeBookCategory: 'crafting_equipment', recipeGroup: null, recipeIds: [], outputItemIds: ['minecraft:bow'],
+    }
+    const craft = search(['rmat'], 1)
+    craft.steps[0] = {
+      ...craft.steps[0],
+      explanations: [{
+        ...explanation('+2 Armatura', 4),
+        query: 'rmat', collectionId: helmetCollection.id, source: 'attribute', line: '+2 Armatura', matchedSpan: { start: 4, end: 8, text: 'rmat' },
+      }],
+    }
+    render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [craft], bestScore: 1, visibleItemIds: [] } }} items={items} icons={icons} collections={new Map([[helmetCollection.id, helmetCollection]])} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show why Regular craft: rmat' }))
+    expect(screen.getByText((_, element) => element?.textContent === '+2 Armatura')).toBeTruthy()
+    expect(screen.getByText('rmat', { selector: 'mark' })).toBeTruthy()
   })
 
   test('limits each expanded category to three crafts until its top-ten control is used', () => {
@@ -165,8 +340,36 @@ describe('CalculatedSearchRow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
     const regularCategory = screen.getByRole('region', { name: 'Regular crafts' })
     expect(within(regularCategory).getAllByRole('listitem', { name: /Regular craft:/ })).toHaveLength(3)
-    fireEvent.click(within(regularCategory).getByRole('button', { name: 'Show top 10 regular crafts' }))
+    fireEvent.click(within(regularCategory).getByRole('button', { name: 'Show more regular crafts' }))
     expect(within(regularCategory).getAllByRole('listitem', { name: /Regular craft:/ })).toHaveLength(10)
+  })
+
+  test('switches between junkless and other overlap crafts with independent top-ten controls', () => {
+    const junkless = Array.from({ length: 4 }, (_, index) => {
+      const craft = search([`clean${index}`], index + 1, 'overlap')
+      craft.steps[0].junkItemIds = []
+      return craft
+    })
+    const other = Array.from({ length: 4 }, (_, index) => search([`other${index}`], index + 5, 'overlap'))
+    render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [search(['regular'], 0), ...junkless, ...other], bestScore: 1, visibleItemIds: [] } }} items={items} icons={icons} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
+    expect(screen.getByRole('heading', { name: 'regular crafts' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'overlap crafts' })).toBeTruthy()
+    const overlapCategory = screen.getByRole('region', { name: 'Overlap crafts' })
+    expect(within(overlapCategory).getAllByRole('listitem', { name: /Overlap craft:/ })).toHaveLength(3)
+    expect(within(overlapCategory).getByRole('button', { name: 'junkless' }).getAttribute('aria-pressed')).toBe('true')
+
+    fireEvent.click(within(overlapCategory).getByRole('button', { name: 'Show more overlap crafts' }))
+    expect(within(overlapCategory).getAllByRole('listitem', { name: /Overlap craft:/ })).toHaveLength(4)
+    fireEvent.click(within(overlapCategory).getByRole('button', { name: 'other' }))
+    expect(within(overlapCategory).getAllByRole('listitem', { name: /Overlap craft:/ })).toHaveLength(3)
+    expect(within(overlapCategory).getByRole('button', { name: 'other' }).getAttribute('aria-pressed')).toBe('true')
+
+    fireEvent.click(within(overlapCategory).getByRole('button', { name: 'Show more overlap crafts' }))
+    expect(within(overlapCategory).getAllByRole('listitem', { name: /Overlap craft:/ })).toHaveLength(4)
+    fireEvent.click(within(overlapCategory).getByRole('button', { name: 'junkless' }))
+    expect(within(overlapCategory).getAllByRole('listitem', { name: /Overlap craft:/ })).toHaveLength(4)
   })
 
   test('uses two previews from a category when the other category has no crafts', () => {
@@ -175,9 +378,25 @@ describe('CalculatedSearchRow', () => {
       search(['an', 'be'], 2, 'overlap'),
       search(['ab', 'be'], 3, 'overlap'),
     ]
+    rankedSearches.forEach((rankedSearch) => {
+      rankedSearch.steps[1] = { ...rankedSearch.steps[1], freeBackspaceCount: 1 }
+    })
     render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches, bestScore: 1, visibleItemIds: [] } }} items={items} icons={icons} />)
 
     expect(screen.getAllByRole('listitem', { name: /Overlap craft:/ })).toHaveLength(2)
+  })
+
+  test('uses a third regular preview when no suitable overlap craft is available', () => {
+    const rankedSearches = [
+      search(['one'], 1),
+      search(['two'], 2),
+      search(['three'], 3),
+    ]
+    render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches, bestScore: 1, visibleItemIds: [] } }} items={items} icons={icons} />)
+
+    const previews = screen.getByLabelText('Craft previews for item set 1')
+    expect(within(previews).getAllByRole('listitem', { name: /Regular craft:/ })).toHaveLength(3)
+    expect(within(previews).getByRole('listitem', { name: 'Regular craft: three' })).toBeTruthy()
   })
 
   test('renders no-viable and calculation errors distinctly', () => {

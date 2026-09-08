@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 import {
   incompleteScore,
   maximumValidScore,
+  sequenceCharacterReuse,
   scoreStep,
   transitionTypingCost,
 } from './scoring'
@@ -34,6 +35,13 @@ describe('transitionTypingCost', () => {
 
   test('treats backspacing to a prefix as free', () => {
     expect(transitionTypingCost('iron', 'iro')).toBe(0)
+  })
+})
+
+describe('sequenceCharacterReuse', () => {
+  test('counts distinct characters shared by each pair of query terms', () => {
+    expect(sequenceCharacterReuse(['on sw', 'd sw', 'e sw'])).toBe(9)
+    expect(sequenceCharacterReuse(['+5 at', 'd sw', 'e sw'])).toBe(5)
   })
 })
 

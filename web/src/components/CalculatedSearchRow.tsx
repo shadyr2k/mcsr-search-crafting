@@ -1,4 +1,4 @@
-import { Fragment, useId, useMemo, useState } from 'react'
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import type { IconManifest } from '../data/iconManifest'
 import type { RankedSearch, RecipeResultCollection, RowOptimizationState, SearchItem, TargetWorkspaceEntry } from '../domain/types'
@@ -28,6 +28,8 @@ interface SearchCategory {
   kind: RankedSearch['kind']
   name: string
   crafts: CraftGroup[]
+  title?: string
+  headerControl?: ReactNode
 }
 
 interface CraftContents {
@@ -37,7 +39,7 @@ interface CraftContents {
 
 type CraftExplanation =
   | { kind: 'item'; explanation: CollectionMatchExplanation; explanations: CollectionMatchExplanation[] }
-  | { kind: 'collection'; explanation: CollectionMatchExplanation; itemIds: string[]; label: string }
+  | { kind: 'collection'; explanation: CollectionMatchExplanation; itemIds: string[] }
 
 function categoryName(kind: RankedSearch['kind']): string {
   return kind === 'single' ? 'Regular' : 'Overlap'
@@ -76,7 +78,7 @@ function groupCrafts(searches: readonly RankedSearch[], kind: RankedSearch['kind
   const groups = new Map<string, CraftGroup>()
   for (const search of searches) {
     if (search.kind !== kind) continue
-    const key = search.queries.join('\u0000')
+    const key = (kind === 'overlap' ? [...search.queries].sort() : search.queries).join('\u0000')
     const current = groups.get(key)
     if (current) current.searches.push(search)
     else groups.set(key, { kind, key, search, searches: [search] })
@@ -84,38 +86,64 @@ function groupCrafts(searches: readonly RankedSearch[], kind: RankedSearch['kind
   return [...groups.values()]
 }
 
+function usesOnlyShiftHomeReplacements(craft: CraftGroup): boolean {
+  return craft.search.steps.length > 1 && craft.search.steps.slice(1).every((step, index) =>
+    replacesWholeQuery(step, craft.search.steps[index]?.query),
+  )
+}
+
+function isJunkless(craft: CraftGroup): boolean {
+  return craftContents(craft).junkItemIds.length === 0
+}
+
+function preferredOverlapCraft(overlap: readonly CraftGroup[]): CraftGroup | undefined {
+  const junklessBackspaceCraft = overlap.find((craft) => !usesOnlyShiftHomeReplacements(craft) && isJunkless(craft))
+  if (junklessBackspaceCraft) return junklessBackspaceCraft
+
+  const junklessShiftHomeCraft = overlap.find((craft) => usesOnlyShiftHomeReplacements(craft) && isJunkless(craft))
+  const hasBackspaceCraftWithJunk = overlap.some((craft) => !usesOnlyShiftHomeReplacements(craft) && !isJunkless(craft))
+  if (junklessShiftHomeCraft && hasBackspaceCraftWithJunk) return junklessShiftHomeCraft
+
+  return overlap.find((craft) => !usesOnlyShiftHomeReplacements(craft)) ?? overlap[0]
+}
+
+function orderedOverlapCrafts(overlap: readonly CraftGroup[]): CraftGroup[] {
+  const preferred = preferredOverlapCraft(overlap)
+  return preferred === undefined ? [] : [preferred, ...overlap.filter((craft) => craft !== preferred)]
+}
+
+const MIN_COMPACT_ITEM_PREVIEW_WIDTH = 104
+const MAX_COMPACT_JUNK_ICONS = 3
+
 function compactPreviews(regular: readonly CraftGroup[], overlap: readonly CraftGroup[]): CraftGroup[] {
-  if (regular.length > 0 && overlap.length > 0) return [regular[0], overlap[0]]
-  return (regular.length > 0 ? regular : overlap).slice(0, 2)
+  const previews = regular.slice(0, 2)
+  const orderedOverlap = orderedOverlapCrafts(overlap)
+  const previewOverlap = orderedOverlap[0]
+  if (previews.length > 0 && previewOverlap) previews.push(previewOverlap)
+  else if (previews.length > 0 && regular[2]) previews.push(regular[2])
+  return previews.length > 0 ? previews : orderedOverlap.slice(0, 2)
 }
 
 function craftContents(craft: CraftGroup): CraftContents {
   const targetIds = new Set<string>()
   const junkItemIds: string[] = []
-  for (const search of craft.searches) for (const step of search.steps) {
+  const searches = craft.kind === 'overlap' ? [craft.search] : craft.searches
+  for (const search of searches) for (const step of search.steps) {
     for (const itemId of step.coveredTargetIds) targetIds.add(itemId)
     junkItemIds.push(...step.junkItemIds)
   }
   return { targetItemIds: [...targetIds], junkItemIds }
 }
 
-function collectionLabel(collection: RecipeResultCollection, items: ReadonlyMap<string, SearchItem>): string {
-  const names = collection.outputItemIds.map((itemId) => items.get(itemId)?.name.toLocaleLowerCase().split(' ') ?? [])
-  let suffix = names[0] ?? []
-  while (suffix.length > 0 && !names.every((name) => name.slice(-suffix.length).join(' ') === suffix.join(' '))) suffix = suffix.slice(1)
-  const base = suffix.join(' ') || collection.recipeGroup?.replaceAll('_', ' ') || 'items'
-  return base.endsWith('s') ? base : `${base}s`
-}
-
 function craftExplanations(
   craft: CraftGroup,
   targetItemIds: readonly string[],
   collections: ReadonlyMap<string, RecipeResultCollection> | undefined,
-  items: ReadonlyMap<string, SearchItem>,
 ): CraftExplanation[] {
   const targets = new Set(targetItemIds)
   const unique = new Map<string, CollectionMatchExplanation>()
-  for (const search of craft.searches) for (const explanation of search.steps.flatMap((step) => step.explanations)) {
+  const searches = craft.kind === 'overlap' ? [craft.search] : craft.searches
+  for (const search of searches) for (const explanation of search.steps.flatMap((step) => step.explanations)) {
     unique.set(JSON.stringify(explanation), explanation)
   }
   const allExplanations = [...unique.values()]
@@ -130,9 +158,9 @@ function craftExplanations(
   for (const [key, memberIds] of matchedMemberIds) {
     const [collectionId] = key.split('\u0000')
     const collection = collections?.get(collectionId)
-    if (!collection || collection.outputItemIds.length < 2 || !collection.outputItemIds.every((itemId) => memberIds.has(itemId)) || !collection.outputItemIds.some((itemId) => targets.has(itemId))) continue
+    if (!collection || memberIds.size < 2 || !collection.outputItemIds.some((itemId) => targets.has(itemId))) continue
     const explanation = allExplanations.find((candidate) => `${candidate.collectionId}\u0000${candidate.query}` === key)
-    if (explanation) summarized.set(key, { kind: 'collection', explanation, itemIds: [explanation.visibleOutputItemId], label: collectionLabel(collection, items) })
+    if (explanation) summarized.set(key, { kind: 'collection', explanation, itemIds: [...memberIds] })
   }
   const result: CraftExplanation[] = []
   const emittedSummaries = new Set<string>()
@@ -159,12 +187,16 @@ function craftExplanations(
   return result
 }
 
-function CraftItems({ contents, items, icons }: {
+function CraftItems({ contents, items, icons, showJunk = true }: {
   contents: CraftContents
   items: ReadonlyMap<string, SearchItem>
   icons: IconManifest
+  showJunk?: boolean
 }) {
-  const visibleJunk = contents.junkItemIds.slice(0, 3)
+  const visibleJunkCount = contents.junkItemIds.length > MAX_COMPACT_JUNK_ICONS
+    ? MAX_COMPACT_JUNK_ICONS - 1
+    : contents.junkItemIds.length
+  const visibleJunk = contents.junkItemIds.slice(0, visibleJunkCount)
   const remainingJunkCount = contents.junkItemIds.length - visibleJunk.length
   return <span className="craft-result__items" aria-label="Matched items and junk preview">
     <span className="craft-result__targets" aria-label={`Matched targets: ${contents.targetItemIds.length} items`}>
@@ -173,7 +205,7 @@ function CraftItems({ contents, items, icons }: {
         return <ItemIcon key={itemId} itemId={itemId} name={item?.name ?? itemId} manifest={icons} />
       })}
     </span>
-    {contents.junkItemIds.length > 0 && <span
+    {showJunk && contents.junkItemIds.length > 0 && <span
       className="craft-result__junk"
       aria-label={`Junk preview: ${visibleJunk.length} of ${contents.junkItemIds.length} items`}
     >
@@ -186,8 +218,8 @@ function CraftItems({ contents, items, icons }: {
   </span>
 }
 
-function RemainingJunk({ itemIds, items, icons }: { itemIds: readonly string[]; items: ReadonlyMap<string, SearchItem>; icons: IconManifest }) {
-  return <span className="craft-result__remaining-junk" aria-label={`Remaining junk: ${itemIds.length} items`}>
+function RemainingJunk({ itemIds, items, icons, label = `All junk: ${itemIds.length} items` }: { itemIds: readonly string[]; items: ReadonlyMap<string, SearchItem>; icons: IconManifest; label?: string }) {
+  return <span className="craft-result__remaining-junk" aria-label={label}>
     {itemIds.map((itemId, index) => {
       const item = items.get(itemId)
       return <ItemIcon key={`${itemId}-${index}`} itemId={itemId} name={item?.name ?? itemId} manifest={icons} />
@@ -195,15 +227,69 @@ function RemainingJunk({ itemIds, items, icons }: { itemIds: readonly string[]; 
   </span>
 }
 
-function CollectionEvidence({ explanation, itemIds, label, items, icons }: Extract<CraftExplanation, { kind: 'collection' }> & { items: ReadonlyMap<string, SearchItem>; icons: IconManifest }) {
-  const matchStart = label.indexOf(explanation.query.toLocaleLowerCase())
-  const matchEnd = matchStart + explanation.query.length
-  return <span className="match-evidence match-evidence--collection" aria-label={`All ${label}`} title={`All ${label} match ${explanation.query}`}>
-    {itemIds.map((itemId) => {
-      const item = items.get(itemId)
-      return <ItemIcon key={itemId} itemId={itemId} name={item?.name ?? itemId} manifest={icons} />
+function StepQuery({ search, index }: { search: RankedSearch; index: number }) {
+  const step = search.steps[index]
+  const previousQuery = search.steps[index - 1]?.query
+  return <span className="craft-query" aria-label={`Search ${index + 1}: ${searchDescription({ ...search, steps: search.steps.slice(0, index + 1) })}`}>
+    {index > 0 && (replacesWholeQuery(step, previousQuery)
+      ? <span className="craft-query__shortcut" aria-label="Shift+Home"><ArrowSprite direction="shift" /><ArrowSprite direction="home" /></span>
+      : step.freeBackspaceCount > 0
+      ? <span className="craft-query__backspaces" aria-label={`${step.freeBackspaceCount} backspaces`}>
+        {Array.from({ length: step.freeBackspaceCount }, (_, arrowIndex) => <ArrowSprite key={arrowIndex} direction="backspace" />)}
+      </span>
+      : <ArrowSprite direction="right" className="craft-query__advance" />)}
+    <span className="craft-query__term">{displayQuery(index === 0 ? step.query : step.typedSuffix)}</span>
+  </span>
+}
+
+function OverlapCraftSteps({ search, items, icons, expanded }: {
+  search: RankedSearch
+  items: ReadonlyMap<string, SearchItem>
+  icons: IconManifest
+  expanded: boolean
+}) {
+  return <div className="craft-result__steps">
+    {search.steps.map((step, index) => {
+      const contents = { targetItemIds: step.newTargetIds, junkItemIds: step.junkItemIds }
+      return <div key={`${step.query}-${index}`} className="craft-result__step" aria-label={`Search step ${index + 1}`}>
+        <div className="craft-result__step-bar">
+          <StepQuery search={search} index={index} />
+          <CraftItems contents={contents} items={items} icons={icons} showJunk={!expanded} />
+        </div>
+        {step.junkItemIds.length > 0 && <div className={`craft-result__step-details${expanded ? ' craft-result__step-details--open' : ''}`} aria-hidden={!expanded}>
+          <div className="craft-result__step-details-content">
+            <RemainingJunk
+              itemIds={step.junkItemIds}
+              items={items}
+              icons={icons}
+              label={`All junk for ${displayQuery(step.query)}: ${step.junkItemIds.length} items`}
+            />
+          </div>
+        </div>}
+      </div>
     })}
-    <span>all {matchStart < 0 ? label : <>{label.slice(0, matchStart)}<mark>{label.slice(matchStart, matchEnd)}</mark>{label.slice(matchEnd)}</>}</span>
+  </div>
+}
+
+function CollectionEvidence({ explanation, itemIds, items, icons }: Extract<CraftExplanation, { kind: 'collection' }> & { items: ReadonlyMap<string, SearchItem>; icons: IconManifest }) {
+  const [currentIndex, setCurrentIndex] = useState(0)
+
+  useEffect(() => {
+    setCurrentIndex(0)
+    if (itemIds.length < 2) return
+    const timer = window.setInterval(() => setCurrentIndex((index) => (index + 1) % itemIds.length), 800)
+    return () => window.clearInterval(timer)
+  }, [itemIds])
+
+  const itemId = itemIds[currentIndex] ?? itemIds[0]
+  if (!itemId) return null
+  const item = items.get(itemId)
+  const itemName = item?.name ?? itemId
+  const matchStart = itemName.toLocaleLowerCase().indexOf(explanation.query.toLocaleLowerCase())
+  const matchEnd = matchStart + explanation.query.length
+  return <span className="match-evidence match-evidence--collection" aria-label={itemName} title={`${itemName} match ${explanation.query}`}>
+    <ItemIcon itemId={itemId} name={itemName} manifest={icons} />
+    <span>{matchStart < 0 ? itemName : <>{itemName.slice(0, matchStart)}<mark>{itemName.slice(matchStart, matchEnd)}</mark>{itemName.slice(matchEnd)}</>}</span>
   </span>
 }
 
@@ -214,18 +300,55 @@ function CraftDetail({ craft, items, icons, collections }: {
   collections: ReadonlyMap<string, RecipeResultCollection> | undefined
 }) {
   const [showEvidence, setShowEvidence] = useState(false)
+  const [hasShownEvidence, setHasShownEvidence] = useState(false)
+  const [hideCompactItems, setHideCompactItems] = useState(false)
   const evidenceId = useId()
+  const resultRef = useRef<HTMLLIElement>(null)
+  const compactItemsRef = useRef<HTMLSpanElement>(null)
   const contents = useMemo(() => craftContents(craft), [craft])
-  const remainingJunkItemIds = contents.junkItemIds.slice(3)
-  const explanations = useMemo(() => craftExplanations(craft, contents.targetItemIds, collections, items), [craft, contents.targetItemIds, collections, items])
+  const explanations = useMemo(() => craftExplanations(craft, contents.targetItemIds, collections), [craft, contents.targetItemIds, collections])
   const name = `${categoryName(craft.kind)} craft: ${searchDescription(craft.search)}`
-  const canExpand = remainingJunkItemIds.length > 0 || explanations.length > 0
-  const bar = <>
-    <SearchQuery search={craft.search} />
-    <CraftItems contents={contents} items={items} icons={icons} />
-  </>
+  const canExpand = contents.junkItemIds.length > 0 || explanations.length > 0
+  const usesStepRows = craft.kind === 'overlap' && contents.junkItemIds.length > 0
+  const toggleEvidence = () => {
+    setShowEvidence((current) => {
+      const next = !current
+      if (next) setHasShownEvidence(true)
+      return next
+    })
+  }
 
-  return <li className="craft-result" aria-label={name}>
+  useEffect(() => {
+    const result = resultRef.current
+    const compactItems = compactItemsRef.current
+    if (usesStepRows || !result || !compactItems || showEvidence || !canExpand) {
+      setHideCompactItems(false)
+      return
+    }
+
+    if (!hideCompactItems) setHideCompactItems(compactItems.clientWidth < MIN_COMPACT_ITEM_PREVIEW_WIDTH)
+    if (!('ResizeObserver' in window)) return
+
+    let width = result.clientWidth
+    const observer = new ResizeObserver((entries) => {
+      const nextWidth = Math.round(entries[0]?.contentRect.width ?? width)
+      if (nextWidth !== width) {
+        width = nextWidth
+        setHideCompactItems(false)
+      }
+    })
+    observer.observe(result)
+    return () => observer.disconnect()
+  }, [canExpand, hideCompactItems, showEvidence, usesStepRows])
+
+  const bar = usesStepRows
+    ? <OverlapCraftSteps search={craft.search} items={items} icons={icons} expanded={showEvidence} />
+    : <>
+      <SearchQuery search={craft.search} />
+      <span ref={compactItemsRef} className="craft-result__item-preview"><CraftItems contents={contents} items={items} icons={icons} showJunk={!showEvidence} /></span>
+    </>
+
+  return <li ref={resultRef} className={`craft-result craft-result--${craft.kind}-craft${usesStepRows ? ' craft-result--overlap' : ''}${hideCompactItems && !showEvidence ? ' craft-result--items-overflow' : ''}`} aria-label={name}>
     {canExpand
       ? <button
         type="button"
@@ -233,45 +356,54 @@ function CraftDetail({ craft, items, icons, collections }: {
         aria-label={`${showEvidence ? 'Hide' : 'Show'} why ${name}`}
         aria-controls={evidenceId}
         aria-expanded={showEvidence}
-        onClick={() => setShowEvidence((current) => !current)}
+        onClick={toggleEvidence}
       >
         {bar}
         <span className="craft-result__toggle-mark"><ArrowSprite direction={showEvidence ? 'up' : 'down'} compact /></span>
       </button>
       : <div className="craft-result__bar">{bar}</div>}
-    {showEvidence && <div id={evidenceId} className="craft-result__details">
-      {remainingJunkItemIds.length > 0 && <RemainingJunk itemIds={remainingJunkItemIds} items={items} icons={icons} />}
+    {hasShownEvidence && <div id={evidenceId} className={`craft-result__details${showEvidence ? ' craft-result__details--open' : ''}`} aria-hidden={!showEvidence}>
+      <div className="craft-result__details-content">
+      {!usesStepRows && contents.junkItemIds.length > 0 && <RemainingJunk itemIds={contents.junkItemIds} items={items} icons={icons} />}
       {explanations.length > 0 && <div className="craft-result__evidence">
         {explanations.map((explanation) => explanation.kind === 'collection'
           ? <CollectionEvidence key={`collection:${explanation.explanation.collectionId}:${explanation.explanation.query}`} {...explanation} items={items} icons={icons} />
           : <MatchEvidence key={JSON.stringify(explanation.explanation)} explanation={explanation.explanation} explanations={explanation.explanations} items={items} icons={icons} />)}
       </div>}
+      </div>
     </div>}
   </li>
 }
 
-function CraftCategory({ category, items, icons, collections }: {
+function CraftCategory({ category, items, icons, collections, showMore: controlledShowMore, onShowMoreChange }: {
   category: SearchCategory
   items: ReadonlyMap<string, SearchItem>
   icons: IconManifest
   collections: ReadonlyMap<string, RecipeResultCollection> | undefined
+  showMore?: boolean
+  onShowMoreChange?: (showMore: boolean) => void
 }) {
-  const [showTopTen, setShowTopTen] = useState(false)
-  const visibleCrafts = category.crafts.slice(0, showTopTen ? 10 : 3)
+  const [localShowMore, setLocalShowMore] = useState(false)
+  const showMore = controlledShowMore ?? localShowMore
+  const setShowMore = onShowMoreChange ?? setLocalShowMore
+  const visibleCrafts = category.crafts.slice(0, showMore ? 10 : 3)
   const categoryLabel = category.name.toLocaleLowerCase()
 
-  return <section className="craft-category" aria-label={category.name}>
-    <h3>{category.name}</h3>
+  return <section className={`craft-category craft-category--${category.kind}`} aria-label={category.name}>
+    {category.title && <header className="craft-category__header">
+      <h3>{category.title}</h3>
+      {category.headerControl}
+    </header>}
     <ol>
       {visibleCrafts.map((craft) => <CraftDetail key={craft.key} craft={craft} items={items} icons={icons} collections={collections} />)}
     </ol>
     {category.crafts.length > 3 && <button
       type="button"
       className="craft-category__more"
-      aria-label={`${showTopTen ? 'Show top 3' : 'Show top 10'} ${categoryLabel}`}
-      onClick={() => setShowTopTen((current) => !current)}
+      aria-label={`${showMore ? 'Show less' : 'Show more'} ${categoryLabel}`}
+      onClick={() => setShowMore(!showMore)}
     >
-      {showTopTen ? 'Show top 3' : 'Show top 10'} <span><ArrowSprite direction={showTopTen ? 'up' : 'down'} compact /></span>
+      {showMore ? 'Show less' : 'Show more'} <span><ArrowSprite direction={showMore ? 'up' : 'down'} compact /></span>
     </button>}
   </section>
 }
@@ -291,9 +423,12 @@ function TargetItems({ entry, items, icons }: {
 
 export function CalculatedSearchRow({ entry, entryNumber, state, items, icons, collections, onRetry }: CalculatedSearchRowProps) {
   const [expanded, setExpanded] = useState(false)
+  const [hasExpanded, setHasExpanded] = useState(false)
+  const [overlapView, setOverlapView] = useState<'junkless' | 'other'>('junkless')
+  const [expandedOverlapViews, setExpandedOverlapViews] = useState({ junkless: false, other: false })
   const listId = useId()
   const label = `item set ${entryNumber}`
-  if (!entry.enabled) return <section className="calculated-search-row" aria-label={`Calculated searches for ${label}`}><span>Disabled</span></section>
+  if (!entry.enabled) return null
   if (state === undefined || state.status === 'idle') return <section className="calculated-search-row" aria-label={`Calculated searches for ${label}`}><span>Waiting for goals</span></section>
   if (state.status === 'pending') return <section className="calculated-search-row" aria-label={`Calculated searches for ${label}`}><span>Calculating…</span></section>
   if (state.status === 'error') return <section className="calculated-search-row" aria-label={`Calculated searches for ${label}`}>
@@ -310,20 +445,42 @@ export function CalculatedSearchRow({ entry, entryNumber, state, items, icons, c
 
   const regular = groupCrafts(state.outcome.rankedSearches, 'single')
   const overlap = groupCrafts(state.outcome.rankedSearches, 'overlap')
-  const categories: SearchCategory[] = [
-    { kind: 'single', name: 'Regular crafts', crafts: regular },
-    { kind: 'overlap', name: 'Overlap crafts', crafts: overlap },
-  ]
-  const availableCategories = categories.filter((category) => category.crafts.length > 0)
   const previews = compactPreviews(regular, overlap)
+  const displayedOverlap = orderedOverlapCrafts(overlap)
+  const junklessOverlap = displayedOverlap.filter((craft) => craftContents(craft).junkItemIds.length === 0)
+  const otherOverlap = displayedOverlap.filter((craft) => craftContents(craft).junkItemIds.length > 0)
+  const visibleOverlapView = overlapView === 'junkless' && junklessOverlap.length === 0 ? 'other' : overlapView
+  const visibleOverlapCrafts = visibleOverlapView === 'junkless' ? junklessOverlap : otherOverlap
+  const overlapHeaderControl = <div className="overlap-category-toggle" role="group" aria-label="Overlap craft category">
+    <button
+      type="button"
+      aria-pressed={visibleOverlapView === 'junkless'}
+      disabled={junklessOverlap.length === 0}
+      onClick={() => setOverlapView('junkless')}
+    >junkless</button>
+    <span aria-hidden="true">|</span>
+    <button
+      type="button"
+      aria-pressed={visibleOverlapView === 'other'}
+      disabled={otherOverlap.length === 0}
+      onClick={() => setOverlapView('other')}
+    >other</button>
+  </div>
+  const toggleCrafts = () => {
+    setExpanded((current) => {
+      const next = !current
+      if (next) setHasExpanded(true)
+      return next
+    })
+  }
 
   return <section className="calculated-search-row" aria-label={`Calculated searches for ${label}`}>
     <div className="calculated-search-row__summary">
       <TargetItems entry={entry} items={items} icons={icons} />
       <ul className="craft-previews" aria-label={`Craft previews for ${label}`}>
-        {previews.map((craft) => <li key={`${craft.kind}:${craft.key}`} aria-label={`${categoryName(craft.kind)} craft: ${searchDescription(craft.search)}`}>
-          <span className={`craft-kind craft-kind--${craft.kind}`}>{categoryName(craft.kind)}</span>
+        {previews.map((craft) => <li key={`${craft.kind}:${craft.key}`} className={`craft-preview craft-preview--${craft.kind}`} aria-label={`${categoryName(craft.kind)} craft: ${searchDescription(craft.search)}`}>
           <SearchQuery search={craft.search} />
+          {craftContents(craft).junkItemIds.length === 0 && <span className="craft-preview__star" aria-label="Junkless craft">★</span>}
         </li>)}
       </ul>
       <button
@@ -332,13 +489,23 @@ export function CalculatedSearchRow({ entry, entryNumber, state, items, icons, c
         aria-label={`${expanded ? 'Hide' : 'Show all'} crafts for item set ${entryNumber}`}
         aria-controls={listId}
         aria-expanded={expanded}
-        onClick={() => setExpanded((current) => !current)}
+        onClick={toggleCrafts}
       >
         <ArrowSprite direction={expanded ? 'up' : 'down'} />
       </button>
     </div>
-    {expanded && <div id={listId} className="craft-categories">
-      {availableCategories.map((category) => <CraftCategory key={category.kind} category={category} items={items} icons={icons} collections={collections} />)}
+    {hasExpanded && <div id={listId} className={`craft-categories${expanded ? ' craft-categories--open' : ''}`} aria-hidden={!expanded}>
+      <div className="craft-categories__content">
+      {regular.length > 0 && <CraftCategory category={{ kind: 'single', name: 'Regular crafts', title: 'regular crafts', crafts: regular }} items={items} icons={icons} collections={collections} />}
+      {visibleOverlapCrafts.length > 0 && <CraftCategory
+        category={{ kind: 'overlap', name: 'Overlap crafts', title: 'overlap crafts', headerControl: overlapHeaderControl, crafts: visibleOverlapCrafts }}
+        items={items}
+        icons={icons}
+        collections={collections}
+        showMore={expandedOverlapViews[visibleOverlapView]}
+        onShowMoreChange={(showMore) => setExpandedOverlapViews((current) => ({ ...current, [visibleOverlapView]: showMore }))}
+      />}
+      </div>
     </div>}
   </section>
 }

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import type { CraftingRecipe } from '../domain/types'
@@ -28,5 +28,22 @@ describe('GridSizeSwitch', () => {
     expect(switchControl.disabled).toBe(true)
     expect(screen.queryByText(/cannot be crafted/i)).toBeNull()
     expect(onChange).toHaveBeenCalledWith(3)
+  })
+
+  test('uses the slider to switch between available grid sizes', () => {
+    const onChange = vi.fn()
+    render(<GridSizeSwitch value={2} targetIds={[]} recipes={recipes} onChange={onChange} />)
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Crafting grid size' }))
+
+    expect(onChange).toHaveBeenCalledWith(3)
+  })
+
+  test('labels the control and gives both grid values their own label treatment', () => {
+    render(<GridSizeSwitch value={3} targetIds={[]} recipes={recipes} onChange={vi.fn()} />)
+
+    expect(screen.getByText('craft space').className).toContain('grid-size-switch__title')
+    expect(screen.getByText('2×2').className).toContain('grid-size-switch__label')
+    expect(screen.getByText('3×3').className).toContain('grid-size-switch__label')
   })
 })

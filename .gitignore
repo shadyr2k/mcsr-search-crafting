@@ -9,3 +9,6 @@ web/dist/
 web/test-results/
 web/playwright-report/
 minecraft-data/
+.pnpm-store/
+.vite/
+.superpowers/brainstorm/

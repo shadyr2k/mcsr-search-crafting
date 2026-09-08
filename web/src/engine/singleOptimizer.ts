@@ -6,6 +6,7 @@ import {
   matchEligibleCollectionOutputsCooperatively,
 } from './collectionSearch'
 import type { CollectionMatchExplanation } from './search'
+import { maximumJunkItems } from './resultLimit'
 import { type ScoreBreakdown, scoreStep } from './scoring'
 
 export interface OptimizeInput {
@@ -42,6 +43,7 @@ export interface CooperativePreparationOptions {
   yieldControl: () => Promise<void>
   workChunkSize?: number
   onProgress?: (completed: number, total: number) => void
+  preserveTargetOrder?: boolean
 }
 
 function compareText(left: string, right: string): number {
@@ -56,8 +58,9 @@ function chunkSize(value: number | undefined): number {
   return Number.isInteger(value) && (value ?? 0) > 0 ? value! : 4096
 }
 
-function preparationContext(input: OptimizeInput) {
-  const targetIds = [...input.targetIds].sort(compareText)
+function preparationContext(input: OptimizeInput, preserveTargetOrder = false) {
+  const targetIds = [...input.targetIds]
+  if (!preserveTargetOrder) targetIds.sort(compareText)
   const targetIdSet = new Set(targetIds)
   const targetIndexes = new Map(targetIds.map((targetId, index) => [targetId, index]))
   const eligibleCollectionIds = [...new Set(
@@ -128,8 +131,11 @@ function preparedCandidateFromMatches(
   }
 }
 
-export function prepareOptimization(input: OptimizeInput): PreparedOptimization {
-  const context = preparationContext(input)
+export function prepareOptimization(
+  input: OptimizeInput,
+  options: Pick<CooperativePreparationOptions, 'preserveTargetOrder'> = {},
+): PreparedOptimization {
+  const context = preparationContext(input, options.preserveTargetOrder)
   const candidates: PreparedCandidate[] = []
   for (const query of context.queries) {
     const matchedItemIds = new Set<string>()
@@ -147,7 +153,7 @@ export async function prepareOptimizationCooperatively(
   input: OptimizeInput,
   options: CooperativePreparationOptions,
 ): Promise<PreparedOptimization> {
-  const context = preparationContext(input)
+  const context = preparationContext(input, options.preserveTargetOrder)
   const candidates: PreparedCandidate[] = []
   const total = context.queries.length * context.eligibleCollections.length
   const boundedChunkSize = chunkSize(options.workChunkSize)
@@ -202,8 +208,9 @@ export async function prepareOptimizationCooperatively(
 export function optimizeSinglePrepared(prepared: PreparedOptimization): SingleResult[] {
   if (prepared.targetIds.length === 0) return []
   const completeMask = (1n << BigInt(prepared.targetIds.length)) - 1n
+  const maximumJunk = maximumJunkItems(prepared.targetIds.length)
   const results = prepared.candidates
-    .filter((candidate) => candidate.targetMask === completeMask)
+    .filter((candidate) => candidate.targetMask === completeMask && candidate.junkItemIds.length <= maximumJunk)
     .map((candidate): SingleResult => ({
       query: candidate.query,
       coveredTargetIds: candidate.coveredTargetIds,

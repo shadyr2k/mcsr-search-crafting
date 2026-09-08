@@ -8,7 +8,7 @@ import type {
   TargetWorkspaceEntry,
 } from '../domain/types'
 import { incompleteScore } from './scoring'
-import { optimizeWorkspace, optimizeWorkspaceEntry } from './optimizeWorkspace'
+import { aggregateLocaleScore, optimizeWorkspace, optimizeWorkspaceEntry } from './optimizeWorkspace'
 
 function item(id: string, text: string): SearchItem {
   return {
@@ -235,6 +235,18 @@ describe('optimizeWorkspace', () => {
     expect(result.aggregateScore).toBe(contributions.reduce((sum, score) => sum + score, 0))
   })
 
+  test('calculates a locale score from each enabled entry using its own inventory', async () => {
+    const entries = [
+      entry('craftable', [alpha.id], { inventoryItemIds: ['ingredient:shared'] }),
+      entry('unavailable', [alpha.id], { inventoryItemIds: [] }),
+      entry('disabled', [hidden.id], { enabled: false }),
+    ]
+
+    const score = await aggregateLocaleScore(data, entries, { yieldControl: async () => {} })
+
+    expect(score).toBe(incompleteScore(1, 0))
+  })
+
   test('uses the lower overlap score when both complete categories exist at different scores', async () => {
     const first = item('target:first', 'ax')
     const second = item('target:second', 'ay')
@@ -409,4 +421,5 @@ describe('optimizeWorkspace', () => {
       expect(await optimizeWorkspace(variant.data, variant.inventory, variant.entries)).toEqual(expected)
     }
   })
+
 })

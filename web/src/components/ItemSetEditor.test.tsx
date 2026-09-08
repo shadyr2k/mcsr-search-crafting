@@ -16,22 +16,34 @@ const data: GeneratedData = {
   inventoryItems: new Map([['minecraft:bucket', { id: 'minecraft:bucket', name: 'Bucket' }]]),
   recipes: [],
   collections: new Map(),
-  presets: new Map([['overworld', { id: 'overworld', name: 'Overworld', itemIds: ['minecraft:bucket'] }]]),
+  presets: new Map([
+    ['overworld', { id: 'overworld', name: 'Overworld', itemIds: ['minecraft:bucket'] }],
+    ['nether-bastion', { id: 'nether-bastion', name: 'Nether (Bastion)', itemIds: ['minecraft:bucket'] }],
+    ['nether-fortress', { id: 'nether-fortress', name: 'Nether (Fortress)', itemIds: ['minecraft:bucket'] }],
+  ]),
 }
 const icons = parseIconManifest({
   schema_version: 1,
   minecraft_version: '1.16.1',
   icon_width: 16,
   icon_height: 16,
-  icons: { 'minecraft:bucket': 'minecraft/bucket.png', 'minecraft:stick': 'minecraft/stick.png' },
+  icons: {
+    'minecraft:bucket': 'minecraft/bucket.png',
+    'minecraft:stick': 'minecraft/stick.png',
+    'minecraft:chest': 'minecraft/chest.png',
+    'minecraft:gold_block': 'minecraft/gold_block.png',
+    'minecraft:blaze_rod': 'minecraft/blaze_rod.png',
+  },
 })
 
 function renderEditor(draft: ItemSetDraft, onDraftChange = vi.fn(), onSave = vi.fn()) {
   const onSaveCustomSlot = vi.fn()
+  const onCancel = vi.fn()
   return {
     onDraftChange,
     onSave,
     onSaveCustomSlot,
+    onCancel,
     ...render(<ItemSetEditor
       state={{ kind: 'new', draft }}
       data={data}
@@ -39,7 +51,7 @@ function renderEditor(draft: ItemSetDraft, onDraftChange = vi.fn(), onSave = vi.
       customSlots={[null, null, null]}
       onDraftChange={onDraftChange}
       onSave={onSave}
-      onCancel={vi.fn()}
+      onCancel={onCancel}
       onSaveCustomSlot={onSaveCustomSlot}
       onClearCustomSlot={vi.fn()}
     />),
@@ -52,7 +64,7 @@ describe('ItemSetEditor', () => {
     const draft = { ...newItemSetDraft(), targetIds: ['minecraft:stick'] }
     const { onDraftChange } = renderEditor(draft)
 
-    await user.selectOptions(screen.getByLabelText('Inventory preset'), 'overworld')
+    await user.click(screen.getByRole('button', { name: 'Use inventory preset Overworld' }))
     expect(onDraftChange).toHaveBeenCalledWith(expect.objectContaining({ inventoryItemIds: ['minecraft:bucket'] }))
     expect(data.presets.get('overworld')?.itemIds).toEqual(['minecraft:bucket'])
     expect((screen.getByRole('button', { name: 'Save item set' }) as HTMLButtonElement).disabled).toBe(false)
@@ -76,9 +88,69 @@ describe('ItemSetEditor', () => {
     const draft = { ...newItemSetDraft(), targetIds: ['minecraft:stick'], inventoryItemIds: ['minecraft:bucket'] }
     const { onSaveCustomSlot } = renderEditor(draft)
 
-    await user.clear(screen.getByLabelText('Custom slot 1 name'))
-    await user.type(screen.getByLabelText('Custom slot 1 name'), 'Quick start')
-    await user.click(screen.getByRole('button', { name: 'Save custom slot 1' }))
+    expect(screen.getByPlaceholderText('custom inventory 1')).toBeTruthy()
+    await user.type(screen.getByLabelText('Custom inventory 1'), 'Quick start')
+    await user.click(screen.getByRole('button', { name: 'Save custom inventory 1' }))
     expect(onSaveCustomSlot).toHaveBeenCalledWith(0, { name: 'Quick start', itemIds: ['minecraft:bucket'] })
+  })
+
+  test('shows a Minecraft icon beside every built-in and custom preset name', () => {
+    render(<ItemSetEditor
+      state={{ kind: 'new', draft: newItemSetDraft() }}
+      data={data}
+      icons={icons}
+      customSlots={[{ name: 'Fast route', itemIds: ['minecraft:bucket'] }, null, null]}
+      onDraftChange={vi.fn()}
+      onSave={vi.fn()}
+      onCancel={vi.fn()}
+      onSaveCustomSlot={vi.fn()}
+      onClearCustomSlot={vi.fn()}
+    />)
+
+    expect(screen.getByRole('img', { name: 'Overworld preset icon' })).toBeTruthy()
+    expect(screen.getByRole('img', { name: 'Nether (Bastion) preset icon' })).toBeTruthy()
+    expect(screen.getByRole('img', { name: 'Nether (Fortress) preset icon' })).toBeTruthy()
+    expect(screen.getByRole('img', { name: 'Command block' })).toBeTruthy()
+  })
+
+  test('toggles retained craft order without changing the selected target order', () => {
+    const draft = { ...newItemSetDraft(), targetIds: ['minecraft:stick'] }
+    const { onDraftChange } = renderEditor(draft)
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Retain item order' }))
+
+    expect(onDraftChange).toHaveBeenCalledWith(expect.objectContaining({
+      targetIds: ['minecraft:stick'],
+      retainCraftOrder: true,
+    }))
+  })
+
+  test('labels the item-order switch and presents both states as chips', () => {
+    renderEditor(newItemSetDraft())
+
+    expect(screen.getByText('retain item order').className).toContain('craft-order-switch__title')
+    expect(screen.getByText('disabled').className).toContain('craft-order-switch__label')
+    expect(screen.getByText('enabled').className).toContain('craft-order-switch__label')
+  })
+
+  test('cancels when a pointer press lands outside the editor', () => {
+    const { onCancel } = renderEditor(newItemSetDraft())
+
+    fireEvent.pointerDown(document.body)
+
+    expect(onCancel).toHaveBeenCalledOnce()
+  })
+
+  test('closes an open picker before cancelling the editor on a later outside press', async () => {
+    const user = userEvent.setup()
+    const { onCancel } = renderEditor(newItemSetDraft())
+
+    await user.click(screen.getByRole('searchbox', { name: 'Search Inventory' }))
+    fireEvent.pointerDown(document.body)
+    expect(screen.queryByRole('list', { name: 'Inventory results' })).toBeNull()
+    expect(onCancel).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(document.body)
+    expect(onCancel).toHaveBeenCalledOnce()
   })
 })

@@ -10,7 +10,7 @@ function sortedUnique(itemIds: readonly string[]): string[] {
 }
 
 export function newItemSetDraft(): ItemSetDraft {
-  return { targetIds: [], inventoryItemIds: [], enabled: true, gridSize: 3 }
+  return { targetIds: [], inventoryItemIds: [], enabled: true, gridSize: 3, retainCraftOrder: false }
 }
 
 export function draftFromEntry(entry: TargetWorkspaceEntry): ItemSetDraft {
@@ -20,6 +20,7 @@ export function draftFromEntry(entry: TargetWorkspaceEntry): ItemSetDraft {
     inventoryItemIds: [...entry.inventoryItemIds],
     enabled: entry.enabled,
     gridSize: entry.gridSize,
+    retainCraftOrder: entry.retainCraftOrder === true,
   }
 }
 
@@ -52,6 +53,7 @@ export function validateItemSetDraft(
 ): boolean {
   return typeof draft.enabled === 'boolean'
     && (draft.gridSize === 2 || draft.gridSize === 3)
+    && (draft.retainCraftOrder === undefined || typeof draft.retainCraftOrder === 'boolean')
     && draft.targetIds.length > 0
     && draft.targetIds.every((itemId) => typeof itemId === 'string' && itemId.length > 0)
     && draft.inventoryItemIds.every((itemId) => typeof itemId === 'string' && itemId.length > 0)

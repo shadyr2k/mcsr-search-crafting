@@ -36,16 +36,16 @@ export function ItemSetRow({
     <span className="item-set-row__grid" aria-label={`${entry.gridSize} by ${entry.gridSize} crafting grid`}>
       {entry.gridSize}×{entry.gridSize}
     </span>
-    <label>
-      <input
-        type="checkbox"
-        checked={entry.enabled}
-        onChange={onToggleEnabled}
-        aria-label={`Enable item set ${entryNumber}`}
-      />
-      Enabled
-    </label>
-      <button type="button" disabled={!canMoveUp} onClick={() => onMove(-1)} aria-label={`Move item set ${entryNumber} up`}>↑</button>
-      <button type="button" disabled={!canMoveDown} onClick={() => onMove(1)} aria-label={`Move item set ${entryNumber} down`}>↓</button>
+    <button
+      type="button"
+      className="item-set-row__enable"
+      aria-label={`Enable item set ${entryNumber}`}
+      aria-pressed={entry.enabled}
+      onClick={onToggleEnabled}
+    >
+      {entry.enabled ? 'enabled' : 'disabled'}
+    </button>
+    <button type="button" disabled={!canMoveUp} onClick={() => onMove(-1)} aria-label={`Move item set ${entryNumber} up`}>↑</button>
+    <button type="button" disabled={!canMoveDown} onClick={() => onMove(1)} aria-label={`Move item set ${entryNumber} down`}>↓</button>
   </article>
 }

@@ -43,6 +43,30 @@ def test_generated_lines_preserve_their_sources():
     assert item.generation_method == "derived_attribute_logic"
 
 
+def test_equipment_tooltips_use_locale_templates_and_argument_order():
+    catalog = TranslationCatalog({
+        "item.modifiers.mainhand": "Main hand:",
+        "attribute.name.generic.attack_damage": "Damage",
+        "attribute.name.generic.attack_speed": "Speed",
+        "attribute.modifier.plus.0": "%2$s +%1$s",
+        "attribute.modifier.take.0": "%2$s -%1$s",
+    })
+
+    item = build_search_item(
+        "minecraft:iron_sword",
+        "Localized Sword",
+        None,
+        catalog=catalog,
+    )
+
+    assert [line.text for line in item.search_lines] == [
+        "Localized Sword",
+        "Main hand:",
+        "Damage +5",
+        "Speed -2.4",
+    ]
+
+
 @pytest.mark.parametrize("item_id", [
     "minecraft:creeper_banner_pattern",
     "minecraft:flower_banner_pattern",

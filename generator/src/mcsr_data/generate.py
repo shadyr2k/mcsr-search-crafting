@@ -16,6 +16,13 @@ from mcsr_data.models import (
     RecipeResultCollection,
     SearchItem,
 )
+from mcsr_data.language_assets import (
+    LanguageAssetError,
+    LanguageMetadata,
+    load_language_catalogs,
+    load_language_metadata,
+)
+from mcsr_data.language_info import build_localized_language_info
 from mcsr_data.presets import InventoryPreset, load_inventory_presets
 from mcsr_data.recipe_collections import (
     RecipeCollectionError,
@@ -30,6 +37,7 @@ from mcsr_data.validation import Diagnostic, ValidationReport
 
 
 SCHEMA_VERSION = 3
+LOCALIZED_SEARCH_SCHEMA_VERSION = 1
 MINECRAFT_VERSION = "1.16.1"
 LANGUAGE = "en_us"
 FAILURE_REPORT_FILENAME = "validation-failure-report.json"
@@ -83,6 +91,8 @@ def generate(
     *,
     baseline: GenerationBaseline | None = MINECRAFT_1_16_1_BASELINE,
     recipe_book_categories: Mapping[str, RecipeBookCategory] | None = None,
+    language_asset_root: Path | None = None,
+    language_asset_index: Path | None = None,
 ) -> GenerationSummary:
     """Validate source data and atomically publish browser artifacts."""
     report = ValidationReport()
@@ -106,6 +116,32 @@ def generate(
     )
     items = _build_items(enriched_recipes, catalog, overrides, report)
     inventory_items = _build_inventory_items(enriched_recipes, presets, catalog, report)
+    localized_catalogs = _load_language_catalogs(
+        language_asset_root,
+        language_asset_index,
+        catalog,
+        report,
+    )
+    language_metadata = _load_language_metadata(
+        language_asset_root,
+        language_asset_index,
+        catalog,
+        report,
+    )
+    localized_search_data = _build_localized_search_data(
+        enriched_recipes,
+        presets,
+        items,
+        inventory_items,
+        localized_catalogs,
+        overrides,
+        report,
+    )
+    localized_language_info = _build_localized_language_info(
+        catalog,
+        localized_catalogs,
+        report,
+    )
     _validate_cross_references(
         enriched_recipes,
         items,
@@ -160,6 +196,12 @@ def generate(
         },
         "validation-report.json": _serialize_report(summary, status="valid"),
     }
+    if localized_search_data is not None:
+        payloads["localized-search-data.json"] = localized_search_data
+    if localized_language_info is not None:
+        payloads["localized-language-info.json"] = localized_language_info
+    if language_metadata is not None:
+        payloads["language-metadata.json"] = language_metadata
     _atomic_write_all(output_root, payloads)
     return summary
 
@@ -206,6 +248,72 @@ def _load_translations(source_root: Path, report: ValidationReport) -> Translati
     except (OSError, ValueError) as error:
         report.error("invalid_translations", "lang/en_us.json", str(error))
         return None
+
+
+def _load_language_catalogs(
+    asset_root: Path | None,
+    asset_index: Path | None,
+    fallback: TranslationCatalog | None,
+    report: ValidationReport,
+) -> dict[str, TranslationCatalog] | None:
+    if asset_root is None and asset_index is None:
+        return None
+    if asset_root is None or asset_index is None:
+        report.error(
+            "invalid_language_asset_source",
+            "language assets",
+            "language_asset_root and language_asset_index must be provided together",
+        )
+        return None
+    if fallback is None:
+        return None
+    try:
+        return load_language_catalogs(asset_root, asset_index, fallback=fallback)
+    except LanguageAssetError as error:
+        report.error("invalid_language_assets", "language assets", str(error))
+        return None
+
+
+def _load_language_metadata(
+    asset_root: Path | None,
+    asset_index: Path | None,
+    source_catalog: TranslationCatalog | None,
+    report: ValidationReport,
+) -> dict[str, object] | None:
+    if asset_root is None and asset_index is None:
+        return None
+    if asset_root is None or asset_index is None or source_catalog is None:
+        return None
+    try:
+        cached_metadata = load_language_metadata(asset_root, asset_index)
+        try:
+            source_name = source_catalog.translation("language.name")
+            source_region = source_catalog.translation("language.region")
+        except KeyError:
+            source_name = "English"
+            source_region = "United States"
+        source_metadata = LanguageMetadata(
+            locale=LANGUAGE,
+            name=source_name,
+            region=source_region,
+            script="latin",
+        )
+    except LanguageAssetError as error:
+        report.error("invalid_language_metadata", "language metadata", str(error))
+        return None
+    metadata = {**cached_metadata, LANGUAGE: source_metadata}
+    return {
+        "schema_version": LOCALIZED_SEARCH_SCHEMA_VERSION,
+        "minecraft_version": MINECRAFT_VERSION,
+        "locales": {
+            locale: {
+                "name": definition.name,
+                "region": definition.region,
+                "script": definition.script,
+            }
+            for locale, definition in sorted(metadata.items())
+        },
+    }
 
 
 def _load_overrides(report: ValidationReport) -> dict[str, object]:
@@ -267,6 +375,8 @@ def _build_items(
     catalog: TranslationCatalog | None,
     overrides: dict[str, object],
     report: ValidationReport,
+    *,
+    subject_prefix: str = "",
 ) -> dict[str, SearchItem]:
     if catalog is None:
         return {}
@@ -278,11 +388,12 @@ def _build_items(
                 catalog.item_name(item_id),
                 None,
                 overrides=overrides,
+                catalog=catalog,
             )
         except KeyError as error:
-            report.error("missing_translation", item_id, str(error))
+            report.error("missing_translation", f"{subject_prefix}{item_id}", str(error))
         except ValueError as error:
-            report.error("unsupported_tooltip", item_id, str(error))
+            report.error("unsupported_tooltip", f"{subject_prefix}{item_id}", str(error))
     return items
 
 
@@ -291,6 +402,8 @@ def _build_inventory_items(
     presets: tuple[InventoryPreset, ...],
     catalog: TranslationCatalog | None,
     report: ValidationReport,
+    *,
+    subject_prefix: str = "",
 ) -> dict[str, InventoryItem]:
     if catalog is None:
         return {}
@@ -310,8 +423,82 @@ def _build_inventory_items(
         try:
             items[item_id] = InventoryItem(item_id=item_id, name=catalog.item_name(item_id))
         except KeyError as error:
-            report.error("missing_inventory_translation", item_id, str(error))
+            report.error(
+                "missing_inventory_translation",
+                f"{subject_prefix}{item_id}",
+                str(error),
+            )
     return items
+
+
+def _build_localized_search_data(
+    recipes: list[NormalizedRecipe],
+    presets: tuple[InventoryPreset, ...],
+    base_items: dict[str, SearchItem],
+    base_inventory_items: dict[str, InventoryItem],
+    catalogs: dict[str, TranslationCatalog] | None,
+    overrides: dict[str, object],
+    report: ValidationReport,
+) -> dict[str, object] | None:
+    if catalogs is None:
+        return None
+
+    locales: dict[str, dict[str, object]] = {
+        LANGUAGE: _serialize_localized_catalog(base_items, base_inventory_items),
+    }
+    for locale, catalog in sorted(catalogs.items()):
+        if locale == LANGUAGE:
+            continue
+        items = _build_items(
+            recipes,
+            catalog,
+            overrides,
+            report,
+            subject_prefix=f"{locale}:",
+        )
+        inventory_items = _build_inventory_items(
+            recipes,
+            presets,
+            catalog,
+            report,
+            subject_prefix=f"{locale}:",
+        )
+        locales[locale] = _serialize_localized_catalog(items, inventory_items)
+    return {
+        "schema_version": LOCALIZED_SEARCH_SCHEMA_VERSION,
+        "minecraft_version": MINECRAFT_VERSION,
+        "locales": locales,
+    }
+
+
+def _build_localized_language_info(
+    base_catalog: TranslationCatalog | None,
+    catalogs: dict[str, TranslationCatalog] | None,
+    report: ValidationReport,
+) -> dict[str, object] | None:
+    if base_catalog is None or catalogs is None:
+        return None
+    try:
+        return build_localized_language_info(base_catalog, catalogs)
+    except KeyError as error:
+        report.error("missing_language_info_translation", "language-info", str(error))
+        return None
+
+
+def _serialize_localized_catalog(
+    items: dict[str, SearchItem],
+    inventory_items: dict[str, InventoryItem],
+) -> dict[str, object]:
+    return {
+        "search_items": {
+            item_id: _serialize_item(item)
+            for item_id, item in sorted(items.items())
+        },
+        "inventory_items": {
+            item_id: _serialize_inventory_item(item)
+            for item_id, item in sorted(inventory_items.items())
+        },
+    }
 
 
 def _validate_cross_references(
@@ -639,6 +826,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--source", type=Path, default=Path("minecraft-data"))
     parser.add_argument("--output", type=Path, default=Path("web/public/data"))
     parser.add_argument(
+        "--language-asset-root",
+        type=Path,
+        help="existing launcher assets directory containing objects/; never modified",
+    )
+    parser.add_argument(
+        "--language-asset-index",
+        type=Path,
+        help="existing Minecraft asset index, such as assets/indexes/1.16.json",
+    )
+    parser.add_argument(
         "--allow-non-baseline",
         action="store_true",
         help=(
@@ -649,7 +846,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     baseline = None if arguments.allow_non_baseline else MINECRAFT_1_16_1_BASELINE
     try:
-        summary = generate(arguments.source, arguments.output, baseline=baseline)
+        summary = generate(
+            arguments.source,
+            arguments.output,
+            baseline=baseline,
+            language_asset_root=arguments.language_asset_root,
+            language_asset_index=arguments.language_asset_index,
+        )
     except GenerationFailed as error:
         for diagnostic in error.report.diagnostics:
             print(

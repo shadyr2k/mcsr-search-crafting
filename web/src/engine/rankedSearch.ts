@@ -1,8 +1,8 @@
 import type { RankedSearch, RankedSearchStep } from '../domain/types'
 
 import type { OverlapResult } from './overlapOptimizer'
+import { scoreStep, sequenceCharacterReuse } from './scoring'
 import type { SingleResult } from './singleOptimizer'
-import { scoreStep } from './scoring'
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
@@ -15,6 +15,19 @@ function compareSequences(left: readonly string[], right: readonly string[]): nu
     if (comparison !== 0) return comparison
   }
   return left.length - right.length
+}
+
+function totalQueryCharacters(search: RankedSearch): number {
+  return search.queries.reduce((total, query) => total + query.length, 0)
+}
+
+function correctionKeyCount(search: RankedSearch): number {
+  return search.steps.slice(1).reduce((total, step, index) => {
+    const previousQuery = search.steps[index].query
+    const usesShiftHome = step.retainedPrefix.length === 0
+      && step.freeBackspaceCount >= previousQuery.length
+    return total + (usesShiftHome ? 2 : step.freeBackspaceCount)
+  }, 0)
 }
 
 export function rankedFromSingle(result: SingleResult): RankedSearch {
@@ -81,17 +94,73 @@ export function compareRankedSearches(left: RankedSearch, right: RankedSearch): 
     || left.totalJunkAppearances - right.totalJunkAppearances
     || left.steps.length - right.steps.length
     || left.totalTypedCharacters - right.totalTypedCharacters
+    || correctionKeyCount(left) - correctionKeyCount(right)
+    || totalQueryCharacters(left) - totalQueryCharacters(right)
+    || sequenceCharacterReuse(right.queries) - sequenceCharacterReuse(left.queries)
     || compareSequences(left.queries, right.queries)
+}
+
+function hasEqualPrimaryRank(left: RankedSearch, right: RankedSearch): boolean {
+  return left.totalScore === right.totalScore
+    && left.totalJunkAppearances === right.totalJunkAppearances
+    && left.steps.length === right.steps.length
+    && left.totalTypedCharacters === right.totalTypedCharacters
+    && correctionKeyCount(left) === correctionKeyCount(right)
+    && totalQueryCharacters(left) === totalQueryCharacters(right)
+}
+
+function queryCharacters(search: RankedSearch): Set<string> {
+  return new Set(search.queries.join(''))
+}
+
+function sharedCharacters(left: ReadonlySet<string>, right: ReadonlySet<string>): number {
+  let total = 0
+  for (const character of left) if (right.has(character)) total += 1
+  return total
+}
+
+function orderSimilarCrafts(searches: readonly RankedSearch[]): RankedSearch[] {
+  const remaining = [...searches]
+  const ordered: RankedSearch[] = []
+  const usedCharacters = new Set<string>()
+
+  while (remaining.length > 0) {
+    const characterSets = new Map(remaining.map((search) => [search, queryCharacters(search)]))
+    const next = [...remaining].sort((left, right) => {
+      const leftCharacters = characterSets.get(left)!
+      const rightCharacters = characterSets.get(right)!
+      const leftSimilarity = ordered.length === 0
+        ? remaining.filter((search) => search !== left).reduce((total, search) => total + sharedCharacters(leftCharacters, characterSets.get(search)!), 0)
+        : sharedCharacters(leftCharacters, usedCharacters)
+      const rightSimilarity = ordered.length === 0
+        ? remaining.filter((search) => search !== right).reduce((total, search) => total + sharedCharacters(rightCharacters, characterSets.get(search)!), 0)
+        : sharedCharacters(rightCharacters, usedCharacters)
+      return rightSimilarity - leftSimilarity || compareRankedSearches(left, right)
+    })[0]
+    ordered.push(next)
+    for (const character of characterSets.get(next)!) usedCharacters.add(character)
+    remaining.splice(remaining.indexOf(next), 1)
+  }
+
+  return ordered
 }
 
 export function rankSearches(
   single: readonly SingleResult[],
   overlap: readonly OverlapResult[],
 ): RankedSearch[] {
-  return [
+  const ranked = [
     ...single.map(rankedFromSingle),
     ...overlap.map(rankedFromOverlap),
   ].sort(compareRankedSearches)
+  const result: RankedSearch[] = []
+  for (let index = 0; index < ranked.length;) {
+    let end = index + 1
+    while (end < ranked.length && hasEqualPrimaryRank(ranked[index], ranked[end])) end += 1
+    result.push(...orderSimilarCrafts(ranked.slice(index, end)))
+    index = end
+  }
+  return result
 }
 
 export function searchSequenceLabel(result: RankedSearch): string {

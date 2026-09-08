@@ -38,7 +38,7 @@ export interface NormalizedSearchLine {
 const MAX_QUERY_LENGTH = 5
 
 export function normalizeSearchText(text: string): string {
-  return text.toLocaleLowerCase('en-US')
+  return text.toLowerCase()
 }
 
 export function normalizeSearchLine(line: string): NormalizedSearchLine {
@@ -70,7 +70,8 @@ export function normalizeSearchLine(line: string): NormalizedSearchLine {
 }
 
 function isSupportedQuery(query: string): boolean {
-  return query.length >= 1 && query.length <= MAX_QUERY_LENGTH
+  const characterCount = Array.from(query).length
+  return characterCount >= 1 && characterCount <= MAX_QUERY_LENGTH
 }
 
 export function matchItem(item: SearchItem, query: string): MatchExplanation[] {

@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 import type { CraftingRecipe, RecipeResultCollection, SearchItem } from '../domain/types'
 import {
   optimizeSingle,
+  optimizeSinglePrepared,
   prepareOptimization,
   prepareOptimizationCooperatively,
   type OptimizeInput,
@@ -120,6 +121,19 @@ describe('optimizeSingle', () => {
     ]))
     expect(results.map((result) => result.query)).not.toContain('1')
     expect(dirty?.junkItemIds).not.toContain('minecraft:iron_sword')
+  })
+
+  test('discards single crafts with more junk than the remaining 40-result capacity', () => {
+    const candidate = (junkCount: number) => ({
+      query: 'target',
+      targetMask: 1n,
+      coveredTargetIds: ['target:0'],
+      junkItemIds: Array.from({ length: junkCount }, (_, index) => `junk:${index}`),
+      explanations: [],
+    })
+
+    expect(optimizeSinglePrepared({ targetIds: ['target:0'], candidates: [candidate(39)] })).toHaveLength(1)
+    expect(optimizeSinglePrepared({ targetIds: ['target:0'], candidates: [candidate(40)] })).toEqual([])
   })
 
   test('ranks by score, junk appearances, fixed step count, typed characters, then query text', () => {

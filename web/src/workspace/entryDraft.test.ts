@@ -28,6 +28,7 @@ const savedEntry: TargetWorkspaceEntry = {
   inventoryItemIds: ['minecraft:iron_ingot'],
   enabled: true,
   gridSize: 2,
+  retainCraftOrder: true,
   order: 3,
 }
 
@@ -35,6 +36,7 @@ describe('item set drafts', () => {
   test('defaults new drafts to an enabled empty 3x3 item set', () => {
     expect(newItemSetDraft()).toEqual({
       targetIds: [], inventoryItemIds: [], enabled: true, gridSize: 3,
+      retainCraftOrder: false,
     })
   })
 
@@ -53,6 +55,7 @@ describe('item set drafts', () => {
 
     expect(savedEntry.inventoryItemIds).not.toContain('minecraft:stick')
     expect(preset.itemIds).not.toContain('minecraft:stick')
+    expect(draft.retainCraftOrder).toBe(true)
   })
 
   test('requires at least one target and a valid draft shape before saving', () => {

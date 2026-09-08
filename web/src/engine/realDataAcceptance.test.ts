@@ -3,12 +3,14 @@ import { describe, expect, test } from 'vitest'
 import craftingRecipesPayload from '../../public/data/crafting-recipes.json'
 import inventoryItemsPayload from '../../public/data/inventory-items.json'
 import inventoryPresetsPayload from '../../public/data/inventory-presets.json'
+import localizedSearchPayload from '../../public/data/localized-search-data.json'
 import recipeResultCollectionsPayload from '../../public/data/recipe-result-collections.json'
 import searchItemsPayload from '../../public/data/search-items.json'
-import { parseGeneratedData } from '../data/schema'
+import { parseGeneratedData, parseLocalizedGeneratedData } from '../data/schema'
 import { candidateQueriesForTargets } from './candidates'
 import { eligibleRecipes } from './craftability'
 import { matchEligibleCollectionOutputs } from './collectionSearch'
+import { optimizeOverlap } from './overlapOptimizer'
 
 const data = parseGeneratedData(
   searchItemsPayload,
@@ -17,6 +19,7 @@ const data = parseGeneratedData(
   recipeResultCollectionsPayload,
   inventoryPresetsPayload,
 )
+const latinData = parseLocalizedGeneratedData(localizedSearchPayload, 'la_la', data)
 
 const groupedInventory = [
   'minecraft:white_wool',
@@ -79,5 +82,45 @@ describe('generated Minecraft 1.16.1 collection search data', () => {
 
     expect(candidates).toContain('wn')
     expect(candidates).toContain('wn ')
+  })
+
+  test('generates the Latin uli then ule overlap path after the initial visible results', () => {
+    const bastion = data.presets.get('nether-bastion')!
+    const targets = new Set(['minecraft:respawn_anchor', 'minecraft:white_bed'])
+    const results = optimizeOverlap({
+      targetIds: targets,
+      eligibleRecipes: eligibleRecipes(latinData.recipes, new Set(bastion.itemIds), 3),
+      recipes: latinData.recipes,
+      collections: latinData.collections,
+      items: latinData.items,
+    })
+    const uleIndex = results.findIndex((result) => result.steps.map((step) => step.query).join('\0') === 'uli\0ule')
+    const ule = results[uleIndex]
+
+    expect(uleIndex).toBeGreaterThan(9)
+    expect(ule?.junkItemIds).toEqual(['minecraft:white_carpet'])
+    expect(ule?.score.total).toBe(4.5)
+  })
+
+  test('explains the Latin rmat helmet match through its Armatura attribute', () => {
+    const bastion = data.presets.get('nether-bastion')!
+    const results = optimizeOverlap({
+      targetIds: new Set(['minecraft:golden_helmet', 'minecraft:golden_pickaxe']),
+      eligibleRecipes: eligibleRecipes(latinData.recipes, new Set(bastion.itemIds), 3),
+      recipes: latinData.recipes,
+      collections: latinData.collections,
+      items: latinData.items,
+    })
+    const rmat = results.find((result) => result.steps.map((step) => step.query).join('\0') === 'ra a\0rmat')
+    const helmetMatch = rmat?.steps[1]?.explanations.find((explanation) => explanation.visibleOutputItemId === 'minecraft:golden_helmet')
+
+    expect(rmat?.steps[1]?.retainedPrefix).toBe('r')
+    expect(rmat?.steps[1]?.freeBackspaceCount).toBe(3)
+    expect(helmetMatch).toMatchObject({
+      query: 'rmat',
+      source: 'attribute',
+      line: '+2 Armatura',
+      matchedSpan: { start: 4, end: 8, text: 'rmat' },
+    })
   })
 })

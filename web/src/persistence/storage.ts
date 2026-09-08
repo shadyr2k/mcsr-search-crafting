@@ -2,6 +2,8 @@ import type { CustomInventoryPreset, TargetWorkspace, TargetWorkspaceEntry } fro
 
 const INVENTORY_SLOTS_KEY = 'mcsr.inventory-slots.v1'
 const TARGET_WORKSPACE_KEY = 'mcsr.target-workspace.v1'
+const LANGUAGE_PREFERENCES_KEY = 'mcsr.language-preferences.v1'
+const THEME_PREFERENCE_KEY = 'mcsr.theme-preference.v1'
 const SLOT_COUNT = 3
 
 export interface PersistenceLoadResult<T> {
@@ -33,6 +35,22 @@ interface VersionedTargetWorkspaceV1 {
 
 interface VersionedTargetWorkspaceV2 extends TargetWorkspace {
   schemaVersion: 2
+}
+
+export interface LanguagePreferences {
+  selectedLocale: string
+  enabledBannedLocales: string[]
+}
+
+export type ThemePreference = 'light' | 'dark'
+
+interface VersionedLanguagePreferences extends LanguagePreferences {
+  schemaVersion: 1
+}
+
+interface VersionedThemePreference {
+  schemaVersion: 1
+  theme: ThemePreference
 }
 
 const volatileRecordsByStorage = new WeakMap<Storage, Map<string, string | null>>()
@@ -137,6 +155,10 @@ function defaultWorkspace(): TargetWorkspace {
   return { entries: [] }
 }
 
+function defaultLanguagePreferences(): LanguagePreferences {
+  return { selectedLocale: 'en_us', enabledBannedLocales: [] }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -166,12 +188,14 @@ function isTargetWorkspaceEntry(value: unknown): value is TargetWorkspaceEntry {
   if (!isRecord(value) || !isTargetWorkspaceEntryV1(value) || !isStringArray(value.inventoryItemIds)) {
     return false
   }
+  if (value.retainCraftOrder !== undefined && typeof value.retainCraftOrder !== 'boolean') return false
   return Object.keys(value).every((key) => (
       key === 'id'
       || key === 'targetIds'
       || key === 'inventoryItemIds'
       || key === 'enabled'
       || key === 'gridSize'
+      || key === 'retainCraftOrder'
       || key === 'order'
   ))
 }
@@ -296,10 +320,14 @@ export function clearCustomInventorySlot(index: number, storage?: Storage): Pers
 }
 
 function normalizeWorkspaceEntry(entry: TargetWorkspaceEntry): TargetWorkspaceEntry {
+  const { retainCraftOrder: _retainCraftOrder, ...stableEntry } = entry
   return {
-    ...entry,
-    targetIds: [...new Set(entry.targetIds)].sort(),
+    ...stableEntry,
+    // The target strip is the user's input order. Keep it intact even when
+    // calculations are allowed to reorder targets for a better craft path.
+    targetIds: [...new Set(entry.targetIds)],
     inventoryItemIds: [...new Set(entry.inventoryItemIds)].sort(),
+    ...(entry.retainCraftOrder === true ? { retainCraftOrder: true } : {}),
   }
 }
 
@@ -361,5 +389,90 @@ export function saveTargetWorkspace(workspace: TargetWorkspace, storage?: Storag
   }
   const target = storageOrDefault(storage)
   saveWorkspace(workspace, target)
+  return { warning: target.warning }
+}
+
+function isLanguagePreferencesValue(value: unknown): value is LanguagePreferences {
+  return isRecord(value)
+    && typeof value.selectedLocale === 'string'
+    && isStringArray(value.enabledBannedLocales)
+    && Object.keys(value).every((key) => key === 'selectedLocale' || key === 'enabledBannedLocales' || key === 'schemaVersion')
+}
+
+function isLanguagePreferences(value: unknown): value is VersionedLanguagePreferences {
+  return isRecord(value) && isLanguagePreferencesValue(value) && value.schemaVersion === 1
+}
+
+function saveLanguagePreferencesRecord(preferences: LanguagePreferences, storage: ResilientStorage): void {
+  storage.setItem(LANGUAGE_PREFERENCES_KEY, JSON.stringify({
+    schemaVersion: 1,
+    selectedLocale: preferences.selectedLocale,
+    enabledBannedLocales: [...new Set(preferences.enabledBannedLocales)].sort(),
+  } satisfies VersionedLanguagePreferences))
+}
+
+export function loadLanguagePreferences(
+  availableLocales: ReadonlySet<string>,
+  storage?: Storage,
+): PersistenceLoadResult<LanguagePreferences> {
+  const target = storageOrDefault(storage)
+  const raw = target.getItem(LANGUAGE_PREFERENCES_KEY)
+  if (raw === null) return { value: defaultLanguagePreferences(), warning: target.warning }
+  try {
+    const parsed = parseJson(target, LANGUAGE_PREFERENCES_KEY)
+    if (!isLanguagePreferences(parsed)) {
+      return recover(target, LANGUAGE_PREFERENCES_KEY, 'language-preferences', raw, defaultLanguagePreferences())
+    }
+    const selectedLocale = availableLocales.has(parsed.selectedLocale) ? parsed.selectedLocale : 'en_us'
+    const enabledBannedLocales = [...new Set(parsed.enabledBannedLocales)].filter((locale) => availableLocales.has(locale)).sort()
+    const preferences = { selectedLocale, enabledBannedLocales }
+    if (selectedLocale !== parsed.selectedLocale || enabledBannedLocales.length !== parsed.enabledBannedLocales.length) {
+      saveLanguagePreferencesRecord(preferences, target)
+      return {
+        value: preferences,
+        warning: combineWarnings('Saved language preferences included unavailable locales and were reset to en_us.', target.warning),
+      }
+    }
+    return { value: preferences, warning: target.warning }
+  } catch {
+    return recover(target, LANGUAGE_PREFERENCES_KEY, 'language-preferences', raw, defaultLanguagePreferences())
+  }
+}
+
+export function saveLanguagePreferences(
+  preferences: LanguagePreferences,
+  storage?: Storage,
+): PersistenceSaveResult {
+  if (!isLanguagePreferencesValue(preferences)) {
+    throw new TypeError('Language preferences must contain a locale and enabled banned locale IDs.')
+  }
+  const target = storageOrDefault(storage)
+  saveLanguagePreferencesRecord(preferences, target)
+  return { warning: target.warning }
+}
+
+function isThemePreference(value: unknown): value is VersionedThemePreference {
+  return isRecord(value)
+    && value.schemaVersion === 1
+    && (value.theme === 'light' || value.theme === 'dark')
+    && Object.keys(value).every((key) => key === 'schemaVersion' || key === 'theme')
+}
+
+export function loadThemePreference(storage?: Storage): PersistenceLoadResult<ThemePreference> {
+  const target = storageOrDefault(storage)
+  const raw = target.getItem(THEME_PREFERENCE_KEY)
+  if (raw === null) return { value: 'light', warning: target.warning }
+  try {
+    const parsed = parseJson(target, THEME_PREFERENCE_KEY)
+    if (!isThemePreference(parsed)) return recover(target, THEME_PREFERENCE_KEY, 'theme-preference', raw, 'light')
+    return { value: parsed.theme, warning: target.warning }
+  } catch {
+    return recover(target, THEME_PREFERENCE_KEY, 'theme-preference', raw, 'light')
+  }
+}
+
+export function saveThemePreference(theme: ThemePreference, storage?: Storage): PersistenceSaveResult {
+  const target = storageOrDefault(storage)
+  target.setItem(THEME_PREFERENCE_KEY, JSON.stringify({ schemaVersion: 1, theme } satisfies VersionedThemePreference))
   return { warning: target.warning }
 }

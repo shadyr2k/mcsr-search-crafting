@@ -77,7 +77,8 @@ async function optimizeEntry(
 ): Promise<WorkspaceEntryResult> {
   const eligible = eligibleRecipes(data.recipes, inventory, entry.gridSize)
   const visibleIds = new Set(eligible.map(({ outputItemId }) => outputItemId))
-  const targetIds = [...new Set(entry.targetIds)].sort()
+  const targetIds = [...new Set(entry.targetIds)]
+  if (!entry.retainCraftOrder) targetIds.sort()
   const input = {
     targetIds: new Set(targetIds),
     eligibleRecipes: eligible,
@@ -97,6 +98,7 @@ async function optimizeEntry(
       completed,
       total,
     }),
+    preserveTargetOrder: entry.retainCraftOrder === true,
   })
   throwIfAborted(options.signal)
   const single = optimizeSinglePrepared(prepared)
@@ -114,6 +116,7 @@ async function optimizeEntry(
           phase: 'overlap',
           completed,
         }),
+        retainTargetOrder: entry.retainCraftOrder === true,
       })).filter(({ steps }) => steps.length > 1)
     : []
   throwIfAborted(options.signal)
@@ -210,6 +213,23 @@ export function aggregateEnglishScore(
       0,
     ),
   }
+}
+
+export async function aggregateLocaleScore(
+  data: GeneratedData,
+  entries: readonly TargetWorkspaceEntry[],
+  options: OptimizeWorkspaceOptions = {},
+): Promise<number | undefined> {
+  const scoreable = entries.filter((entry) => entry.enabled && entry.targetIds.length > 0)
+  if (scoreable.length === 0) return undefined
+  let score = 0
+  for (const entry of scoreable) {
+    const outcome = await optimizeWorkspaceEntry(data, entry, options)
+    score += outcome.bestScore
+    await (options.yieldControl ?? yieldToBrowser)()
+    throwIfAborted(options.signal)
+  }
+  return score
 }
 
 export async function optimizeWorkspace(

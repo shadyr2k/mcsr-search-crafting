@@ -29,17 +29,20 @@ export function GridSizeSwitch({ value, targetIds, recipes, onChange }: GridSize
     if (!requires3x3 || value === 3) lastForcedKey.current = undefined
   }, [forcedKey, onChange, requires3x3, value])
 
-  return <label className="grid-size-switch">
-    <span>2×2</span>
-    <input
-      type="checkbox"
+  return <div className="grid-size-switch">
+    <span className="grid-size-switch__title">craft space</span>
+    <span className="grid-size-switch__label">2×2</span>
+    <button
+      type="button"
       role="switch"
+      className="grid-size-switch__control"
       aria-label="Crafting grid size"
       aria-checked={displayedValue === 3}
-      checked={displayedValue === 3}
       disabled={requires3x3}
-      onChange={(event) => onChange(event.target.checked ? 3 : 2)}
-    />
-    <span>3×3</span>
-  </label>
+      onClick={() => onChange(displayedValue === 3 ? 2 : 3)}
+    >
+      <span className="grid-size-switch__thumb" aria-hidden="true" />
+    </button>
+    <span className="grid-size-switch__label">3×3</span>
+  </div>
 }

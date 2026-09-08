@@ -34,7 +34,10 @@ describe('ItemSetWorkspace', () => {
       onAdd={vi.fn()}
     />)
 
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Enable item set 1' }))
+    const enableButton = screen.getByRole('button', { name: 'Enable item set 1' })
+    expect(enableButton.getAttribute('aria-pressed')).toBe('true')
+    expect(enableButton.textContent).toBe('enabled')
+    fireEvent.click(enableButton)
     expect(onWorkspaceChange).toHaveBeenCalledWith({ entries: [expect.objectContaining({ enabled: false })] })
     fireEvent.click(screen.getByRole('button', { name: 'Edit item set 1' }))
     expect(onEdit).toHaveBeenCalledWith('saved')

@@ -1,6 +1,16 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { GeneratedDataError, loadGeneratedData, parseGeneratedData } from './schema'
+import {
+  GeneratedDataError,
+  loadGeneratedData,
+  loadLocalizedGeneratedData,
+  loadLocalizedLanguageInfo,
+  parseGeneratedData,
+  parseLanguageMetadata,
+  parseLocalizedGeneratedData,
+  parseLocalizedLanguageInfo,
+} from './schema'
+import { matchItem } from '../engine/search'
 
 const collectionId = 'crafting_misc/recipe/minecraft%3Atorch'
 
@@ -392,6 +402,132 @@ describe('parseGeneratedData', () => {
       schema_version: 3,
       recipes: [{ ...recipe, fits_2x2: false, fits_3x3: false }],
     }, collections, 'recipes[0]')
+  })
+})
+
+describe('localized generated data', () => {
+  const localized = {
+    schema_version: 1,
+    minecraft_version: '1.16.1',
+    locales: {
+      de_de: {
+        search_items: {
+          'minecraft:stick': {
+            name: 'Stock', confidence: 'source_reproduced', search_lines: [{ source: 'name', text: 'Stock' }],
+          },
+        },
+        inventory_items: {
+          'minecraft:oak_log': { name: 'Eichenstamm' },
+          'minecraft:stick': { name: 'Stick' },
+        },
+      },
+    },
+  }
+
+  test('replaces only localized maps while preserving the shared generated data shape', () => {
+    const base = parseGeneratedData(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, collections, presetPayload(['minecraft:oak_log']))
+    const localizedData = parseLocalizedGeneratedData(localized, 'de_de', base)
+
+    expect(localizedData.items.get('minecraft:stick')?.name).toBe('Stock')
+    expect(localizedData.inventoryItems.get('minecraft:oak_log')?.name).toBe('Eichenstamm')
+    expect(localizedData.recipes).toBe(base.recipes)
+    expect(localizedData.collections).toBe(base.collections)
+    expect(localizedData.presets).toBe(base.presets)
+  })
+
+  test('uses the selected locale search lines for query matching', () => {
+    const base = parseGeneratedData(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, collections, presetPayload(['minecraft:oak_log']))
+    const localizedData = parseLocalizedGeneratedData(localized, 'de_de', base)
+
+    expect(matchItem(localizedData.items.get('minecraft:stick')!, 'stoc')).toHaveLength(1)
+    expect(matchItem(localizedData.items.get('minecraft:stick')!, 'tick')).toHaveLength(0)
+  })
+
+  test('keeps en_us as the exact in-memory baseline without loading the large locale payload', async () => {
+    const base = parseGeneratedData(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, collections, presetPayload(['minecraft:oak_log']))
+
+    await expect(loadLocalizedGeneratedData('en_us', base)).resolves.toBe(base)
+  })
+
+  test('shares one transient localized-payload fetch between concurrent locale loads', async () => {
+    const base = parseGeneratedData(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, collections, presetPayload(['minecraft:oak_log']))
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => localized }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await Promise.all([
+      loadLocalizedGeneratedData('de_de', base),
+      loadLocalizedGeneratedData('de_de', base),
+    ])
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  test('rejects a missing locale entry safely', () => {
+    const base = parseGeneratedData(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, collections, presetPayload(['minecraft:oak_log']))
+
+    expect(() => parseLocalizedGeneratedData(localized, 'missing', base)).toThrow(GeneratedDataError)
+  })
+
+  test('parses data-derived human-readable locale metadata', () => {
+    expect(parseLanguageMetadata({
+      schema_version: 1,
+      minecraft_version: '1.16.1',
+      locales: {
+        en_us: { name: 'English', region: 'United States', script: 'latin' },
+        ja_jp: { name: '日本語', region: '日本', script: 'non_latin' },
+      },
+    })).toEqual([
+      { locale: 'en_us', name: 'English', region: 'United States', script: 'latin' },
+      { locale: 'ja_jp', name: '日本語', region: '日本', script: 'non_latin' },
+    ])
+  })
+
+  test('parses standalone localized language information with advancement requirements', () => {
+    const info = parseLocalizedLanguageInfo({
+      schema_version: 1,
+      minecraft_version: '1.16.1',
+      sections: {
+        difficulties: [{ id: 'easy', key: 'options.difficulty.easy', english: 'Easy' }],
+        advancements: [{
+          id: 'acquire_hardware',
+          key: 'advancements.story.smelt_iron.title',
+          english: 'Acquire Hardware',
+          requirement_key: 'advancements.story.smelt_iron.description',
+          english_requirement: 'Smelt an iron ingot',
+        }],
+      },
+      locales: {
+        en_us: {
+          difficulties: { easy: { name: 'Easy' } },
+          advancements: { acquire_hardware: { name: 'Acquire Hardware', requirement: 'Smelt an iron ingot' } },
+        },
+        de_de: {
+          difficulties: { easy: { name: 'Leicht' } },
+          advancements: { acquire_hardware: { name: 'Beschaffe dir Hardware', requirement: 'Verhütte einen Eisenbarren' } },
+        },
+      },
+    })
+
+    expect(info.sections.map((section) => section.id)).toEqual(['difficulties', 'advancements'])
+    expect(info.locales.get('de_de')?.get('difficulties')?.get('easy')).toEqual({ name: 'Leicht', requirement: undefined })
+    expect(info.locales.get('de_de')?.get('advancements')?.get('acquire_hardware')).toEqual({
+      name: 'Beschaffe dir Hardware',
+      requirement: 'Verhütte einen Eisenbarren',
+    })
+  })
+
+  test('loads the standalone language-info artifact without sharing the search payload', async () => {
+    const payload = {
+      schema_version: 1,
+      minecraft_version: '1.16.1',
+      sections: { difficulties: [{ id: 'easy', key: 'options.difficulty.easy', english: 'Easy' }] },
+      locales: { en_us: { difficulties: { easy: { name: 'Easy' } } } },
+    }
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => payload }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(loadLocalizedLanguageInfo()).resolves.toMatchObject({ sections: [{ id: 'difficulties' }] })
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/localized-language-info\.json$/))
   })
 })
 

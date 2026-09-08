@@ -3,6 +3,7 @@ import type { SearchItem, TargetWorkspace, TargetWorkspaceEntry } from '../domai
 import { ItemSetRow } from './ItemSetRow'
 
 interface ItemSetWorkspaceProps {
+  dir?: 'ltr' | 'rtl'
   entries: readonly TargetWorkspaceEntry[]
   items: ReadonlyMap<string, SearchItem>
   icons: IconManifest
@@ -19,7 +20,7 @@ function withOrder(entries: readonly TargetWorkspaceEntry[]): TargetWorkspaceEnt
   return entries.map((entry, order) => ({ ...entry, order }))
 }
 
-export function ItemSetWorkspace({ entries, items, icons, onWorkspaceChange, onEdit, onAdd }: ItemSetWorkspaceProps) {
+export function ItemSetWorkspace({ dir, entries, items, icons, onWorkspaceChange, onEdit, onAdd }: ItemSetWorkspaceProps) {
   const visibleEntries = ordered(entries)
 
   function updateEntry(entryId: string, update: (entry: TargetWorkspaceEntry) => TargetWorkspaceEntry) {
@@ -35,7 +36,7 @@ export function ItemSetWorkspace({ entries, items, icons, onWorkspaceChange, onE
     onWorkspaceChange({ entries: withOrder(next) })
   }
 
-  return <section className="item-set-workspace" aria-label="Item sets">
+  return <section className="item-set-workspace" dir={dir} aria-label="Item sets">
     <header>
       <h2>Item sets</h2>
       <button type="button" className="item-set-workspace__add" onClick={onAdd} aria-label="Add item set"><span aria-hidden="true">+</span></button>

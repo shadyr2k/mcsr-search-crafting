@@ -11,6 +11,7 @@ from mcsr_data.generate import (
     generate,
     main,
 )
+from mcsr_data.language_info import required_fixed_language_info_keys
 from mcsr_data.models import (
     IngredientSlot,
     NormalizedRecipe,
@@ -35,6 +36,7 @@ def fixture_data(tmp_path):
         "block.minecraft.crafting_table": "Crafting Table",
         "block.minecraft.oak_planks": "Oak Planks",
     }
+    translations.update({key: key for key in required_fixed_language_info_keys()})
     for preset in load_inventory_presets():
         for item_id in preset.item_ids:
             namespace, path = item_id.split(":", 1)
@@ -123,6 +125,55 @@ def test_generate_is_byte_deterministic_for_all_success_artifacts(fixture_data, 
         path.name: path.read_bytes()
         for path in second.iterdir()
     }
+def test_generate_writes_locale_keyed_search_data_from_existing_asset_cache(fixture_data, tmp_path):
+    asset_root = tmp_path / "assets"
+    asset_hash = "d" * 40
+    locale_contents = {
+        "block.minecraft.crafting_table": "Werktisch",
+        "block.minecraft.oak_planks": "Eichenbretter",
+    }
+    object_path = asset_root / "objects" / asset_hash[:2] / asset_hash
+    object_path.parent.mkdir(parents=True)
+    object_path.write_text(json.dumps(locale_contents), encoding="utf-8")
+    index_path = asset_root / "indexes" / "1.16.json"
+    index_path.parent.mkdir(parents=True)
+    index_path.write_text(json.dumps({"objects": {
+        "minecraft/lang/de_de.json": {
+            "hash": asset_hash,
+            "size": object_path.stat().st_size,
+        },
+    }}), encoding="utf-8")
+    output = tmp_path / "output"
+
+    generate(
+        fixture_data,
+        output,
+        baseline=None,
+        recipe_book_categories={
+            "minecraft:crafting_table": "crafting_building_blocks",
+        },
+        language_asset_root=asset_root,
+        language_asset_index=index_path,
+    )
+
+    baseline_items = json.loads((output / "search-items.json").read_text(encoding="utf-8"))
+    baseline_inventory = json.loads((output / "inventory-items.json").read_text(encoding="utf-8"))
+    localized = json.loads((output / "localized-search-data.json").read_text(encoding="utf-8"))
+    language_info = json.loads((output / "localized-language-info.json").read_text(encoding="utf-8"))
+    assert localized["schema_version"] == 1
+    assert localized["minecraft_version"] == "1.16.1"
+    assert list(localized["locales"]) == ["de_de", "en_us"]
+    assert localized["locales"]["en_us"] == {
+        "search_items": baseline_items["items"],
+        "inventory_items": baseline_inventory["items"],
+    }
+    assert localized["locales"]["de_de"]["search_items"]["minecraft:crafting_table"]["name"] == "Werktisch"
+    assert localized["locales"]["de_de"]["inventory_items"]["minecraft:oak_planks"] == {
+        "name": "Eichenbretter",
+    }
+    assert language_info["schema_version"] == 1
+    assert list(language_info["locales"]) == ["de_de", "en_us"]
+    assert language_info["locales"]["de_de"]["difficulties"]["easy"]["name"] == "options.difficulty.easy"
 
 
 def test_generate_preserves_existing_outputs_when_validation_fails(fixture_data, tmp_path):

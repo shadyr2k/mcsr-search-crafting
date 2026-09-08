@@ -1,19 +1,27 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import './App.css'
 import { CalculatedSearchRow } from './components/CalculatedSearchRow'
 import { ItemIcon } from './components/ItemIcon'
 import { ItemSetEditor, type ItemSetEditorCommit, type ItemSetEditorState } from './components/ItemSetEditor'
 import { ItemSetWorkspace } from './components/ItemSetWorkspace'
-import { LanguageRanking } from './components/LanguageRanking'
+import { LanguageInfoPanel } from './components/LanguageInfoPanel'
+import { SiteInfoPanel } from './components/SiteInfoPanel'
+import { englishLocaleName, isBannedLocale, isRtlLocale, LanguageSelector, resultsColumnTitle } from './components/LanguageSelector'
 import { assertIconCoverage, loadIconManifest, type IconManifest } from './data/iconManifest'
-import { loadGeneratedData } from './data/schema'
-import type { CustomInventoryPreset, GeneratedData, ItemSetDraft, TargetWorkspace, TargetWorkspaceEntry } from './domain/types'
+import { loadGeneratedData, loadLanguageMetadata, loadLocalizedGeneratedData } from './data/schema'
+import type { CustomInventoryPreset, GeneratedData, ItemSetDraft, LanguageMetadata, TargetWorkspace, TargetWorkspaceEntry } from './domain/types'
 import { useRowOptimizations } from './hooks/useRowOptimizations'
-import { clearCustomInventorySlot, loadCustomInventorySlots, loadTargetWorkspace, saveCustomInventorySlot, saveTargetWorkspace } from './persistence/storage'
+import { useLanguageScores } from './hooks/useLanguageScores'
+import { clearCustomInventorySlot, loadCustomInventorySlots, loadLanguagePreferences, loadTargetWorkspace, loadThemePreference, saveCustomInventorySlot, saveLanguagePreferences, saveTargetWorkspace, saveThemePreference, type ThemePreference } from './persistence/storage'
 import { draftFromEntry, newItemSetDraft } from './workspace/entryDraft'
 
 type OpenEditor = (ItemSetEditorState & { entryId?: string }) | null
+type AppPage = 'home' | 'language-info' | 'site-info'
+
+function sharesLanguageColumn(left: AppPage, right: AppPage): boolean {
+  return (left === 'home' && right === 'language-info') || (left === 'language-info' && right === 'home')
+}
 
 function orderedEntries(entries: readonly TargetWorkspaceEntry[]): TargetWorkspaceEntry[] {
   return [...entries].sort((left, right) => left.order - right.order || left.id.localeCompare(right.id))
@@ -51,36 +59,117 @@ function combineWarnings(current: string | undefined, next: string | undefined):
 }
 
 function App() {
+  const [baseData, setBaseData] = useState<GeneratedData>()
   const [data, setData] = useState<GeneratedData>()
   const [icons, setIcons] = useState<IconManifest>()
+  const [languages, setLanguages] = useState<LanguageMetadata[]>([])
+  const [selectedLocale, setSelectedLocale] = useState('en_us')
+  const [enabledBannedLocales, setEnabledBannedLocales] = useState<ReadonlySet<string>>(new Set())
+  const [theme, setTheme] = useState<ThemePreference>('light')
+  const [page, setPage] = useState<AppPage>('home')
+  const [hasNavigated, setHasNavigated] = useState(false)
+  const [loadingLocale, setLoadingLocale] = useState<string>()
   const [error, setError] = useState<string>()
   const [warning, setWarning] = useState<string>()
   const [workspace, setWorkspace] = useState<TargetWorkspace>({ entries: [] })
   const [customSlots, setCustomSlots] = useState<Array<CustomInventoryPreset | null>>([null, null, null])
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false)
   const [editor, setEditor] = useState<OpenEditor>(null)
-  const { states, aggregate, retry } = useRowOptimizations(data, workspace.entries)
+  const languageSelectorRef = useRef<HTMLElement>(null)
+  const workspaceTransitionRef = useRef<HTMLDivElement>(null)
+  const priorLanguagePositionRef = useRef<DOMRect | undefined>(undefined)
+  const languageAnimationFrameRef = useRef<number | undefined>(undefined)
+  const { states, retry } = useRowOptimizations(data, workspace.entries)
+  const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales)
 
   useEffect(() => {
     const slots = loadCustomInventorySlots()
     const saved = loadTargetWorkspace()
+    const savedTheme = loadThemePreference()
     setCustomSlots(slots.value)
     setWorkspace(saved.value)
-    setWarning([slots.warning, saved.warning].filter(Boolean).join(' ') || undefined)
+    setTheme(savedTheme.value)
+    setWarning([slots.warning, saved.warning, savedTheme.warning].filter(Boolean).join(' ') || undefined)
     setWorkspaceLoaded(true)
-    Promise.all([loadGeneratedData(), loadIconManifest()]).then(([loadedData, loadedIcons]) => {
+    Promise.all([loadGeneratedData(), loadIconManifest(), loadLanguageMetadata()]).then(([loadedData, loadedIcons, loadedLanguages]) => {
       assertIconCoverage(loadedIcons, loadedData)
+      const availableLocales = new Set(loadedLanguages.map((language) => language.locale))
+      const languagePreferences = loadLanguagePreferences(availableLocales)
+      const enabledLocales = new Set(languagePreferences.value.enabledBannedLocales)
+      const locale = isBannedLocale(languagePreferences.value.selectedLocale) && !enabledLocales.has(languagePreferences.value.selectedLocale)
+        ? 'en_us'
+        : languagePreferences.value.selectedLocale
       setWorkspace((current) => normalizeWorkspaceGridSizes(current, loadedData))
+      setBaseData(loadedData)
       setData(loadedData)
       setIcons(loadedIcons)
+      setLanguages(loadedLanguages)
+      setEnabledBannedLocales(enabledLocales)
+      setSelectedLocale(locale)
+      setWarning([slots.warning, saved.warning, savedTheme.warning, languagePreferences.warning].filter(Boolean).join(' ') || undefined)
+      if (locale !== 'en_us') {
+        setLoadingLocale(locale)
+        loadLocalizedGeneratedData(locale, loadedData).then((localizedData) => {
+          setData(localizedData)
+        }).catch((loadError: unknown) => {
+          setSelectedLocale('en_us')
+          setWarning((current) => combineWarnings(current, `Could not load ${locale}; English (US) was selected instead.`))
+        }).finally(() => setLoadingLocale(undefined))
+      }
     }).catch((loadError: unknown) => setError(loadError instanceof Error ? loadError.message : 'The crafting data could not be loaded.'))
   }, [])
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    return () => { delete document.documentElement.dataset.theme }
+  }, [theme])
 
   useEffect(() => {
     if (!workspaceLoaded || !data) return
     const result = saveTargetWorkspace(workspace)
     setWarning((current) => combineWarnings(current, result.warning))
   }, [data, workspace, workspaceLoaded])
+
+  useLayoutEffect(() => {
+    const selector = languageSelectorRef.current
+    const workspaceTransition = workspaceTransitionRef.current
+    const priorPosition = priorLanguagePositionRef.current
+    if (!selector || !workspaceTransition || !priorPosition) return
+    priorLanguagePositionRef.current = undefined
+
+    // Make the layout reach its destination before the next paint, then keep the
+    // list visually in its old position and animate that measured difference.
+    // CSS grid tracks can otherwise resolve discretely, which makes the list snap.
+    workspaceTransition.style.transition = 'none'
+    void workspaceTransition.offsetWidth
+    const nextPosition = selector.getBoundingClientRect()
+    const offsetX = priorPosition.left - nextPosition.left
+    const offsetY = priorPosition.top - nextPosition.top
+    if (Math.abs(offsetX) < 1 && Math.abs(offsetY) < 1) {
+      workspaceTransition.style.transition = ''
+      return
+    }
+
+    selector.style.transition = 'none'
+    selector.style.transform = `translate(${offsetX}px, ${offsetY}px)`
+    void selector.offsetWidth
+    languageAnimationFrameRef.current = requestAnimationFrame(() => {
+      workspaceTransition.style.transition = ''
+      selector.style.transition = 'transform 900ms cubic-bezier(.4, 0, .2, 1)'
+      selector.style.transform = 'translate(0, 0)'
+      const finishLanguageTransition = (event: TransitionEvent) => {
+        if (event.target !== selector || event.propertyName !== 'transform') return
+        selector.style.transition = ''
+        selector.style.transform = ''
+        selector.removeEventListener('transitionend', finishLanguageTransition)
+      }
+      selector.addEventListener('transitionend', finishLanguageTransition)
+    })
+  }, [page])
+
+  useEffect(() => () => {
+    if (languageAnimationFrameRef.current !== undefined) cancelAnimationFrame(languageAnimationFrameRef.current)
+  }, [])
 
   function openEdit(entryId: string) {
     if (editor) return
@@ -101,20 +190,111 @@ function App() {
     setWarning((current) => combineWarnings(current, result.warning))
   }
 
+  function selectLocale(locale: string) {
+    if (!baseData || locale === selectedLocale || loadingLocale) return
+    if (locale === 'en_us') {
+      setData(baseData)
+      setSelectedLocale(locale)
+      const result = saveLanguagePreferences({ selectedLocale: locale, enabledBannedLocales: [...enabledBannedLocales] })
+      setWarning((current) => combineWarnings(current, result.warning))
+      return
+    }
+    setLoadingLocale(locale)
+    loadLocalizedGeneratedData(locale, baseData).then((localizedData) => {
+      setData(localizedData)
+      setSelectedLocale(locale)
+      const result = saveLanguagePreferences({ selectedLocale: locale, enabledBannedLocales: [...enabledBannedLocales] })
+      setWarning((current) => combineWarnings(current, result.warning))
+    }).catch(() => {
+      setData(baseData)
+      setSelectedLocale('en_us')
+      const result = saveLanguagePreferences({ selectedLocale: 'en_us', enabledBannedLocales: [...enabledBannedLocales] })
+      setWarning((current) => combineWarnings(
+        combineWarnings(current, `Could not load ${locale}; English (US) was selected instead.`),
+        result.warning,
+      ))
+    }).finally(() => setLoadingLocale(undefined))
+  }
+
+  function setBannedLocaleEnabled(locale: string, enabled: boolean) {
+    const next = new Set(enabledBannedLocales)
+    if (enabled) next.add(locale)
+    else next.delete(locale)
+    const nextLocale = !enabled && selectedLocale === locale ? 'en_us' : selectedLocale
+    setEnabledBannedLocales(next)
+    if (nextLocale !== selectedLocale && baseData) {
+      setSelectedLocale(nextLocale)
+      setData(baseData)
+    }
+    const result = saveLanguagePreferences({ selectedLocale: nextLocale, enabledBannedLocales: [...next] })
+    setWarning((current) => combineWarnings(current, result.warning))
+  }
+
+  function toggleTheme() {
+    const nextTheme: ThemePreference = theme === 'light' ? 'dark' : 'light'
+    setTheme(nextTheme)
+    const result = saveThemePreference(nextTheme)
+    setWarning((current) => combineWarnings(current, result.warning))
+  }
+
+  function selectPage(nextPage: AppPage) {
+    if (nextPage === page) return
+    if (languageAnimationFrameRef.current !== undefined) cancelAnimationFrame(languageAnimationFrameRef.current)
+    const selector = languageSelectorRef.current
+    if (sharesLanguageColumn(page, nextPage)) {
+      priorLanguagePositionRef.current = selector?.getBoundingClientRect()
+    } else {
+      priorLanguagePositionRef.current = undefined
+      if (selector) {
+        selector.style.transition = ''
+        selector.style.transform = ''
+      }
+    }
+    setHasNavigated(true)
+    setPage(nextPage)
+  }
+
   const entries = orderedEntries(workspace.entries)
   const editorNumber = editor?.entryId === undefined ? undefined : entries.findIndex((entry) => entry.id === editor.entryId) + 1
+  const selectedLanguage = languages.find((language) => language.locale === selectedLocale)
+  const selectedLanguageName = selectedLanguage ? englishLocaleName(selectedLanguage, languages) : 'english (us)'
   return <main className="app-shell">
     <header className="app-header">
-      {icons && <ItemIcon itemId="minecraft:smithing_table" name="smithing table" manifest={icons} size="detail" className="app-header__icon" />}
-      <h1>MCSR search crafting</h1>
+      <div className="app-header__brand">
+        {icons && <ItemIcon itemId="minecraft:smithing_table" name="smithing table" manifest={icons} size="detail" className="app-header__icon" />}
+        <div>
+          <h1>MCSR search crafting</h1>
+          <p className="app-header__subtitle">optimize recipe book results</p>
+        </div>
+        <nav className="app-header__nav" aria-label="Main navigation">
+          <button type="button" aria-current={page === 'home' ? 'page' : undefined} onClick={() => selectPage('home')}>craft info</button>
+          <button type="button" aria-current={page === 'language-info' ? 'page' : undefined} onClick={() => selectPage('language-info')}>language info</button>
+          <button type="button" aria-current={page === 'site-info' ? 'page' : undefined} onClick={() => selectPage('site-info')}>site info</button>
+        </nav>
+      </div>
+      <div className="app-header__menu">
+        <button
+          type="button"
+          className="theme-switch"
+          role="switch"
+          aria-checked={theme === 'dark'}
+          aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+          onClick={toggleTheme}
+        >
+          <span className="theme-switch__light" aria-hidden="true">☀</span>
+          <span className="theme-switch__dark" aria-hidden="true">☾</span>
+          <span className="theme-switch__thumb" aria-hidden="true" />
+        </button>
+      </div>
     </header>
     {warning && <p role="alert">{warning}</p>}{error && <p role="alert">{error}</p>}
-    {data && icons && <div className="workspace-grid">
-      <ItemSetWorkspace entries={workspace.entries} items={data.items} icons={icons} onWorkspaceChange={setWorkspace} onEdit={openEdit} onAdd={openAdd} />
-      <LanguageRanking aggregate={aggregate} />
-      <section className="results-column" aria-label={editor ? (editor.kind === 'new' ? 'New item set' : `Edit item set ${editorNumber}`) : 'Calculated searches'}>
+    {data && icons && <div ref={workspaceTransitionRef} className={`workspace-grid workspace-transition workspace-transition--${page}${hasNavigated ? ' workspace-transition--animated' : ''}`}>
+      <ItemSetWorkspace dir={isRtlLocale(selectedLocale) ? 'rtl' : 'ltr'} entries={workspace.entries} items={data.items} icons={icons} onWorkspaceChange={setWorkspace} onEdit={openEdit} onAdd={openAdd} />
+      <LanguageSelector containerRef={languageSelectorRef} languages={languages} selectedLocale={selectedLocale} enabledBannedLocales={enabledBannedLocales} scores={languageScores} loadingLocale={loadingLocale} onSelect={selectLocale} onBannedLocaleEnabledChange={setBannedLocaleEnabled} />
+      <section className="results-column" dir={isRtlLocale(selectedLocale) ? 'rtl' : 'ltr'} aria-label={editor ? (editor.kind === 'new' ? 'New item set' : `Edit item set ${editorNumber}`) : 'Calculated searches'}>
+        {!editor && <h2 className="results-column__title" dir="ltr">{resultsColumnTitle(selectedLocale, languages)}</h2>}
         {editor ? <ItemSetEditor
-          state={editor} entryNumber={editorNumber} data={data} icons={icons} customSlots={customSlots}
+          state={editor} entryNumber={editorNumber} data={data} pickerData={baseData} icons={icons} customSlots={customSlots}
           onDraftChange={updateDraft}
           onSave={(commit) => { setWorkspace((current) => commitDraft(current, commit)); setEditor(null) }}
           onCancel={() => setEditor(null)}
@@ -124,6 +304,8 @@ function App() {
           key={entry.id} entry={entry} entryNumber={index + 1} state={states.get(entry.id)} items={data.items} icons={icons} collections={data.collections} onRetry={() => retry(entry.id)}
         />)}
       </section>
+      {languages.length > 0 && <LanguageInfoPanel locale={selectedLocale} languageName={selectedLanguageName} />}
+      <SiteInfoPanel />
     </div>}
   </main>
 }

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Mapping
 
 from mcsr_data.models import SearchItem, SearchLine
+from mcsr_data.translations import TranslationCatalog
 
 
 @dataclass(frozen=True)
@@ -161,6 +162,12 @@ _ARMOR_HEADERS = {
     "chestplate": "When on body:",
     "helmet": "When on head:",
 }
+_ARMOR_HEADER_KEYS = {
+    "boots": "item.modifiers.feet",
+    "leggings": "item.modifiers.legs",
+    "chestplate": "item.modifiers.chest",
+    "helmet": "item.modifiers.head",
+}
 _ARMOR_SLOTS_BY_MATERIAL = {
     material: frozenset(_ARMOR_HEADERS)
     for material in ARMOR_MATERIALS
@@ -275,6 +282,7 @@ def build_search_item(
     output_nbt: dict[str, object] | None,
     *,
     overrides: Mapping[str, TooltipOverride] | None = None,
+    catalog: TranslationCatalog | None = None,
 ) -> SearchItem:
     hide_flags = _validated_hide_flags(item_id, output_nbt)
     override = (load_overrides() if overrides is None else overrides).get(item_id)
@@ -300,6 +308,8 @@ def build_search_item(
     classifications = load_tooltip_classifications()
     description = classifications.banner_pattern_descriptions.get(item_id)
     if description is not None:
+        if catalog is not None:
+            description = catalog.translation(_banner_pattern_description_key(item_id))
         return SearchItem(
             item_id=item_id,
             name=name,
@@ -311,7 +321,7 @@ def build_search_item(
             confidence="source_reproduced",
         )
 
-    equipment = _equipment_attributes(item_id)
+    equipment = _equipment_attributes(item_id, catalog)
     if item_id in classifications.equipment and equipment is None:
         raise UnsupportedTooltipItemError(
             f"{item_id}: classified as equipment but has no source-backed equipment rule"
@@ -328,7 +338,7 @@ def build_search_item(
         search_lines.extend(
             SearchLine("attribute", line)
             for value, label, scale in modifiers
-            if (line := _format_modifier(value, label, scale)) is not None
+            if (line := _format_modifier(value, label, scale, catalog)) is not None
         )
     return SearchItem(
         item_id=item_id,
@@ -341,6 +351,7 @@ def build_search_item(
 
 def _equipment_attributes(
     item_id: str,
+    catalog: TranslationCatalog | None,
 ) -> tuple[str, tuple[tuple[Decimal, str, Decimal], ...]] | None:
     if not item_id.startswith("minecraft:"):
         return None
@@ -355,12 +366,16 @@ def _equipment_attributes(
         modifiers = (
             (
                 tool_material.attack_damage + tool_type.constructor_damage[material],
-                "Attack Damage",
+                _translation(catalog, "attribute.name.generic.attack_damage", "Attack Damage"),
                 Decimal("1"),
             ),
-            (tool_type.attack_speed[material], "Attack Speed", Decimal("1")),
+            (
+                tool_type.attack_speed[material],
+                _translation(catalog, "attribute.name.generic.attack_speed", "Attack Speed"),
+                Decimal("1"),
+            ),
         )
-        return _MAIN_HAND_HEADER, modifiers
+        return _translation(catalog, "item.modifiers.mainhand", _MAIN_HAND_HEADER), modifiers
 
     armor_material = ARMOR_MATERIALS.get(material)
     header = _ARMOR_HEADERS.get(item_type)
@@ -371,16 +386,28 @@ def _equipment_attributes(
     ):
         return None
     modifiers = [
-        (armor_material.protection[item_type], "Armor", Decimal("1")),
-        (armor_material.toughness, "Armor Toughness", Decimal("1")),
+        (
+            armor_material.protection[item_type],
+            _translation(catalog, "attribute.name.generic.armor", "Armor"),
+            Decimal("1"),
+        ),
+        (
+            armor_material.toughness,
+            _translation(catalog, "attribute.name.generic.armor_toughness", "Armor Toughness"),
+            Decimal("1"),
+        ),
     ]
     if armor_material.knockback_resistance != 0:
         modifiers.append((
             armor_material.knockback_resistance,
-            "Knockback Resistance",
+            _translation(
+                catalog,
+                "attribute.name.generic.knockback_resistance",
+                "Knockback Resistance",
+            ),
             Decimal("10"),
         ))
-    return header, tuple(modifiers)
+    return _translation(catalog, _ARMOR_HEADER_KEYS[item_type], header), tuple(modifiers)
 
 
 def _validated_hide_flags(
@@ -428,13 +455,35 @@ def _load_classification_list(
     return frozenset(raw)
 
 
-def _format_modifier(value: Decimal, label: str, scale: Decimal) -> str | None:
+def _format_modifier(
+    value: Decimal,
+    label: str,
+    scale: Decimal,
+    catalog: TranslationCatalog | None,
+) -> str | None:
     if value == 0:
         return None
-    sign = "+" if value > 0 else "-"
-    return f"{sign}{_format_number(abs(value) * scale)} {label}"
+    number = _format_number(abs(value) * scale)
+    if catalog is None:
+        sign = "+" if value > 0 else "-"
+        return f"{sign}{number} {label}"
+    key = "attribute.modifier.plus.0" if value > 0 else "attribute.modifier.take.0"
+    return catalog.format(key, number, label)
 
 
 def _format_number(value: Decimal) -> str:
     rounded = value.quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN)
     return format(rounded, "f").rstrip("0").rstrip(".") or "0"
+
+
+def _translation(
+    catalog: TranslationCatalog | None,
+    key: str,
+    fallback: str,
+) -> str:
+    return fallback if catalog is None else catalog.translation(key)
+
+
+def _banner_pattern_description_key(item_id: str) -> str:
+    path = item_id.removeprefix("minecraft:")
+    return f"item.minecraft.{path}.desc"

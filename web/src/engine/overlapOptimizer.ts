@@ -1,5 +1,6 @@
 import type { CollectionMatchExplanation } from './search'
-import { scoreStep, transitionTypingCost } from './scoring'
+import { maximumJunkItems } from './resultLimit'
+import { scoreStep, sharedCharacterCount, transitionTypingCost } from './scoring'
 import {
   prepareOptimization,
   type OptimizeInput,
@@ -32,6 +33,7 @@ export interface OverlapResult {
   junkItemIds: string[]
   totalJunkAppearances: number
   newCharacterCount: number
+  characterReuseCount: number
   score: OverlapScoreBreakdown
 }
 
@@ -41,6 +43,7 @@ interface SearchState {
   steps: OverlapStep[]
   totalJunkAppearances: number
   newCharacterCount: number
+  characterReuseCount: number
   score: OverlapScoreBreakdown
 }
 
@@ -48,8 +51,11 @@ interface RankedPath {
   steps: OverlapStep[]
   totalJunkAppearances: number
   newCharacterCount: number
+  characterReuseCount: number
   score: OverlapScoreBreakdown
 }
+
+export const MAXIMUM_ORDINARY_BACKSPACES = 3
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
@@ -66,11 +72,22 @@ function compareSequences(left: readonly OverlapStep[], right: readonly OverlapS
   return left.length - right.length
 }
 
+function correctionKeyCount(steps: readonly OverlapStep[]): number {
+  return steps.slice(1).reduce((total, step, index) => {
+    const previousQuery = steps[index].query
+    const usesShiftHome = step.retainedPrefix.length === 0
+      && step.freeBackspaceCount >= previousQuery.length
+    return total + (usesShiftHome ? 2 : step.freeBackspaceCount)
+  }, 0)
+}
+
 function compareRankedPaths(left: RankedPath, right: RankedPath): number {
   return left.score.total - right.score.total
     || left.totalJunkAppearances - right.totalJunkAppearances
     || left.steps.length - right.steps.length
     || left.newCharacterCount - right.newCharacterCount
+    || correctionKeyCount(left.steps) - correctionKeyCount(right.steps)
+    || right.characterReuseCount - left.characterReuseCount
     || compareSequences(left.steps, right.steps)
 }
 
@@ -94,6 +111,35 @@ function candidateJunkScore(candidate: PreparedCandidate) {
   return scoreStep(0, candidate.junkItemIds.length)
 }
 
+function coversInitialTargetRange(mask: bigint): boolean {
+  const coveredCount = countBits(mask)
+  const initialRange = (1n << BigInt(coveredCount)) - 1n
+  return mask === initialRange
+}
+
+function usesTooManyOrdinaryBackspaces(previousQuery: string, nextQuery: string): boolean {
+  const presentation = transitionPresentation(previousQuery, nextQuery)
+  const usesShiftHome = presentation.retainedPrefix.length === 0
+    && presentation.freeBackspaceCount >= previousQuery.length
+  return !usesShiftHome && presentation.freeBackspaceCount > MAXIMUM_ORDINARY_BACKSPACES
+}
+
+export function transitionPresentation(previousQuery: string, nextQuery: string): {
+  retainedPrefix: string
+  freeBackspaceCount: number
+  typedSuffix: string
+} {
+  const typedCharacterCount = transitionTypingCost(previousQuery, nextQuery)
+  const retainedLength = nextQuery.length - typedCharacterCount
+  const backspaceCount = previousQuery.length - retainedLength
+  const replacesWholeQuery = nextQuery.length <= backspaceCount
+  return {
+    retainedPrefix: replacesWholeQuery ? '' : nextQuery.slice(0, retainedLength),
+    freeBackspaceCount: replacesWholeQuery ? previousQuery.length : backspaceCount,
+    typedSuffix: replacesWholeQuery ? nextQuery : nextQuery.slice(retainedLength),
+  }
+}
+
 function initialState(candidate: PreparedCandidate): SearchState {
   const stepScore = scoreStep(candidate.query.length, candidate.junkItemIds.length)
 
@@ -112,6 +158,7 @@ function initialState(candidate: PreparedCandidate): SearchState {
     }],
     totalJunkAppearances: candidate.junkItemIds.length,
     newCharacterCount: candidate.query.length,
+    characterReuseCount: 0,
     score: {
       initialLengthPenalty: stepScore.lengthPenalty,
       transitionTypingPenalty: 0,
@@ -129,8 +176,12 @@ function transitionState(
 ): SearchState {
   const newMask = candidate.targetMask & ~state.coveredMask
   const typedCharacterCount = transitionTypingCost(state.lastQuery, candidate.query)
-  const retainedLength = candidate.query.length - typedCharacterCount
+  const presentation = transitionPresentation(state.lastQuery, candidate.query)
   const junkScore = candidateJunkScore(candidate)
+  const additionalCharacterReuse = state.steps.reduce(
+    (count, step) => count + sharedCharacterCount(step.query, candidate.query),
+    0,
+  )
 
   return {
     coveredMask: state.coveredMask | candidate.targetMask,
@@ -141,12 +192,11 @@ function transitionState(
       newTargetIds: targetIdsForMask(targetIds, newMask),
       junkItemIds: candidate.junkItemIds,
       explanations: candidate.explanations,
-      retainedPrefix: candidate.query.slice(0, retainedLength),
-      freeBackspaceCount: state.lastQuery.length - retainedLength,
-      typedSuffix: candidate.query.slice(retainedLength),
+      ...presentation,
     }],
     totalJunkAppearances: state.totalJunkAppearances + candidate.junkItemIds.length,
     newCharacterCount: state.newCharacterCount + typedCharacterCount,
+    characterReuseCount: state.characterReuseCount + additionalCharacterReuse,
     score: {
       initialLengthPenalty: state.score.initialLengthPenalty,
       transitionTypingPenalty: state.score.transitionTypingPenalty + typedCharacterCount,
@@ -182,6 +232,7 @@ function toResult(state: SearchState, targetIds: string[]): OverlapResult {
     junkItemIds: [...combinedJunk].sort(compareText),
     totalJunkAppearances: state.totalJunkAppearances,
     newCharacterCount: state.newCharacterCount,
+    characterReuseCount: state.characterReuseCount,
     score: state.score,
   }
 }
@@ -202,14 +253,20 @@ function resultsFromBuckets(
     .sort(compareRankedPaths)
 }
 
-export function optimizeOverlapPrepared(prepared: PreparedOptimization): OverlapResult[] {
+export function optimizeOverlapPrepared(
+  prepared: PreparedOptimization,
+  options: Pick<CooperativeOverlapOptions, 'retainTargetOrder'> = {},
+): OverlapResult[] {
   const { targetIds, candidates } = prepared
   if (targetIds.length === 0) return []
+  const maximumJunk = maximumJunkItems(targetIds.length)
 
   const statesByCoverage = createStateBuckets(targetIds.length)
 
   for (const candidate of candidates) {
+    if (candidate.junkItemIds.length > maximumJunk) continue
     const state = initialState(candidate)
+    if (options.retainTargetOrder && !coversInitialTargetRange(state.coveredMask)) continue
     retainBetterState(statesByCoverage[countBits(state.coveredMask)], state)
   }
 
@@ -217,6 +274,9 @@ export function optimizeOverlapPrepared(prepared: PreparedOptimization): Overlap
     for (const state of statesByCoverage[coveredCount].values()) {
       for (const candidate of candidates) {
         if ((candidate.targetMask & ~state.coveredMask) === 0n) continue
+        if (state.totalJunkAppearances + candidate.junkItemIds.length > maximumJunk) continue
+        if (usesTooManyOrdinaryBackspaces(state.lastQuery, candidate.query)) continue
+        if (options.retainTargetOrder && !coversInitialTargetRange(state.coveredMask | candidate.targetMask)) continue
 
         const nextState = transitionState(state, candidate, targetIds)
         retainBetterState(statesByCoverage[countBits(nextState.coveredMask)], nextState)
@@ -232,6 +292,7 @@ export interface CooperativeOverlapOptions {
   yieldControl: () => Promise<void>
   workChunkSize?: number
   onProgress?: (completed: number) => void
+  retainTargetOrder?: boolean
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
@@ -248,6 +309,7 @@ export async function optimizeOverlapPreparedCooperatively(
 ): Promise<OverlapResult[]> {
   const { targetIds, candidates } = prepared
   if (targetIds.length === 0) return []
+  const maximumJunk = maximumJunkItems(targetIds.length)
 
   const statesByCoverage = createStateBuckets(targetIds.length)
   const workChunkSize = boundedChunkSize(options.workChunkSize)
@@ -272,8 +334,11 @@ export async function optimizeOverlapPreparedCooperatively(
   throwIfAborted(options.signal)
   options.onProgress?.(completed)
   for (const candidate of candidates) {
+    if (candidate.junkItemIds.length > maximumJunk) continue
     const state = initialState(candidate)
-    retainBetterState(statesByCoverage[countBits(state.coveredMask)], state)
+    if (!options.retainTargetOrder || coversInitialTargetRange(state.coveredMask)) {
+      retainBetterState(statesByCoverage[countBits(state.coveredMask)], state)
+    }
     const pendingYield = recordWork()
     if (pendingYield) await pendingYield
   }
@@ -281,7 +346,10 @@ export async function optimizeOverlapPreparedCooperatively(
   for (let coveredCount = 1; coveredCount < targetIds.length; coveredCount += 1) {
     for (const state of statesByCoverage[coveredCount].values()) {
       for (const candidate of candidates) {
-        if ((candidate.targetMask & ~state.coveredMask) !== 0n) {
+        if ((candidate.targetMask & ~state.coveredMask) !== 0n
+          && state.totalJunkAppearances + candidate.junkItemIds.length <= maximumJunk
+          && !usesTooManyOrdinaryBackspaces(state.lastQuery, candidate.query)
+          && (!options.retainTargetOrder || coversInitialTargetRange(state.coveredMask | candidate.targetMask))) {
           const nextState = transitionState(state, candidate, targetIds)
           retainBetterState(statesByCoverage[countBits(nextState.coveredMask)], nextState)
         }

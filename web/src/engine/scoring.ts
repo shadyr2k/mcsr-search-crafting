@@ -29,6 +29,29 @@ export function transitionTypingCost(from: string, to: string): number {
   return to.length - retained
 }
 
+export function sharedCharacterCount(left: string, right: string): number {
+  const leftCharacters = new Set(left)
+  const sharedCharacters = new Set<string>()
+
+  for (const character of right) {
+    if (leftCharacters.has(character)) sharedCharacters.add(character)
+  }
+
+  return sharedCharacters.size
+}
+
+export function sequenceCharacterReuse(queries: readonly string[]): number {
+  let reuseCount = 0
+
+  for (let index = 0; index < queries.length; index += 1) {
+    for (let previousIndex = 0; previousIndex < index; previousIndex += 1) {
+      reuseCount += sharedCharacterCount(queries[previousIndex], queries[index])
+    }
+  }
+
+  return reuseCount
+}
+
 export function maximumValidScore(targetCount: number, visibleCount: number): number {
   return 3
     + 5 * (targetCount - 1)

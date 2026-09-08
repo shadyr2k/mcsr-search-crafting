@@ -62,4 +62,18 @@ describe('matchItem', () => {
       matchedSpan: { start: 1, end: 2, text: 'x' },
     }])
   })
+
+  test('matches Unicode localized text without an English-only normalization assumption', () => {
+    const japaneseItem: SearchItem = {
+      ...item,
+      searchLines: [{ source: 'name', text: 'ダイヤモンドの剣' }],
+    }
+
+    expect(matchItem(japaneseItem, 'モンド')).toEqual([{
+      itemId: 'minecraft:diamond_sword',
+      source: 'name',
+      line: 'ダイヤモンドの剣',
+      matchedSpan: { start: 3, end: 6, text: 'モンド' },
+    }])
+  })
 })
