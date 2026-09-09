@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react'
 
+import { advancementTooltip } from '../data/advancementTooltips'
 import { loadLocalizedLanguageInfo } from '../data/schema'
 import type { LocalizedLanguageInfo } from '../domain/types'
 import { isRtlLocale } from './LanguageSelector'
@@ -66,8 +67,8 @@ export function LanguageInfoPanel({ locale, languageName }: LanguageInfoPanelPro
           const translation = localized?.name ?? entry.english
           const isAdvancement = section.id === 'advancements'
           const tooltipId = `${tooltipPrefix}-${entry.id}`
-          const englishRequirement = entry.englishRequirement
-          const tooltipVisible = isAdvancement && englishRequirement !== undefined && hoveredAdvancement === entry.id
+          const tooltipText = isAdvancement ? advancementTooltip(entry.id, entry.englishRequirement) : undefined
+          const tooltipVisible = tooltipText !== undefined && hoveredAdvancement === entry.id
           return <div
             key={entry.id}
             className={`language-info-panel__row${isAdvancement ? ' language-info-panel__row--advancement' : ''}`}
@@ -80,7 +81,7 @@ export function LanguageInfoPanel({ locale, languageName }: LanguageInfoPanelPro
           >
             <dt>{entry.english}</dt>
             <dd dir={direction}>{translation}</dd>
-            {tooltipVisible && <span id={tooltipId} className="language-info-panel__tooltip" role="tooltip">{englishRequirement}</span>}
+            {tooltipVisible && <span id={tooltipId} className="language-info-panel__tooltip" role="tooltip">{tooltipText}</span>}
           </div>
         })}
       </dl>

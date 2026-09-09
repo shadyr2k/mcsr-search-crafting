@@ -43,7 +43,7 @@ function stubData(icons: Record<string, string> = { 'minecraft:stick': 'minecraf
           key: 'advancements.story.smelt_iron.title',
           english: 'Acquire Hardware',
           requirement_key: 'advancements.story.smelt_iron.description',
-          english_requirement: 'Smelt an iron ingot',
+          english_requirement: 'Minecraft requirement text should not be displayed',
         }],
       },
       locales: {
@@ -100,7 +100,13 @@ describe('App workspace composition', () => {
 
     fireEvent.click(screen.getByRole('switch', { name: 'Switch to dark mode' }))
     expect(document.documentElement.dataset.theme).toBe('dark')
-    expect(JSON.parse(localStorage.getItem('mcsr.theme-preference.v1') ?? '{}')).toEqual({ schemaVersion: 1, theme: 'dark' })
+    expect(document.documentElement.dataset.themeColor).toBe('pink')
+    expect(JSON.parse(localStorage.getItem('mcsr.theme-preference.v1') ?? '{}')).toEqual({ schemaVersion: 2, mode: 'dark', color: 'pink' })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Choose color theme' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Select green theme' }))
+    expect(document.documentElement.dataset.themeColor).toBe('green')
+    expect(JSON.parse(localStorage.getItem('mcsr.theme-preference.v1') ?? '{}')).toEqual({ schemaVersion: 2, mode: 'dark', color: 'green' })
 
     first.unmount()
     stubData()
@@ -108,6 +114,7 @@ describe('App workspace composition', () => {
 
     expect(screen.getByRole('switch', { name: 'Switch to light mode' }).getAttribute('aria-checked')).toBe('true')
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'))
+    expect(document.documentElement.dataset.themeColor).toBe('green')
   })
 
   test('opens a draft editor and persists a new set only after Save', async () => {
@@ -231,7 +238,7 @@ describe('App workspace composition', () => {
     expect(document.querySelector('.language-selector')).toBe(sharedLanguageSelector)
     expect(screen.getByText('Leicht')).toBeTruthy()
     fireEvent.pointerEnter(screen.getByText('Beschaffe dir Hardware').closest('.language-info-panel__row')!)
-    expect((await screen.findByRole('tooltip')).textContent).toBe('Smelt an iron ingot')
+    expect((await screen.findByRole('tooltip')).textContent).toBe('obtain iron')
     expect(document.querySelector('.language-info-panel')).toBeTruthy()
   })
 

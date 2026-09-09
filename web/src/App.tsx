@@ -6,6 +6,7 @@ import { ItemIcon } from './components/ItemIcon'
 import { ItemSetEditor, type ItemSetEditorCommit, type ItemSetEditorState } from './components/ItemSetEditor'
 import { ItemSetWorkspace } from './components/ItemSetWorkspace'
 import { LanguageInfoPanel } from './components/LanguageInfoPanel'
+import { RecipeBookSim } from './components/RecipeBookSim'
 import { SiteInfoPanel } from './components/SiteInfoPanel'
 import { englishLocaleName, isBannedLocale, isRtlLocale, LanguageSelector, resultsColumnTitle } from './components/LanguageSelector'
 import { assertIconCoverage, loadIconManifest, type IconManifest } from './data/iconManifest'
@@ -13,12 +14,13 @@ import { loadGeneratedData, loadLanguageMetadata, loadLocalizedGeneratedData } f
 import type { CustomInventoryPreset, GeneratedData, ItemSetDraft, LanguageMetadata, TargetWorkspace, TargetWorkspaceEntry } from './domain/types'
 import { useRowOptimizations } from './hooks/useRowOptimizations'
 import { useLanguageScores } from './hooks/useLanguageScores'
-import { clearCustomInventorySlot, loadCustomInventorySlots, loadLanguagePreferences, loadTargetWorkspace, loadThemePreference, saveCustomInventorySlot, saveLanguagePreferences, saveTargetWorkspace, saveThemePreference, type ThemePreference } from './persistence/storage'
+import { clearCustomInventorySlot, loadCustomInventorySlots, loadLanguagePreferences, loadTargetWorkspace, loadThemePreference, saveCustomInventorySlot, saveLanguagePreferences, saveTargetWorkspace, saveThemePreference, type ThemeColor, type ThemePreference } from './persistence/storage'
+import { ThemePicker } from './components/ThemePicker'
 import { draftFromEntry, newItemSetDraft } from './workspace/entryDraft'
 import { starterWorkspace } from './workspace/starterWorkspace'
 
 type OpenEditor = (ItemSetEditorState & { entryId?: string }) | null
-type AppPage = 'home' | 'language-info' | 'site-info'
+type AppPage = 'home' | 'language-info' | 'site-info' | 'recipe-book-sim'
 
 function sharesLanguageColumn(left: AppPage, right: AppPage): boolean {
   return (left === 'home' && right === 'language-info') || (left === 'language-info' && right === 'home')
@@ -72,7 +74,7 @@ function App() {
   const [languages, setLanguages] = useState<LanguageMetadata[]>([])
   const [selectedLocale, setSelectedLocale] = useState('en_us')
   const [enabledBannedLocales, setEnabledBannedLocales] = useState<ReadonlySet<string>>(new Set())
-  const [theme, setTheme] = useState<ThemePreference>('light')
+  const [theme, setTheme] = useState<ThemePreference>({ mode: 'light', color: 'pink' })
   const [page, setPage] = useState<AppPage>('home')
   const [hasNavigated, setHasNavigated] = useState(false)
   const [loadingLocale, setLoadingLocale] = useState<string>()
@@ -128,8 +130,12 @@ function App() {
   }, [])
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme
-    return () => { delete document.documentElement.dataset.theme }
+    document.documentElement.dataset.theme = theme.mode
+    document.documentElement.dataset.themeColor = theme.color
+    return () => {
+      delete document.documentElement.dataset.theme
+      delete document.documentElement.dataset.themeColor
+    }
   }, [theme])
 
   useEffect(() => {
@@ -239,7 +245,14 @@ function App() {
   }
 
   function toggleTheme() {
-    const nextTheme: ThemePreference = theme === 'light' ? 'dark' : 'light'
+    const nextTheme: ThemePreference = { ...theme, mode: theme.mode === 'light' ? 'dark' : 'light' }
+    setTheme(nextTheme)
+    const result = saveThemePreference(nextTheme)
+    setWarning((current) => combineWarnings(current, result.warning))
+  }
+
+  function selectThemeColor(color: ThemeColor) {
+    const nextTheme: ThemePreference = { ...theme, color }
     setTheme(nextTheme)
     const result = saveThemePreference(nextTheme)
     setWarning((current) => combineWarnings(current, result.warning))
@@ -277,16 +290,18 @@ function App() {
         <nav className="app-header__nav" aria-label="Main navigation">
           <button type="button" aria-current={page === 'home' ? 'page' : undefined} onClick={() => selectPage('home')}>craft info</button>
           <button type="button" aria-current={page === 'language-info' ? 'page' : undefined} onClick={() => selectPage('language-info')}>language info</button>
+          <button type="button" aria-current={page === 'recipe-book-sim' ? 'page' : undefined} onClick={() => selectPage('recipe-book-sim')}>recipe book sim</button>
           <button type="button" aria-current={page === 'site-info' ? 'page' : undefined} onClick={() => selectPage('site-info')}>site info</button>
         </nav>
       </div>
       <div className="app-header__menu">
+        {icons && <ThemePicker theme={theme} icons={icons} onThemeColorChange={selectThemeColor} />}
         <button
           type="button"
           className="theme-switch"
           role="switch"
-          aria-checked={theme === 'dark'}
-          aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+          aria-checked={theme.mode === 'dark'}
+          aria-label={`Switch to ${theme.mode === 'dark' ? 'light' : 'dark'} mode`}
           onClick={toggleTheme}
         >
           <span className="theme-switch__light" aria-hidden="true">☀</span>
@@ -296,7 +311,16 @@ function App() {
       </div>
     </header>
     {warning && <p role="alert">{warning}</p>}{error && <p role="alert">{error}</p>}
-    {data && icons && <div ref={workspaceTransitionRef} className={`workspace-grid workspace-transition workspace-transition--${page}${hasNavigated ? ' workspace-transition--animated' : ''}`}>
+    {data && icons && page === 'recipe-book-sim' && <RecipeBookSim
+      data={data}
+      icons={icons}
+      customSlots={customSlots}
+      languages={languages}
+      selectedLocale={selectedLocale}
+      enabledBannedLocales={enabledBannedLocales}
+      onLocaleChange={selectLocale}
+    />}
+    {data && icons && page !== 'recipe-book-sim' && <div ref={workspaceTransitionRef} className={`workspace-grid workspace-transition workspace-transition--${page}${hasNavigated ? ' workspace-transition--animated' : ''}`}>
       <ItemSetWorkspace dir={isRtlLocale(selectedLocale) ? 'rtl' : 'ltr'} entries={workspace.entries} items={data.items} icons={icons} onWorkspaceChange={setWorkspace} onEdit={openEdit} onAdd={openAdd} />
       <LanguageSelector containerRef={languageSelectorRef} languages={languages} selectedLocale={selectedLocale} enabledBannedLocales={enabledBannedLocales} scores={languageScores} loadingLocale={loadingLocale} onSelect={selectLocale} onBannedLocaleEnabledChange={setBannedLocaleEnabled} />
       <section className="results-column" dir={isRtlLocale(selectedLocale) ? 'rtl' : 'ltr'} aria-label={editor ? (editor.kind === 'new' ? 'New item set' : `Edit item set ${editorNumber}`) : 'Calculated searches'}>

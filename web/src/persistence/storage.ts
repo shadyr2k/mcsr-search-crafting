@@ -46,15 +46,25 @@ export interface LanguagePreferences {
   enabledBannedLocales: string[]
 }
 
-export type ThemePreference = 'light' | 'dark'
+export type ThemeMode = 'light' | 'dark'
+export type ThemeColor = 'pink' | 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple' | 'gray'
+
+export interface ThemePreference {
+  mode: ThemeMode
+  color: ThemeColor
+}
 
 interface VersionedLanguagePreferences extends LanguagePreferences {
   schemaVersion: 1
 }
 
-interface VersionedThemePreference {
+interface VersionedThemePreferenceV1 {
   schemaVersion: 1
-  theme: ThemePreference
+  theme: ThemeMode
+}
+
+interface VersionedThemePreference extends ThemePreference {
+  schemaVersion: 2
 }
 
 const volatileRecordsByStorage = new WeakMap<Storage, Map<string, string | null>>()
@@ -457,28 +467,52 @@ export function saveLanguagePreferences(
   return { warning: target.warning }
 }
 
-function isThemePreference(value: unknown): value is VersionedThemePreference {
+function defaultThemePreference(): ThemePreference {
+  return { mode: 'light', color: 'pink' }
+}
+
+function isThemePreferenceV1(value: unknown): value is VersionedThemePreferenceV1 {
   return isRecord(value)
     && value.schemaVersion === 1
     && (value.theme === 'light' || value.theme === 'dark')
     && Object.keys(value).every((key) => key === 'schemaVersion' || key === 'theme')
 }
 
+function isThemePreference(value: unknown): value is VersionedThemePreference {
+  return isRecord(value)
+    && value.schemaVersion === 2
+    && (value.mode === 'light' || value.mode === 'dark')
+    && (value.color === 'pink' || value.color === 'red' || value.color === 'orange' || value.color === 'yellow' || value.color === 'green' || value.color === 'blue' || value.color === 'purple' || value.color === 'gray')
+    && Object.keys(value).every((key) => key === 'schemaVersion' || key === 'mode' || key === 'color')
+}
+
+function saveThemePreferenceRecord(theme: ThemePreference, storage: ResilientStorage): void {
+  storage.setItem(THEME_PREFERENCE_KEY, JSON.stringify({ schemaVersion: 2, ...theme } satisfies VersionedThemePreference))
+}
+
 export function loadThemePreference(storage?: Storage): PersistenceLoadResult<ThemePreference> {
   const target = storageOrDefault(storage)
   const raw = target.getItem(THEME_PREFERENCE_KEY)
-  if (raw === null) return { value: 'light', warning: target.warning }
+  if (raw === null) return { value: defaultThemePreference(), warning: target.warning }
   try {
     const parsed = parseJson(target, THEME_PREFERENCE_KEY)
-    if (!isThemePreference(parsed)) return recover(target, THEME_PREFERENCE_KEY, 'theme-preference', raw, 'light')
-    return { value: parsed.theme, warning: target.warning }
+    if (isThemePreferenceV1(parsed)) {
+      const preference = { mode: parsed.theme, color: 'pink' } satisfies ThemePreference
+      saveThemePreferenceRecord(preference, target)
+      return { value: preference, warning: target.warning }
+    }
+    if (!isThemePreference(parsed)) return recover(target, THEME_PREFERENCE_KEY, 'theme-preference', raw, defaultThemePreference())
+    return { value: { mode: parsed.mode, color: parsed.color }, warning: target.warning }
   } catch {
-    return recover(target, THEME_PREFERENCE_KEY, 'theme-preference', raw, 'light')
+    return recover(target, THEME_PREFERENCE_KEY, 'theme-preference', raw, defaultThemePreference())
   }
 }
 
 export function saveThemePreference(theme: ThemePreference, storage?: Storage): PersistenceSaveResult {
+  if (!isThemePreference({ schemaVersion: 2, ...theme })) {
+    throw new TypeError('Theme preferences must contain a valid mode and color.')
+  }
   const target = storageOrDefault(storage)
-  target.setItem(THEME_PREFERENCE_KEY, JSON.stringify({ schemaVersion: 1, theme } satisfies VersionedThemePreference))
+  saveThemePreferenceRecord(theme, target)
   return { warning: target.warning }
 }

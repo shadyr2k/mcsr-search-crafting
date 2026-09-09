@@ -1,11 +1,12 @@
 @font-face { font-family: 'Geom'; src: url('./assets/fonts/Geom-Medium.ttf') format('truetype'); font-weight: 500; font-display: swap; }
 @font-face { font-family: 'Coiny'; src: url('./assets/fonts/Coiny-Regular.ttf') format('truetype'); font-weight: 400; font-display: swap; }
 @font-face { font-family: 'Figtree'; src: url('./assets/fonts/Figtree-VariableFont_wght.ttf') format('truetype'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'Cal Sans'; src: url('./assets/fonts/CalSans-Regular.ttf') format('truetype'); font-weight: 400; font-display: swap; }
 
 :root { font-family: 'Geom', system-ui, sans-serif; color: #5b2030; background: #fff2f4; --page: #fff2f4; --panel: #ffe1e6; --panel-selected: #ffcbd5; --border: #d98798; --accent: #d9586c; --accent-strong: #ad344d; --text: #5b2030; --muted: #875565; --match: #ffd27d; --error: #9f233d; --focus: #7b2746; }
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; }
-body { min-height: 100vh; margin: 0; background: radial-gradient(circle at 12% 8%, #ffd8e0 0, #ffd8e000 27rem), radial-gradient(circle at 88% 78%, #f5bbc9 0, #f5bbc900 32rem), linear-gradient(145deg, #f6c6d1, #e99caf); background-attachment: fixed; text-transform: lowercase; }
+body { min-height: 100vh; margin: 0; background: radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--panel) 82%, transparent) 0, transparent 27rem), radial-gradient(circle at 88% 78%, color-mix(in srgb, var(--accent) 32%, transparent) 0, transparent 32rem), linear-gradient(145deg, var(--page), var(--panel-selected)); background-attachment: fixed; text-transform: lowercase; }
 button, input, select { font: inherit; }
 button, input, select { border: 2px solid var(--border); border-radius: .5rem; color: var(--text); background: #fff8f9; min-height: 2.75rem; }
 button { padding: .45rem .7rem; cursor: pointer; background: var(--panel); }

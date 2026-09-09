@@ -384,20 +384,28 @@ describe('language preference persistence', () => {
 })
 
 describe('theme preference persistence', () => {
-  test('round trips the selected theme', () => {
+  test('round trips the selected theme mode and color', () => {
     const storage = new MemoryStorage()
 
-    saveThemePreference('dark', storage)
+    saveThemePreference({ mode: 'dark', color: 'green' }, storage)
 
-    expect(loadThemePreference(storage)).toEqual({ value: 'dark', warning: undefined })
+    expect(loadThemePreference(storage)).toEqual({ value: { mode: 'dark', color: 'green' }, warning: undefined })
   })
 
-  test('falls back to light for an invalid saved theme', () => {
+  test('migrates a saved light or dark preference to the pink theme', () => {
+    const storage = new MemoryStorage()
+    storage.setItem('mcsr.theme-preference.v1', JSON.stringify({ schemaVersion: 1, theme: 'dark' }))
+
+    expect(loadThemePreference(storage)).toEqual({ value: { mode: 'dark', color: 'pink' }, warning: undefined })
+    expect(JSON.parse(storage.getItem('mcsr.theme-preference.v1')!)).toEqual({ schemaVersion: 2, mode: 'dark', color: 'pink' })
+  })
+
+  test('falls back to the pink light theme for an invalid saved theme', () => {
     const storage = new MemoryStorage()
     storage.setItem('mcsr.theme-preference.v1', JSON.stringify({ schemaVersion: 1, theme: 'purple' }))
 
     expect(loadThemePreference(storage)).toEqual({
-      value: 'light',
+      value: { mode: 'light', color: 'pink' },
       warning: expect.stringMatching(/theme-preference.*reset/i),
     })
   })
