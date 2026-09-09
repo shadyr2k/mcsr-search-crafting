@@ -15,12 +15,19 @@ import { useRowOptimizations } from './hooks/useRowOptimizations'
 import { useLanguageScores } from './hooks/useLanguageScores'
 import { clearCustomInventorySlot, loadCustomInventorySlots, loadLanguagePreferences, loadTargetWorkspace, loadThemePreference, saveCustomInventorySlot, saveLanguagePreferences, saveTargetWorkspace, saveThemePreference, type ThemePreference } from './persistence/storage'
 import { draftFromEntry, newItemSetDraft } from './workspace/entryDraft'
+import { starterWorkspace } from './workspace/starterWorkspace'
 
 type OpenEditor = (ItemSetEditorState & { entryId?: string }) | null
 type AppPage = 'home' | 'language-info' | 'site-info'
 
 function sharesLanguageColumn(left: AppPage, right: AppPage): boolean {
   return (left === 'home' && right === 'language-info') || (left === 'language-info' && right === 'home')
+}
+
+function canAnimateLanguageColumn(): boolean {
+  return typeof window === 'undefined'
+    || typeof window.matchMedia !== 'function'
+    || !window.matchMedia('(max-width: 72rem)').matches
 }
 
 function orderedEntries(entries: readonly TargetWorkspaceEntry[]): TargetWorkspaceEntry[] {
@@ -99,7 +106,8 @@ function App() {
       const locale = isBannedLocale(languagePreferences.value.selectedLocale) && !enabledLocales.has(languagePreferences.value.selectedLocale)
         ? 'en_us'
         : languagePreferences.value.selectedLocale
-      setWorkspace((current) => normalizeWorkspaceGridSizes(current, loadedData))
+      const initialWorkspace = saved.isFirstVisit ? starterWorkspace(loadedData) : saved.value
+      setWorkspace(normalizeWorkspaceGridSizes(initialWorkspace, loadedData))
       setBaseData(loadedData)
       setData(loadedData)
       setIcons(loadedIcons)
@@ -241,7 +249,7 @@ function App() {
     if (nextPage === page) return
     if (languageAnimationFrameRef.current !== undefined) cancelAnimationFrame(languageAnimationFrameRef.current)
     const selector = languageSelectorRef.current
-    if (sharesLanguageColumn(page, nextPage)) {
+    if (sharesLanguageColumn(page, nextPage) && canAnimateLanguageColumn()) {
       priorLanguagePositionRef.current = selector?.getBoundingClientRect()
     } else {
       priorLanguagePositionRef.current = undefined

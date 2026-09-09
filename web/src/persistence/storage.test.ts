@@ -176,6 +176,20 @@ describe('custom inventory slot persistence', () => {
 })
 
 describe('target workspace persistence', () => {
+  test('marks only a missing workspace record as a first visit', () => {
+    const storage = new MemoryStorage()
+
+    expect(loadTargetWorkspace(storage)).toEqual({
+      value: { entries: [] },
+      warning: undefined,
+      isFirstVisit: true,
+    })
+
+    saveTargetWorkspace({ entries: [] }, storage)
+
+    expect(loadTargetWorkspace(storage).isFirstVisit).toBe(false)
+  })
+
   test('migrates every valid version-one row with an empty exact inventory', () => {
     const storage = new MemoryStorage()
     const raw = JSON.stringify({
@@ -246,7 +260,7 @@ describe('target workspace persistence', () => {
     saveTargetWorkspace(saved, storage)
 
     expect(storage.getItem('mcsr.inventory-slots.v1')).toBeNull()
-    expect(loadTargetWorkspace(storage)).toEqual({ value: saved, warning: undefined })
+    expect(loadTargetWorkspace(storage)).toEqual({ value: saved, warning: undefined, isFirstVisit: false })
     expect(JSON.parse(storage.getItem('mcsr.target-workspace.v1')!)).toEqual({
       schemaVersion: 2,
       ...saved,

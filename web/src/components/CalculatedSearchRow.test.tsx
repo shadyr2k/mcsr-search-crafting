@@ -372,6 +372,31 @@ describe('CalculatedSearchRow', () => {
     expect(within(overlapCategory).getAllByRole('listitem', { name: /Overlap craft:/ })).toHaveLength(4)
   })
 
+  test('can hide digit-containing regular and overlap crafts for one item set', () => {
+    const numericOverlap = search(['+8', 'axe'], 3, 'overlap')
+    numericOverlap.steps[1] = { ...numericOverlap.steps[1], freeBackspaceCount: 1 }
+    const textOverlap = search(['stone', 'axe'], 4, 'overlap')
+    textOverlap.steps[1] = { ...textOverlap.steps[1], freeBackspaceCount: 1 }
+    const rankedSearches = [search(['3'], 1), search(['sword'], 2), numericOverlap, textOverlap]
+    render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches, bestScore: 1, visibleItemIds: [] } }} items={items} icons={icons} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
+    const filter = screen.getByRole('group', { name: 'Number craft filter' })
+    const regularCategory = screen.getByRole('region', { name: 'Regular crafts' })
+    const overlapCategory = screen.getByRole('region', { name: 'Overlap crafts' })
+    expect(within(filter).getByRole('button', { name: 'show' }).getAttribute('aria-pressed')).toBe('true')
+    expect(within(regularCategory).getByRole('listitem', { name: 'Regular craft: 3' })).toBeTruthy()
+    expect(within(overlapCategory).getByRole('listitem', { name: 'Overlap craft: +8, 1 backspace, axe' })).toBeTruthy()
+
+    fireEvent.click(within(filter).getByRole('button', { name: 'hide' }))
+
+    expect(within(regularCategory).queryByRole('listitem', { name: 'Regular craft: 3' })).toBeNull()
+    expect(within(overlapCategory).queryByRole('listitem', { name: 'Overlap craft: +8, 1 backspace, axe' })).toBeNull()
+    expect(within(regularCategory).getByRole('listitem', { name: 'Regular craft: sword' })).toBeTruthy()
+    expect(within(overlapCategory).getByRole('listitem', { name: 'Overlap craft: stone, 1 backspace, axe' })).toBeTruthy()
+    expect(within(filter).getByRole('button', { name: 'hide' }).getAttribute('aria-pressed')).toBe('true')
+  })
+
   test('uses two previews from a category when the other category has no crafts', () => {
     const rankedSearches = [
       search(['aw', 'be'], 1, 'overlap'),

@@ -11,6 +11,10 @@ export interface PersistenceLoadResult<T> {
   warning: string | undefined
 }
 
+export interface TargetWorkspaceLoadResult extends PersistenceLoadResult<TargetWorkspace> {
+  isFirstVisit: boolean
+}
+
 export interface PersistenceSaveResult {
   warning: string | undefined
 }
@@ -379,8 +383,10 @@ function loadWorkspace(target: ResilientStorage): PersistenceLoadResult<TargetWo
   }
 }
 
-export function loadTargetWorkspace(storage?: Storage): PersistenceLoadResult<TargetWorkspace> {
-  return loadWorkspace(storageOrDefault(storage))
+export function loadTargetWorkspace(storage?: Storage): TargetWorkspaceLoadResult {
+  const target = storageOrDefault(storage)
+  const isFirstVisit = target.getItem(TARGET_WORKSPACE_KEY) === null && target.warning === undefined
+  return { ...loadWorkspace(target), isFirstVisit }
 }
 
 export function saveTargetWorkspace(workspace: TargetWorkspace, storage?: Storage): PersistenceSaveResult {

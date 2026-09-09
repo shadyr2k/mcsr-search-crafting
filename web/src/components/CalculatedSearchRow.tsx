@@ -96,6 +96,10 @@ function isJunkless(craft: CraftGroup): boolean {
   return craftContents(craft).junkItemIds.length === 0
 }
 
+function usesNumberQuery(craft: CraftGroup): boolean {
+  return craft.search.queries.some((query) => /\p{Number}/u.test(query))
+}
+
 function preferredOverlapCraft(overlap: readonly CraftGroup[]): CraftGroup | undefined {
   const junklessBackspaceCraft = overlap.find((craft) => !usesOnlyShiftHomeReplacements(craft) && isJunkless(craft))
   if (junklessBackspaceCraft) return junklessBackspaceCraft
@@ -426,6 +430,7 @@ export function CalculatedSearchRow({ entry, entryNumber, state, items, icons, c
   const [hasExpanded, setHasExpanded] = useState(false)
   const [overlapView, setOverlapView] = useState<'junkless' | 'other'>('junkless')
   const [expandedOverlapViews, setExpandedOverlapViews] = useState({ junkless: false, other: false })
+  const [showNumberCrafts, setShowNumberCrafts] = useState(true)
   const listId = useId()
   const label = `item set ${entryNumber}`
   if (!entry.enabled) return null
@@ -445,8 +450,10 @@ export function CalculatedSearchRow({ entry, entryNumber, state, items, icons, c
 
   const regular = groupCrafts(state.outcome.rankedSearches, 'single')
   const overlap = groupCrafts(state.outcome.rankedSearches, 'overlap')
-  const previews = compactPreviews(regular, overlap)
-  const displayedOverlap = orderedOverlapCrafts(overlap)
+  const hasNumberCrafts = [...regular, ...overlap].some(usesNumberQuery)
+  const displayedRegular = showNumberCrafts ? regular : regular.filter((craft) => !usesNumberQuery(craft))
+  const displayedOverlap = orderedOverlapCrafts(showNumberCrafts ? overlap : overlap.filter((craft) => !usesNumberQuery(craft)))
+  const previews = compactPreviews(displayedRegular, displayedOverlap)
   const junklessOverlap = displayedOverlap.filter((craft) => craftContents(craft).junkItemIds.length === 0)
   const otherOverlap = displayedOverlap.filter((craft) => craftContents(craft).junkItemIds.length > 0)
   const visibleOverlapView = overlapView === 'junkless' && junklessOverlap.length === 0 ? 'other' : overlapView
@@ -465,6 +472,20 @@ export function CalculatedSearchRow({ entry, entryNumber, state, items, icons, c
       disabled={otherOverlap.length === 0}
       onClick={() => setOverlapView('other')}
     >other</button>
+  </div>
+  const numberCraftFilter = hasNumberCrafts && <div className="number-craft-filter" role="group" aria-label="Number craft filter">
+    <span>number crafts</span>
+    <button
+      type="button"
+      aria-pressed={showNumberCrafts}
+      onClick={() => setShowNumberCrafts(true)}
+    >show</button>
+    <span aria-hidden="true">|</span>
+    <button
+      type="button"
+      aria-pressed={!showNumberCrafts}
+      onClick={() => setShowNumberCrafts(false)}
+    >hide</button>
   </div>
   const toggleCrafts = () => {
     setExpanded((current) => {
@@ -496,7 +517,8 @@ export function CalculatedSearchRow({ entry, entryNumber, state, items, icons, c
     </div>
     {hasExpanded && <div id={listId} className={`craft-categories${expanded ? ' craft-categories--open' : ''}`} aria-hidden={!expanded}>
       <div className="craft-categories__content">
-      {regular.length > 0 && <CraftCategory category={{ kind: 'single', name: 'Regular crafts', title: 'regular crafts', crafts: regular }} items={items} icons={icons} collections={collections} />}
+      {numberCraftFilter}
+      {displayedRegular.length > 0 && <CraftCategory category={{ kind: 'single', name: 'Regular crafts', title: 'regular crafts', crafts: displayedRegular }} items={items} icons={icons} collections={collections} />}
       {visibleOverlapCrafts.length > 0 && <CraftCategory
         category={{ kind: 'overlap', name: 'Overlap crafts', title: 'overlap crafts', headerControl: overlapHeaderControl, crafts: visibleOverlapCrafts }}
         items={items}
