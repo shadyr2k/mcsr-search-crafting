@@ -141,6 +141,22 @@ describe('ItemSetEditor', () => {
     expect(onCancel).toHaveBeenCalledOnce()
   })
 
+  test('keeps the stacked editor open until Cancel or its close button is used', () => {
+    const originalMatchMedia = window.matchMedia
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: () => ({ matches: true }),
+    })
+    const { onCancel } = renderEditor(newItemSetDraft())
+
+    fireEvent.pointerDown(document.body)
+    expect(onCancel).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Close item set editor' }))
+    expect(onCancel).toHaveBeenCalledOnce()
+
+    Object.defineProperty(window, 'matchMedia', { configurable: true, value: originalMatchMedia })
+  })
+
   test('closes an open picker before cancelling the editor on a later outside press', async () => {
     const user = userEvent.setup()
     const { onCancel } = renderEditor(newItemSetDraft())

@@ -2,6 +2,9 @@
 @font-face { font-family: 'Coiny'; src: url('./assets/fonts/Coiny-Regular.ttf') format('truetype'); font-weight: 400; font-display: swap; }
 @font-face { font-family: 'Figtree'; src: url('./assets/fonts/Figtree-VariableFont_wght.ttf') format('truetype'); font-weight: 100 900; font-display: swap; }
 @font-face { font-family: 'Cal Sans'; src: url('./assets/fonts/CalSans-Regular.ttf') format('truetype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Monocraft'; src: url('./assets/fonts/Monocraft-no-ligatures.ttc') format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Monocraft'; src: url('./assets/fonts/Monocraft-no-ligatures.ttc') format('truetype'); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Monocraft'; src: url('./assets/fonts/Monocraft-Bold-no-ligatures.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap; }
 
 :root { font-family: 'Geom', system-ui, sans-serif; color: #5b2030; background: #fff2f4; --page: #fff2f4; --panel: #ffe1e6; --panel-selected: #ffcbd5; --border: #d98798; --accent: #d9586c; --accent-strong: #ad344d; --text: #5b2030; --muted: #875565; --match: #ffd27d; --error: #9f233d; --focus: #7b2746; }
 * { box-sizing: border-box; }
@@ -13,6 +16,6 @@ button { padding: .45rem .7rem; cursor: pointer; background: var(--panel); }
 button:hover:not(:disabled) { background: var(--panel-selected); border-color: var(--accent-strong); }
 button:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
-.item-icon { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; object-fit: contain; image-rendering: pixelated; image-rendering: crisp-edges; vertical-align: middle; }
+.item-icon { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; aspect-ratio: 1; object-fit: contain; image-rendering: pixelated; vertical-align: middle; }
 .item-icon--compact { width: 2rem; height: 2rem; }.item-icon--picker { width: 2.75rem; height: 2.75rem; }.item-icon--detail { width: 4rem; height: 4rem; }
 .item-icon--fallback { width: auto; min-width: 2.5rem; max-width: 8rem; padding: .2rem .35rem; overflow: hidden; border: 1px solid var(--border); color: var(--text); background: var(--panel); }.item-icon__fallback-label { overflow: hidden; font-size: .625rem; text-overflow: ellipsis; white-space: nowrap; }

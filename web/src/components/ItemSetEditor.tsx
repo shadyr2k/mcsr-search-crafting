@@ -76,6 +76,7 @@ export function ItemSetEditor({
 
   useEffect(() => {
     function cancelOutsideEditor(event: PointerEvent) {
+      if (window.matchMedia?.('(max-width: 72rem)').matches) return
       if (event.target instanceof Node && !editorRef.current?.contains(event.target) && !openPickers.goals && !openPickers.inventory) onCancel()
     }
 
@@ -106,6 +107,7 @@ export function ItemSetEditor({
   }
 
   return <section ref={editorRef} className="item-set-editor" aria-label={state.kind === 'new' ? 'New item set' : 'Edit item set'}>
+    <button type="button" className="item-set-editor__dismiss" aria-label="Close item set editor" onClick={onCancel}>×</button>
     <h2>{state.kind === 'new' ? 'New item set' : 'Edit item set'}</h2>
     <ItemPicker
       items={pickerData?.items ?? data.items}

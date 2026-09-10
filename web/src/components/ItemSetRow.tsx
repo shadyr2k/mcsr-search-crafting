@@ -7,10 +7,13 @@ interface ItemSetRowProps {
   entryNumber: number
   items: ReadonlyMap<string, SearchItem>
   icons: IconManifest
-  canMoveUp: boolean
-  canMoveDown: boolean
+  isDragging: boolean
+  isDropTarget: boolean
   onToggleEnabled: () => void
   onMove: (direction: -1 | 1) => void
+  onDragStart: () => void
+  onDragMove: (clientX: number, clientY: number) => void
+  onDragEnd: () => void
   onEdit: () => void
 }
 
@@ -19,13 +22,43 @@ export function ItemSetRow({
   entryNumber,
   items,
   icons,
-  canMoveUp,
-  canMoveDown,
+  isDragging,
+  isDropTarget,
   onToggleEnabled,
   onMove,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
   onEdit,
 }: ItemSetRowProps) {
-  return <article className="item-set-row" aria-label={`Item set ${entryNumber}`}>
+  return <article
+    className={`item-set-row${isDragging ? ' item-set-row--dragging' : ''}${isDropTarget ? ' item-set-row--drop-target' : ''}`}
+    data-item-set-id={entry.id}
+    aria-label={`Item set ${entryNumber}`}
+  >
+    <button
+      type="button"
+      className="item-set-row__drag-handle"
+      aria-label={`Reorder item set ${entryNumber}. Drag to move, or use Alt plus Up or Down Arrow.`}
+      onPointerDown={(event) => {
+        if (event.isPrimary === false) return
+        event.currentTarget.setPointerCapture?.(event.pointerId)
+        onDragStart()
+      }}
+      onPointerMove={(event) => {
+        if (event.isPrimary !== false) onDragMove(event.clientX, event.clientY)
+      }}
+      onPointerUp={(event) => {
+        event.currentTarget.releasePointerCapture?.(event.pointerId)
+        onDragEnd()
+      }}
+      onPointerCancel={onDragEnd}
+      onKeyDown={(event) => {
+        if (!event.altKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return
+        event.preventDefault()
+        onMove(event.key === 'ArrowUp' ? -1 : 1)
+      }}
+    ><span aria-hidden="true" /></button>
     <button type="button" className="item-set-row__goals" onClick={onEdit} aria-label={`Edit item set ${entryNumber}`}>
       {entry.targetIds.map((itemId) => {
         const item = items.get(itemId)
@@ -45,7 +78,5 @@ export function ItemSetRow({
     >
       {entry.enabled ? 'enabled' : 'disabled'}
     </button>
-    <button type="button" disabled={!canMoveUp} onClick={() => onMove(-1)} aria-label={`Move item set ${entryNumber} up`}>↑</button>
-    <button type="button" disabled={!canMoveDown} onClick={() => onMove(1)} aria-label={`Move item set ${entryNumber} down`}>↓</button>
   </article>
 }

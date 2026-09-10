@@ -27,6 +27,11 @@ export interface CraftingRecipe {
   outputItemId: string
   outputCount: number
   ingredientSlots: IngredientSlot[]
+  /** Row-major recipe cells; null cells preserve gaps in shaped recipes. */
+  ingredientLayout?: Array<IngredientSlot | null>
+  /** Dimensions of the trimmed recipe pattern, used to retain its orientation. */
+  width?: number
+  height?: number
   fits2x2: boolean
   fits3x3: boolean
 }

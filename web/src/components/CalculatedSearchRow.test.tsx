@@ -194,8 +194,8 @@ describe('CalculatedSearchRow', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
     const craftRow = within(screen.getByRole('region', { name: 'Overlap crafts' })).getByRole('listitem', { name: /Overlap craft: bo/ })
-    expect(within(screen.getByLabelText('Search step 1')).getByLabelText('Junk preview: 2 of 4 items')).toBeTruthy()
-    expect(within(screen.getByLabelText('Search step 2')).getByLabelText('Junk preview: 2 of 5 items')).toBeTruthy()
+    expect(within(screen.getByLabelText('Search step 1')).getByLabelText('Junk preview: 1 of 4 items')).toBeTruthy()
+    expect(within(screen.getByLabelText('Search step 2')).getByLabelText('Junk preview: 1 of 5 items')).toBeTruthy()
 
     fireEvent.click(within(craftRow).getByRole('button', { name: /Show why Overlap craft: bo/ }))
     expect(within(screen.getByLabelText('Search step 1')).getByLabelText('All junk for bo: 4 items')).toBeTruthy()
@@ -228,8 +228,8 @@ describe('CalculatedSearchRow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
     const regularCategory = screen.getByRole('region', { name: 'Regular crafts' })
     const craftRow = within(regularCategory).getByRole('listitem', { name: 'Regular craft: wn' })
-    expect(within(craftRow).getByLabelText('Junk preview: 2 of 5 items')).toBeTruthy()
-    expect(within(craftRow).getByLabelText('3 more junk items')).toBeTruthy()
+    expect(within(craftRow).getByLabelText('Junk preview: 1 of 5 items')).toBeTruthy()
+    expect(within(craftRow).getByLabelText('4 more junk items')).toBeTruthy()
 
     fireEvent.click(within(craftRow).getByRole('button', { name: 'Show why Regular craft: wn' }))
     expect(within(craftRow).getByLabelText('All junk: 5 items')).toBeTruthy()
@@ -238,35 +238,17 @@ describe('CalculatedSearchRow', () => {
     expect(within(craftRow).queryByTitle(/line Brown Stick/)).toBeNull()
   })
 
-  test('uses a text-only compact row when the item preview cannot fit three icons', () => {
+  test('keeps compact item previews visible instead of dropping them at narrow widths', () => {
     const craft = search(['very long query', 'another long query', 'final query'], 1)
     craft.steps[0].junkItemIds = Array.from({ length: 5 }, () => 'minecraft:stick')
-    const originalClientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
-    const originalScrollWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollWidth')
-    Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
-      configurable: true,
-      get() { return this.classList?.contains('craft-result__item-preview') ? 80 : 0 },
-    })
-    Object.defineProperty(HTMLElement.prototype, 'scrollWidth', {
-      configurable: true,
-      get() { return this.classList?.contains('craft-result__item-preview') ? 160 : 0 },
-    })
+    render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [craft], bestScore: 1, visibleItemIds: [] } }} items={items} icons={icons} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
+    const craftRow = within(screen.getByRole('region', { name: 'Regular crafts' })).getByRole('listitem', { name: /Regular craft: very_long_query/ })
 
-    try {
-      render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [craft], bestScore: 1, visibleItemIds: [] } }} items={items} icons={icons} />)
-      fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
-      const craftRow = within(screen.getByRole('region', { name: 'Regular crafts' })).getByRole('listitem', { name: /Regular craft: very_long_query/ })
-
-      expect(craftRow.classList.contains('craft-result--items-overflow')).toBe(true)
-      fireEvent.click(within(craftRow).getByRole('button', { name: /Show why Regular craft: very_long_query/ }))
-      expect(craftRow.classList.contains('craft-result--items-overflow')).toBe(false)
-      expect(within(craftRow).getByLabelText('All junk: 5 items')).toBeTruthy()
-    } finally {
-      if (originalClientWidth) Object.defineProperty(HTMLElement.prototype, 'clientWidth', originalClientWidth)
-      else delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth
-      if (originalScrollWidth) Object.defineProperty(HTMLElement.prototype, 'scrollWidth', originalScrollWidth)
-      else delete (HTMLElement.prototype as { scrollWidth?: number }).scrollWidth
-    }
+    expect(craftRow.classList.contains('craft-result--items-overflow')).toBe(false)
+    expect(craftRow.querySelector('.craft-result__item-preview img')).toBeTruthy()
+    fireEvent.click(within(craftRow).getByRole('button', { name: /Show why Regular craft: very_long_query/ }))
+    expect(within(craftRow).getByLabelText('All junk: 5 items')).toBeTruthy()
   })
 
   test('cycles every matched member of a collection capture group instead of listing them separately', () => {

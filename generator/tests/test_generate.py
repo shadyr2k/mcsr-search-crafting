@@ -107,6 +107,12 @@ def test_generate_writes_stable_versioned_files(fixture_data, tmp_path):
         {"accepted_items": ["minecraft:oak_planks"]},
         {"accepted_items": ["minecraft:oak_planks"]},
     ]
+    assert recipes["recipes"][0]["ingredient_layout"] == [
+        {"accepted_items": ["minecraft:oak_planks"]},
+        {"accepted_items": ["minecraft:oak_planks"]},
+        {"accepted_items": ["minecraft:oak_planks"]},
+        {"accepted_items": ["minecraft:oak_planks"]},
+    ]
     assert not (output / "validation-failure-report.json").exists()
 
 

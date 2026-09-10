@@ -18,12 +18,12 @@ def parse_recipe(recipe_id: str, raw: dict[str, object]) -> NormalizedRecipe | N
 
     output_item, output_count = _parse_result(recipe_id, raw.get("result"))
     if recipe_type == "minecraft:crafting_shaped":
-        slots, width, height = _parse_shaped(recipe_id, raw)
+        slots, layout, width, height = _parse_shaped(recipe_id, raw)
         normalized_type: Literal["shaped", "shapeless"] = "shaped"
         fits_2x2 = width <= 2 and height <= 2
         fits_3x3 = width <= 3 and height <= 3
     else:
-        slots, width, height = _parse_shapeless(recipe_id, raw)
+        slots, layout, width, height = _parse_shapeless(recipe_id, raw)
         normalized_type = "shapeless"
         fits_2x2 = len(slots) <= 4
         fits_3x3 = len(slots) <= 9
@@ -39,6 +39,7 @@ def parse_recipe(recipe_id: str, raw: dict[str, object]) -> NormalizedRecipe | N
         height=height,
         fits_2x2=fits_2x2,
         fits_3x3=fits_3x3,
+        ingredient_layout=tuple(layout),
     )
 
 
@@ -65,8 +66,8 @@ def load_crafting_recipes(path: Path) -> list[NormalizedRecipe]:
 
 def resolve_recipe_ingredients(recipe: NormalizedRecipe, tags: TagResolver) -> NormalizedRecipe:
     """Return a recipe whose slots include each concrete accepted item."""
-    slots = tuple(
-        replace(
+    def resolve_slot(slot: IngredientSlot) -> IngredientSlot:
+        return replace(
             slot,
             accepted_items=tuple(sorted({
                 item
@@ -74,9 +75,13 @@ def resolve_recipe_ingredients(recipe: NormalizedRecipe, tags: TagResolver) -> N
                 for item in (tags.resolve(option.value) if option.kind == "tag" else (option.value,))
             })),
         )
-        for slot in recipe.ingredient_slots
+
+    slots = tuple(resolve_slot(slot) for slot in recipe.ingredient_slots)
+    layout = tuple(
+        None if slot is None else resolve_slot(slot)
+        for slot in recipe.ingredient_layout
     )
-    return replace(recipe, ingredient_slots=slots)
+    return replace(recipe, ingredient_slots=slots, ingredient_layout=layout)
 
 
 def _parse_result(recipe_id: str, raw_result: object) -> tuple[str, int]:
@@ -93,7 +98,7 @@ def _parse_result(recipe_id: str, raw_result: object) -> tuple[str, int]:
     return item, count
 
 
-def _parse_shaped(recipe_id: str, raw: dict[str, object]) -> tuple[list[IngredientSlot], int, int]:
+def _parse_shaped(recipe_id: str, raw: dict[str, object]) -> tuple[list[IngredientSlot], list[IngredientSlot | None], int, int]:
     raw_pattern = raw.get("pattern")
     if not isinstance(raw_pattern, list) or not raw_pattern or not all(isinstance(row, str) for row in raw_pattern):
         raise RecipeParseError(f"{recipe_id}: pattern must be a non-empty list of strings")
@@ -104,14 +109,18 @@ def _parse_shaped(recipe_id: str, raw: dict[str, object]) -> tuple[list[Ingredie
         raise RecipeParseError(f"{recipe_id}: shaped recipe key must be an object")
 
     slots: list[IngredientSlot] = []
+    layout: list[IngredientSlot | None] = []
     for row in pattern:
         for symbol in row:
             if symbol == " ":
+                layout.append(None)
                 continue
             if symbol not in raw_key:
                 raise RecipeParseError(f"{recipe_id}: pattern symbol {symbol!r} is missing key")
-            slots.append(_parse_slot(recipe_id, raw_key[symbol]))
-    return slots, len(pattern[0]), len(pattern)
+            slot = _parse_slot(recipe_id, raw_key[symbol])
+            slots.append(slot)
+            layout.append(slot)
+    return slots, layout, len(pattern[0]), len(pattern)
 
 
 def _trim_pattern(pattern: list[str], recipe_id: str) -> list[str]:
@@ -134,12 +143,12 @@ def _trim_pattern(pattern: list[str], recipe_id: str) -> list[str]:
     return [row[left:right + 1] for row in trimmed]
 
 
-def _parse_shapeless(recipe_id: str, raw: dict[str, object]) -> tuple[list[IngredientSlot], int, int]:
+def _parse_shapeless(recipe_id: str, raw: dict[str, object]) -> tuple[list[IngredientSlot], list[IngredientSlot], int, int]:
     raw_ingredients = raw.get("ingredients")
     if not isinstance(raw_ingredients, list) or not raw_ingredients:
         raise RecipeParseError(f"{recipe_id}: shapeless ingredients must be a non-empty list")
     slots = [_parse_slot(recipe_id, ingredient) for ingredient in raw_ingredients]
-    return slots, len(slots), 1
+    return slots, slots, len(slots), 1
 
 
 def _parse_slot(recipe_id: str, raw_slot: object) -> IngredientSlot:

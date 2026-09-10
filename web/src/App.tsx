@@ -283,7 +283,7 @@ function App() {
     <header className="app-header">
       <div className="app-header__brand">
         {icons && <ItemIcon itemId="minecraft:smithing_table" name="smithing table" manifest={icons} size="detail" className="app-header__icon" />}
-        <div>
+        <div className="app-header__title">
           <h1>MCSR search crafting</h1>
           <p className="app-header__subtitle">optimize recipe book results</p>
         </div>
@@ -313,6 +313,7 @@ function App() {
     {warning && <p role="alert">{warning}</p>}{error && <p role="alert">{error}</p>}
     {data && icons && page === 'recipe-book-sim' && <RecipeBookSim
       data={data}
+      englishItems={baseData?.items ?? data.items}
       icons={icons}
       customSlots={customSlots}
       languages={languages}
@@ -321,18 +322,27 @@ function App() {
       onLocaleChange={selectLocale}
     />}
     {data && icons && page !== 'recipe-book-sim' && <div ref={workspaceTransitionRef} className={`workspace-grid workspace-transition workspace-transition--${page}${hasNavigated ? ' workspace-transition--animated' : ''}`}>
-      <ItemSetWorkspace dir={isRtlLocale(selectedLocale) ? 'rtl' : 'ltr'} entries={workspace.entries} items={data.items} icons={icons} onWorkspaceChange={setWorkspace} onEdit={openEdit} onAdd={openAdd} />
-      <LanguageSelector containerRef={languageSelectorRef} languages={languages} selectedLocale={selectedLocale} enabledBannedLocales={enabledBannedLocales} scores={languageScores} loadingLocale={loadingLocale} onSelect={selectLocale} onBannedLocaleEnabledChange={setBannedLocaleEnabled} />
-      <section className="results-column" dir={isRtlLocale(selectedLocale) ? 'rtl' : 'ltr'} aria-label={editor ? (editor.kind === 'new' ? 'New item set' : `Edit item set ${editorNumber}`) : 'Calculated searches'}>
-        {!editor && <h2 className="results-column__title" dir="ltr">{resultsColumnTitle(selectedLocale, languages)}</h2>}
-        {editor ? <ItemSetEditor
+      <ItemSetWorkspace
+        dir={isRtlLocale(selectedLocale) ? 'rtl' : 'ltr'}
+        entries={workspace.entries}
+        items={data.items}
+        icons={icons}
+        onWorkspaceChange={setWorkspace}
+        onEdit={openEdit}
+        onAdd={openAdd}
+        editor={editor && <ItemSetEditor
           state={editor} entryNumber={editorNumber} data={data} pickerData={baseData} icons={icons} customSlots={customSlots}
           onDraftChange={updateDraft}
           onSave={(commit) => { setWorkspace((current) => commitDraft(current, commit)); setEditor(null) }}
           onCancel={() => setEditor(null)}
           onDelete={editor.entryId ? () => { setWorkspace((current) => deleteEntry(current, editor.entryId!)); setEditor(null) } : undefined}
           onSaveCustomSlot={saveSlot} onClearCustomSlot={clearSlot}
-        /> : entries.map((entry, index) => <CalculatedSearchRow
+        />}
+      />
+      <LanguageSelector containerRef={languageSelectorRef} languages={languages} selectedLocale={selectedLocale} enabledBannedLocales={enabledBannedLocales} scores={languageScores} loadingLocale={loadingLocale} onSelect={selectLocale} onBannedLocaleEnabledChange={setBannedLocaleEnabled} />
+      <section className="results-column" dir={isRtlLocale(selectedLocale) ? 'rtl' : 'ltr'} aria-label="Calculated searches">
+        <h2 className="results-column__title" dir="ltr">{resultsColumnTitle(selectedLocale, languages)}</h2>
+        {entries.map((entry, index) => <CalculatedSearchRow
           key={entry.id} entry={entry} entryNumber={index + 1} state={states.get(entry.id)} items={data.items} icons={icons} collections={data.collections} onRetry={() => retry(entry.id)}
         />)}
       </section>

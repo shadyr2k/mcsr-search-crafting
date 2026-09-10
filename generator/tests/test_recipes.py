@@ -20,6 +20,25 @@ def test_shaped_recipe_is_trimmed_and_grid_compatible():
     assert recipe.width == 1
     assert recipe.height == 2
     assert recipe.fits_2x2 is True
+    assert [slot.options[0].value if slot else None for slot in recipe.ingredient_layout] == [
+        "minecraft:iron_ingot", "minecraft:stick",
+    ]
+
+
+def test_shaped_recipe_preserves_empty_cells_in_its_trimmed_layout():
+    recipe = parse_recipe("minecraft:test", {
+        "type": "minecraft:crafting_shaped",
+        "pattern": ["A A", "A A"],
+        "key": {"A": {"item": "minecraft:gold_ingot"}},
+        "result": {"item": "minecraft:golden_boots"},
+    })
+
+    assert recipe.width == 3
+    assert recipe.height == 2
+    assert [slot.options[0].value if slot else None for slot in recipe.ingredient_layout] == [
+        "minecraft:gold_ingot", None, "minecraft:gold_ingot",
+        "minecraft:gold_ingot", None, "minecraft:gold_ingot",
+    ]
 
 
 def test_shaped_recipe_trimming_does_not_mutate_the_source_pattern():

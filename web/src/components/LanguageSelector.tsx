@@ -157,6 +157,64 @@ function categoryTitle(category: LanguageCategory): string {
   return 'banned'
 }
 
+function LanguageOption({
+  language,
+  selectedLocale,
+  enabledBannedLocales,
+  scores,
+  scorePositionByLocale,
+  loadingLocale,
+  onSelect,
+  onBannedLocaleEnabledChange,
+}: {
+  language: LanguageMetadata
+  selectedLocale: string
+  enabledBannedLocales: ReadonlySet<string>
+  scores: ReadonlyMap<string, LanguageScoreState>
+  scorePositionByLocale: ReadonlyMap<string, number>
+  loadingLocale?: string
+  onSelect: (locale: string) => void
+  onBannedLocaleEnabledChange: (locale: string, enabled: boolean) => void
+}) {
+  const displayName = languageDisplayName(language)
+  const banned = isBannedLocale(language.locale)
+  const enabled = !banned || enabledBannedLocales.has(language.locale)
+  const selected = language.locale === selectedLocale
+  const score = scores.get(language.locale)
+  const scorePosition = scorePositionByLocale.get(language.locale)
+
+  return <li className="language-selector__language">
+    <button
+      type="button"
+      dir="ltr"
+      aria-pressed={selected}
+      aria-label={`${englishLanguageName(language)} - ${displayName}`}
+      disabled={!enabled || loadingLocale !== undefined}
+      onClick={() => onSelect(language.locale)}
+    >
+      <span>
+        {englishLanguageName(language)} - <span dir={isRtlLocale(language.locale) ? 'rtl' : 'ltr'}>{displayName}</span>
+      </span>
+      {score?.status === 'ready' && <strong
+        className="language-selector__score"
+        style={{ '--language-score-position': scorePosition } as CSSProperties}
+        aria-hidden="true"
+      >{scoreText(score.score)}</strong>}
+      {score?.status === 'pending' && <span className="language-selector__score" aria-hidden="true">…</span>}
+    </button>
+    {banned && <button
+      type="button"
+      className="language-selector__enable"
+      role="switch"
+      aria-label={`Enable ${displayName} for calculation`}
+      aria-checked={enabled}
+      onClick={() => onBannedLocaleEnabledChange(language.locale, !enabled)}
+    >
+      {enabled ? 'on' : 'off'}
+    </button>}
+  </li>
+}
+
 export function LanguageSelector({
   languages,
   selectedLocale,
@@ -168,6 +226,7 @@ export function LanguageSelector({
   containerRef,
 }: LanguageSelectorProps) {
   const [query, setQuery] = useState('')
+  const selectedLanguage = languages.find((language) => language.locale === selectedLocale)
   const normalizedQuery = normalizeSearchText(query.trim())
   const scorePositionByLocale = useMemo(() => scorePositions(scores), [scores])
   const categories = useMemo(() => {
@@ -189,9 +248,32 @@ export function LanguageSelector({
     })
     return grouped
   }, [languages, scores])
+  const compactMatches = useMemo(() => (
+    (['latin', 'non_latin', 'banned'] as const)
+      .flatMap((category) => categories[category])
+      .filter((language) => languageMatches(language, normalizedQuery))
+      .slice(0, 5)
+  ), [categories, normalizedQuery])
+  const languageOptionProps = {
+    selectedLocale,
+    enabledBannedLocales,
+    scores,
+    scorePositionByLocale,
+    loadingLocale,
+    onSelect: (locale: string) => {
+      setQuery('')
+      onSelect(locale)
+    },
+    onBannedLocaleEnabledChange,
+  }
 
   return <section ref={containerRef} className="language-selector" aria-label="Languages">
     <h2 className="language-selector__title">language list</h2>
+    <p className="language-selector__selected" aria-live="polite">
+      selected: {selectedLanguage
+        ? <><span>{englishLanguageName(selectedLanguage)}</span> - {languageDisplayName(selectedLanguage)}</>
+        : 'english'}
+    </p>
     <input
       className="language-selector__search"
       type="search"
@@ -200,49 +282,17 @@ export function LanguageSelector({
       value={query}
       onChange={(event) => setQuery(event.target.value)}
     />
+    {normalizedQuery && <section className="language-selector__compact-results" aria-label="Language search results">
+      {compactMatches.length > 0
+        ? <ul>{compactMatches.map((language) => <LanguageOption key={language.locale} language={language} {...languageOptionProps} />)}</ul>
+        : <p className="language-selector__empty">no matching languages</p>}
+    </section>}
     {(['latin', 'non_latin', 'banned'] as const).map((category) => {
       const languagesInCategory = categories[category].filter((language) => languageMatches(language, normalizedQuery))
       return <section key={category} className="language-selector__category" aria-label={categoryTitle(category)}>
         <h2>{categoryTitle(category)}</h2>
         <ul>
-          {languagesInCategory.map((language) => {
-            const displayName = languageDisplayName(language)
-            const banned = category === 'banned'
-            const enabled = !banned || enabledBannedLocales.has(language.locale)
-            const selected = language.locale === selectedLocale
-            const score = scores.get(language.locale)
-            const scorePosition = scorePositionByLocale.get(language.locale)
-            return <li key={language.locale} className="language-selector__language">
-              <button
-                type="button"
-                dir="ltr"
-                aria-pressed={selected}
-                aria-label={`${englishLanguageName(language)} - ${displayName}`}
-                disabled={!enabled || loadingLocale !== undefined}
-                onClick={() => onSelect(language.locale)}
-              >
-                <span>
-                  {englishLanguageName(language)} - <span dir={isRtlLocale(language.locale) ? 'rtl' : 'ltr'}>{displayName}</span>
-                </span>
-                {score?.status === 'ready' && <strong
-                  className="language-selector__score"
-                  style={{ '--language-score-position': scorePosition } as CSSProperties}
-                  aria-hidden="true"
-                >{scoreText(score.score)}</strong>}
-                {score?.status === 'pending' && <span className="language-selector__score" aria-hidden="true">…</span>}
-              </button>
-              {banned && <button
-                type="button"
-                className="language-selector__enable"
-                role="switch"
-                aria-label={`Enable ${displayName} for calculation`}
-                aria-checked={enabled}
-                onClick={() => onBannedLocaleEnabledChange(language.locale, !enabled)}
-              >
-                {enabled ? 'on' : 'off'}
-              </button>}
-            </li>
-          })}
+          {languagesInCategory.map((language) => <LanguageOption key={language.locale} language={language} {...languageOptionProps} />)}
         </ul>
         {languagesInCategory.length === 0 && <p className="language-selector__empty">no matching languages</p>}
       </section>

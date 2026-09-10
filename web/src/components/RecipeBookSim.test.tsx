@@ -77,6 +77,120 @@ describe('RecipeBookSim', () => {
     expect(within(results).getByRole('img', { name: 'Oak Planks' })).toBeTruthy()
   })
 
+  test('shows an item detail panel instead of stack overlays when a result is selected', () => {
+    const localizedData: GeneratedData = {
+      ...data,
+      items: new Map([
+        ...data.items,
+        ['minecraft:oak_planks', {
+          id: 'minecraft:oak_planks',
+          name: 'Planches de chêne',
+          confidence: 'exact',
+          searchLines: [
+            { source: 'name', text: 'Planches de chêne' },
+            { source: 'description', text: 'Planches pour crafting' },
+          ],
+        }],
+      ]),
+    }
+    render(<RecipeBookSim
+      data={localizedData}
+      englishItems={data.items}
+      icons={icons}
+      customSlots={[]}
+      languages={languages}
+      selectedLocale="fr_fr"
+      enabledBannedLocales={new Set()}
+      onLocaleChange={vi.fn()}
+    />)
+
+    const results = screen.getByRole('region', { name: 'Recipe book results' })
+    expect(results.querySelector('small')).toBeNull()
+    fireEvent.change(screen.getByRole('searchbox', { name: 'recipe book search' }), { target: { value: 'crafting' } })
+    fireEvent.click(screen.getByRole('button', { name: 'View Planches de chêne recipe details' }))
+
+    const detail = screen.getByRole('complementary', { name: 'Planches de chêne recipe details' })
+    expect(within(detail).getByText('Oak Planks')).toBeTruthy()
+    expect(within(detail).getByText('Planches de chêne', { selector: 'header p' })).toBeTruthy()
+    expect(within(detail).getByRole('region', { name: 'Recipe' })).toBeTruthy()
+    expect(within(detail).getByText('makes')).toBeTruthy()
+    expect(within(detail).getByText('x4')).toBeTruthy()
+    expect(within(detail).getByText('crafting', { selector: 'mark' })).toBeTruthy()
+  })
+
+  test('keeps empty cells in a shaped recipe layout', () => {
+    const goldIngot = { acceptedItems: ['minecraft:gold_ingot'] }
+    const bootsData: GeneratedData = {
+      ...data,
+      items: new Map([['minecraft:golden_boots', {
+        id: 'minecraft:golden_boots', name: 'Golden Boots', confidence: 'exact', searchLines: [{ source: 'name', text: 'Golden Boots' }],
+      }]]),
+      inventoryItems: new Map([['minecraft:gold_ingot', { id: 'minecraft:gold_ingot', name: 'Gold Ingot' }]]),
+      recipes: [{
+        id: 'minecraft:golden_boots', recipeGroup: null, recipeBookCategory: 'crafting_equipment', resultCollectionId: 'golden_boots', outputItemId: 'minecraft:golden_boots', outputCount: 1,
+        ingredientSlots: [goldIngot, goldIngot, goldIngot, goldIngot],
+        ingredientLayout: [goldIngot, null, goldIngot, goldIngot, null, goldIngot],
+        width: 3, height: 2,
+        fits2x2: false, fits3x3: true,
+      }],
+      collections: new Map([['golden_boots', {
+        id: 'golden_boots', recipeBookCategory: 'crafting_equipment', recipeGroup: null, recipeIds: ['minecraft:golden_boots'], outputItemIds: ['minecraft:golden_boots'],
+      }]]),
+      presets: new Map([['overworld', { id: 'overworld', name: 'Overworld', itemIds: ['minecraft:gold_ingot'] }]]),
+    }
+    render(<RecipeBookSim
+      data={bootsData}
+      icons={icons}
+      customSlots={[]}
+      languages={languages}
+      selectedLocale="en_us"
+      enabledBannedLocales={new Set()}
+      onLocaleChange={vi.fn()}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'View Golden Boots recipe details' }))
+    const slots = [...screen.getByRole('complementary', { name: 'Golden Boots recipe details' }).querySelectorAll('.recipe-book-sim__detail-slot')]
+    expect(slots).toHaveLength(9)
+    expect(slots.map((slot) => slot.querySelector('[role="img"]') !== null)).toEqual([
+      true, false, true,
+      true, false, true,
+      false, false, false,
+    ])
+  })
+
+  test('uses the source recipe dimensions to keep vertical recipes vertical', () => {
+    const iron = { acceptedItems: ['minecraft:iron_ingot'] }
+    const stick = { acceptedItems: ['minecraft:oak_log'] }
+    const swordData: GeneratedData = {
+      ...data,
+      recipes: [{
+        ...data.recipes.find((recipe) => recipe.id === 'minecraft:iron_sword')!,
+        ingredientSlots: [iron, iron, stick],
+        ingredientLayout: [iron, iron, stick],
+        width: 1,
+        height: 3,
+      }],
+      presets: new Map([['overworld', { id: 'overworld', name: 'Overworld', itemIds: ['minecraft:iron_ingot', 'minecraft:oak_log'] }]]),
+    }
+    render(<RecipeBookSim
+      data={swordData}
+      icons={icons}
+      customSlots={[]}
+      languages={languages}
+      selectedLocale="en_us"
+      enabledBannedLocales={new Set()}
+      onLocaleChange={vi.fn()}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'View Iron Sword recipe details' }))
+    const slots = [...screen.getByRole('complementary', { name: 'Iron Sword recipe details' }).querySelectorAll('.recipe-book-sim__detail-slot')]
+    expect(slots.map((slot) => slot.querySelector('[role="img"]') !== null)).toEqual([
+      false, true, false,
+      false, true, false,
+      false, true, false,
+    ])
+  })
+
   test('changes the global language and lists non-basic Latin letters for Latin-script locales', () => {
     const onLocaleChange = vi.fn()
     const frenchData: GeneratedData = {
@@ -135,5 +249,9 @@ describe('RecipeBookSim', () => {
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'recipe book search' }), { target: { value: 'wn' } })
     expect(within(screen.getByRole('region', { name: 'Recipe book results' })).getByRole('img', { name: 'White Bed' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'View White Bed recipe details' }))
+    const detail = screen.getByRole('complementary', { name: 'White Bed recipe details' })
+    expect(detail.querySelector('.recipe-book-sim__detail-tooltip p')?.textContent).toBe('White Bed (Brown Bed)')
+    expect(within(detail).getByText('wn', { selector: 'mark' })).toBeTruthy()
   })
 })

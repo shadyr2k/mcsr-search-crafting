@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useId, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 
 import type { IconManifest } from '../data/iconManifest'
 import type { RankedSearch, RecipeResultCollection, RowOptimizationState, SearchItem, TargetWorkspaceEntry } from '../domain/types'
@@ -116,7 +116,6 @@ function orderedOverlapCrafts(overlap: readonly CraftGroup[]): CraftGroup[] {
   return preferred === undefined ? [] : [preferred, ...overlap.filter((craft) => craft !== preferred)]
 }
 
-const MIN_COMPACT_ITEM_PREVIEW_WIDTH = 104
 const MAX_COMPACT_JUNK_ICONS = 3
 
 function compactPreviews(regular: readonly CraftGroup[], overlap: readonly CraftGroup[]): CraftGroup[] {
@@ -198,11 +197,18 @@ function CraftItems({ contents, items, icons, showJunk = true }: {
   showJunk?: boolean
 }) {
   const visibleJunkCount = contents.junkItemIds.length > MAX_COMPACT_JUNK_ICONS
-    ? MAX_COMPACT_JUNK_ICONS - 1
+    // Reserve the final compact slot for the aggregate count. Keeping one
+    // fewer icon is clearer than clipping the "+n" indicator.
+    ? MAX_COMPACT_JUNK_ICONS - 2
     : contents.junkItemIds.length
   const visibleJunk = contents.junkItemIds.slice(0, visibleJunkCount)
   const remainingJunkCount = contents.junkItemIds.length - visibleJunk.length
-  return <span className="craft-result__items" aria-label="Matched items and junk preview">
+  const visibleItemCount = contents.targetItemIds.length + visibleJunk.length
+  return <span
+    className="craft-result__items"
+    style={{ '--craft-item-count': Math.max(visibleItemCount, 1) } as CSSProperties}
+    aria-label="Matched items and junk preview"
+  >
     <span className="craft-result__targets" aria-label={`Matched targets: ${contents.targetItemIds.length} items`}>
       {contents.targetItemIds.map((itemId) => {
         const item = items.get(itemId)
@@ -305,10 +311,7 @@ function CraftDetail({ craft, items, icons, collections }: {
 }) {
   const [showEvidence, setShowEvidence] = useState(false)
   const [hasShownEvidence, setHasShownEvidence] = useState(false)
-  const [hideCompactItems, setHideCompactItems] = useState(false)
   const evidenceId = useId()
-  const resultRef = useRef<HTMLLIElement>(null)
-  const compactItemsRef = useRef<HTMLSpanElement>(null)
   const contents = useMemo(() => craftContents(craft), [craft])
   const explanations = useMemo(() => craftExplanations(craft, contents.targetItemIds, collections), [craft, contents.targetItemIds, collections])
   const name = `${categoryName(craft.kind)} craft: ${searchDescription(craft.search)}`
@@ -322,37 +325,14 @@ function CraftDetail({ craft, items, icons, collections }: {
     })
   }
 
-  useEffect(() => {
-    const result = resultRef.current
-    const compactItems = compactItemsRef.current
-    if (usesStepRows || !result || !compactItems || showEvidence || !canExpand) {
-      setHideCompactItems(false)
-      return
-    }
-
-    if (!hideCompactItems) setHideCompactItems(compactItems.clientWidth < MIN_COMPACT_ITEM_PREVIEW_WIDTH)
-    if (!('ResizeObserver' in window)) return
-
-    let width = result.clientWidth
-    const observer = new ResizeObserver((entries) => {
-      const nextWidth = Math.round(entries[0]?.contentRect.width ?? width)
-      if (nextWidth !== width) {
-        width = nextWidth
-        setHideCompactItems(false)
-      }
-    })
-    observer.observe(result)
-    return () => observer.disconnect()
-  }, [canExpand, hideCompactItems, showEvidence, usesStepRows])
-
   const bar = usesStepRows
     ? <OverlapCraftSteps search={craft.search} items={items} icons={icons} expanded={showEvidence} />
     : <>
       <SearchQuery search={craft.search} />
-      <span ref={compactItemsRef} className="craft-result__item-preview"><CraftItems contents={contents} items={items} icons={icons} showJunk={!showEvidence} /></span>
+      <span className="craft-result__item-preview"><CraftItems contents={contents} items={items} icons={icons} showJunk={!showEvidence} /></span>
     </>
 
-  return <li ref={resultRef} className={`craft-result craft-result--${craft.kind}-craft${usesStepRows ? ' craft-result--overlap' : ''}${hideCompactItems && !showEvidence ? ' craft-result--items-overflow' : ''}`} aria-label={name}>
+  return <li className={`craft-result craft-result--${craft.kind}-craft${usesStepRows ? ' craft-result--overlap' : ''}`} aria-label={name}>
     {canExpand
       ? <button
         type="button"

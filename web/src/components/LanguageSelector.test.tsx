@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { englishLanguageName, englishLocaleName, resultsColumnTitle, LanguageSelector } from './LanguageSelector'
@@ -69,8 +69,43 @@ describe('LanguageSelector', () => {
     const latinButtons = screen.getByRole('region', { name: 'latin text' }).getElementsByTagName('button')
     expect(latinButtons[0].getAttribute('aria-label')).toBe('german - deutsch (deutschland)')
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search languages' }), { target: { value: 'عرب' } })
-    expect(screen.getByRole('button', { name: 'arabic - العربية (العالم العربي)' })).toBeTruthy()
+    expect(within(screen.getByRole('region', { name: 'Language search results' })).getByRole('button', { name: 'arabic - العربية (العالم العربي)' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'elfdalian - övdalska (swerre)' })).toBeNull()
+  })
+
+  test('limits compact search results to five matching languages and includes calculated scores', () => {
+    const matchingLanguages = Array.from({ length: 6 }, (_, index) => ({
+      locale: `zz_${index}`,
+      name: `Test ${index}`,
+      region: 'Search',
+      script: 'latin' as const,
+    }))
+    render(<LanguageSelector
+      languages={matchingLanguages}
+      selectedLocale="zz_0"
+      enabledBannedLocales={new Set()}
+      scores={new Map([['zz_0', { status: 'ready', score: 3 }]])}
+      onSelect={vi.fn()}
+      onBannedLocaleEnabledChange={vi.fn()}
+    />)
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search languages' }), { target: { value: 'test' } })
+    const results = screen.getByRole('region', { name: 'Language search results' })
+    expect(within(results).getAllByRole('listitem')).toHaveLength(5)
+    expect(within(results).getByText('3')).toBeTruthy()
+  })
+
+  test('clears the compact search after selecting a language', () => {
+    const onSelect = vi.fn()
+    render(<LanguageSelector languages={languages} selectedLocale="en_us" enabledBannedLocales={new Set()} scores={new Map()} onSelect={onSelect} onBannedLocaleEnabledChange={vi.fn()} />)
+
+    const search = screen.getByRole('searchbox', { name: 'Search languages' })
+    fireEvent.change(search, { target: { value: 'german' } })
+    fireEvent.click(within(screen.getByRole('region', { name: 'Language search results' })).getByRole('button', { name: 'german - deutsch (deutschland)' }))
+
+    expect(onSelect).toHaveBeenCalledWith('de_de')
+    expect((search as HTMLInputElement).value).toBe('')
+    expect(screen.queryByRole('region', { name: 'Language search results' })).toBeNull()
   })
 
   test('scales ready language-score colors from the lowest score to the highest score', () => {

@@ -41,6 +41,9 @@ const recipe = {
   output_item_id: 'minecraft:stick',
   output_count: 4,
   ingredient_slots: [{ accepted_items: ['minecraft:stick'] }],
+  ingredient_layout: [{ accepted_items: ['minecraft:stick'] }],
+  width: 1,
+  height: 1,
   fits_2x2: true,
   fits_3x3: true,
 }
@@ -113,6 +116,9 @@ describe('parseGeneratedData', () => {
       outputItemId: 'minecraft:stick',
       outputCount: 4,
       ingredientSlots: [{ acceptedItems: ['minecraft:stick'] }],
+      ingredientLayout: [{ acceptedItems: ['minecraft:stick'] }],
+      width: 1,
+      height: 1,
       fits2x2: true,
       fits3x3: true,
     }])

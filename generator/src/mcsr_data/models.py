@@ -34,6 +34,9 @@ class NormalizedRecipe:
     height: int
     fits_2x2: bool
     fits_3x3: bool
+    # The trimmed crafting pattern in row-major order. Empty shaped-pattern
+    # cells stay as None so a recipe can be rendered in its real arrangement.
+    ingredient_layout: tuple[IngredientSlot | None, ...] = ()
     recipe_book_category: RecipeBookCategory | None = None
     result_collection_id: str | None = None
 

@@ -284,6 +284,35 @@ function parseIngredientSlots(value: unknown, path: string, errors: string[]): I
   return slots.length === value.length ? slots : undefined
 }
 
+function parseIngredientLayout(value: unknown, path: string, errors: string[]): Array<IngredientSlot | null> | undefined {
+  if (!Array.isArray(value) || value.length === 0) {
+    errors.push(`${path}: expected a non-empty array`)
+    return undefined
+  }
+
+  const layout: Array<IngredientSlot | null> = []
+  value.forEach((slot, index) => {
+    if (slot === null) {
+      layout.push(null)
+      return
+    }
+
+    const slotPath = `${path}[${index}]`
+    const record = getRecord(slot, slotPath, errors)
+    if (!record) return
+    const acceptedItems = parseUniqueStringArray(record.accepted_items, `${slotPath}.accepted_items`, errors)
+    if (acceptedItems === undefined || acceptedItems.length === 0) {
+      if (acceptedItems !== undefined) {
+        errors.push(`${slotPath}.accepted_items: expected a non-empty array`)
+      }
+      return
+    }
+    layout.push({ acceptedItems })
+  })
+
+  return layout.length === value.length ? layout : undefined
+}
+
 function parseRecipes(value: unknown, errors: string[]): IndexedRecipe[] {
   const root = getRecord(value, 'recipes', errors)
   if (!root) return []
@@ -325,11 +354,24 @@ function parseRecipes(value: unknown, errors: string[]): IndexedRecipe[] {
     const outputItemId = getNonEmptyString(record.output_item_id, `${recipePath}.output_item_id`, errors)
     const outputCount = getPositiveInteger(record.output_count, `${recipePath}.output_count`, errors)
     const ingredientSlots = parseIngredientSlots(record.ingredient_slots, `${recipePath}.ingredient_slots`, errors)
+    const ingredientLayout = record.ingredient_layout === undefined
+      ? undefined
+      : parseIngredientLayout(record.ingredient_layout, `${recipePath}.ingredient_layout`, errors)
+    const width = record.width === undefined ? undefined : getPositiveInteger(record.width, `${recipePath}.width`, errors)
+    const height = record.height === undefined ? undefined : getPositiveInteger(record.height, `${recipePath}.height`, errors)
     const fits2x2 = getBoolean(record.fits_2x2, `${recipePath}.fits_2x2`, errors)
     const fits3x3 = getBoolean(record.fits_3x3, `${recipePath}.fits_3x3`, errors)
 
     if (fits2x2 === false && fits3x3 === false) {
       errors.push(`${recipePath}: must fit at least one crafting grid`)
+    }
+    if (ingredientLayout !== undefined && width !== undefined && height !== undefined) {
+      if (ingredientLayout.length !== width * height) {
+        errors.push(`${recipePath}.ingredient_layout: expected ${width * height} cells`)
+      }
+      if (ingredientLayout.filter((slot) => slot !== null).length !== ingredientSlots?.length) {
+        errors.push(`${recipePath}.ingredient_layout: must contain every ingredient slot exactly once`)
+      }
     }
 
     if (
@@ -352,6 +394,9 @@ function parseRecipes(value: unknown, errors: string[]): IndexedRecipe[] {
           outputItemId,
           outputCount,
           ingredientSlots,
+          ...(ingredientLayout === undefined ? {} : { ingredientLayout }),
+          ...(width === undefined ? {} : { width }),
+          ...(height === undefined ? {} : { height }),
           fits2x2,
           fits3x3,
         },

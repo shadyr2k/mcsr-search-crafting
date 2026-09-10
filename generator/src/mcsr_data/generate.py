@@ -720,6 +720,10 @@ def _serialize_recipe(recipe: NormalizedRecipe) -> dict[str, object]:
             {"accepted_items": list(slot.accepted_items)}
             for slot in recipe.ingredient_slots
         ],
+        "ingredient_layout": [
+            None if slot is None else {"accepted_items": list(slot.accepted_items)}
+            for slot in recipe.ingredient_layout
+        ],
         "width": recipe.width,
         "height": recipe.height,
         "fits_2x2": recipe.fits_2x2,

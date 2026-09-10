@@ -20,6 +20,9 @@ const icons = parseIconManifest({
 const entry: TargetWorkspaceEntry = {
   id: 'saved', targetIds: ['minecraft:stick'], inventoryItemIds: [], enabled: true, gridSize: 2, order: 0,
 }
+const secondEntry: TargetWorkspaceEntry = {
+  ...entry, id: 'second', order: 1,
+}
 
 describe('ItemSetWorkspace', () => {
   test('emits enabled changes immediately while edits remain explicit', () => {
@@ -56,5 +59,33 @@ describe('ItemSetWorkspace', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Add item set' }))
     expect(onAdd).toHaveBeenCalledOnce()
+  })
+
+  test('reorders rows from the drag handle without rendering move-arrow buttons', () => {
+    const onWorkspaceChange = vi.fn()
+    render(<ItemSetWorkspace
+      entries={[entry, secondEntry]}
+      items={items}
+      icons={icons}
+      onWorkspaceChange={onWorkspaceChange}
+      onEdit={vi.fn()}
+      onAdd={vi.fn()}
+    />)
+
+    const secondRow = screen.getByRole('article', { name: 'Item set 2' })
+    const firstHandle = screen.getByRole('button', { name: /Reorder item set 1/i })
+    const originalElementFromPoint = document.elementFromPoint
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => secondRow })
+
+    fireEvent.pointerDown(firstHandle, { pointerId: 1 })
+    fireEvent.pointerMove(firstHandle, { pointerId: 1, clientX: 4, clientY: 4 })
+    fireEvent.pointerUp(firstHandle, { pointerId: 1 })
+
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: originalElementFromPoint })
+    expect(onWorkspaceChange).toHaveBeenCalledWith({ entries: [
+      expect.objectContaining({ id: 'second', order: 0 }),
+      expect.objectContaining({ id: 'saved', order: 1 }),
+    ] })
+    expect(screen.queryByRole('button', { name: /Move item set/i })).toBeNull()
   })
 })
