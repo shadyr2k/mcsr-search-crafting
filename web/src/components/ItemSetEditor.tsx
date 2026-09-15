@@ -29,6 +29,13 @@ interface ItemSetEditorProps {
   onSaveCustomSlot: (index: number, preset: CustomInventoryPreset) => void
   onClearCustomSlot: (index: number) => void
   entryNumber?: number
+  title?: string
+  saveLabel?: string
+  saveAriaLabel?: string
+  cancelLabel?: string
+  showDismiss?: boolean
+  cancelOnOutsidePointer?: boolean
+  saveNextToGoals?: boolean
 }
 
 function unique(ids: readonly string[]): string[] {
@@ -55,6 +62,13 @@ export function ItemSetEditor({
   onSaveCustomSlot,
   onClearCustomSlot,
   entryNumber,
+  title,
+  saveLabel,
+  saveAriaLabel,
+  cancelLabel,
+  showDismiss = true,
+  cancelOnOutsidePointer = true,
+  saveNextToGoals = false,
 }: ItemSetEditorProps) {
   const { draft } = state
   const editorRef = useRef<HTMLElement>(null)
@@ -76,13 +90,14 @@ export function ItemSetEditor({
 
   useEffect(() => {
     function cancelOutsideEditor(event: PointerEvent) {
+      if (!cancelOnOutsidePointer) return
       if (window.matchMedia?.('(max-width: 72rem)').matches) return
       if (event.target instanceof Node && !editorRef.current?.contains(event.target) && !openPickers.goals && !openPickers.inventory) onCancel()
     }
 
     document.addEventListener('pointerdown', cancelOutsideEditor)
     return () => document.removeEventListener('pointerdown', cancelOutsideEditor)
-  }, [onCancel, openPickers.goals, openPickers.inventory])
+  }, [cancelOnOutsidePointer, onCancel, openPickers.goals, openPickers.inventory])
 
   function updateDraft(update: ItemSetDraft) {
     onDraftChange(normalizeDraftGrid(update, data.recipes))
@@ -106,15 +121,29 @@ export function ItemSetEditor({
     if (onDelete && window.confirm(`Delete item set ${entryNumber ?? ''}?`)) onDelete()
   }
 
-  return <section ref={editorRef} className="item-set-editor" aria-label={state.kind === 'new' ? 'New item set' : 'Edit item set'}>
-    <button type="button" className="item-set-editor__dismiss" aria-label="Close item set editor" onClick={onCancel}>×</button>
-    <h2>{state.kind === 'new' ? 'New item set' : 'Edit item set'}</h2>
+  const editorTitle = title ?? (state.kind === 'new' ? 'New item set' : 'Edit item set')
+  const resolvedSaveLabel = saveLabel ?? 'Save'
+  const saveButtonLabel = saveAriaLabel ?? saveLabel ?? 'Save item set'
+  const resolvedCancelLabel = cancelLabel ?? 'Cancel'
+  const saveAction = <button
+    type="button"
+    className={saveNextToGoals ? 'item-set-editor__save-next-to-goals' : undefined}
+    aria-label={saveButtonLabel}
+    onClick={() => onSave({ draft })}
+    disabled={!valid}
+  >{resolvedSaveLabel}</button>
+
+  return <section ref={editorRef} className={`item-set-editor${saveNextToGoals ? ' item-set-editor--save-next-to-goals' : ''}`} aria-label={title ?? (state.kind === 'new' ? 'New item set' : 'Edit item set')}>
+    {showDismiss && <button type="button" className="item-set-editor__dismiss" aria-label="Close item set editor" onClick={onCancel}>×</button>}
+    <h2>{editorTitle}</h2>
     <ItemPicker
       items={pickerData?.items ?? data.items}
       label="Goals"
       selectedIds={draft.targetIds}
       preserveSelectionOrder
       manifest={icons}
+      className={saveNextToGoals ? 'item-picker--main-goals' : undefined}
+      trailingAction={saveNextToGoals ? saveAction : undefined}
       onOpenChange={(open) => setPickerOpen('goals', open)}
       onChange={(targetIds) => updateDraft({ ...draft, targetIds })}
     />
@@ -178,8 +207,8 @@ export function ItemSetEditor({
       </div>)}
     </div>
     <div className="item-set-editor__actions">
-      <button type="button" aria-label="Save item set" onClick={() => onSave({ draft })} disabled={!valid}>Save</button>
-      <button type="button" onClick={onCancel}>Cancel</button>
+      {!saveNextToGoals && saveAction}
+      <button type="button" onClick={onCancel}>{resolvedCancelLabel}</button>
       {state.kind === 'existing' && onDelete && <button type="button" aria-label="Delete item set" onClick={deleteEntry}>Delete</button>}
     </div>
   </section>

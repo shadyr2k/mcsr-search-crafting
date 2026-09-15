@@ -1,7 +1,8 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import App from './App'
+import { createItemSetWorkspaceShareCode } from './workspace/itemSetShare'
 
 const workspaceKey = 'mcsr.target-workspace.v1'
 
@@ -38,6 +39,7 @@ function stubData(icons: Record<string, string> = { 'minecraft:stick': 'minecraf
       minecraft_version: '1.16.1',
       sections: {
         difficulties: [{ id: 'easy', key: 'options.difficulty.easy', english: 'Easy' }],
+        options: [{ id: 'video_settings', key: 'options.video', english: 'Video Settings' }],
         advancements: [{
           id: 'acquire_hardware',
           key: 'advancements.story.smelt_iron.title',
@@ -49,14 +51,17 @@ function stubData(icons: Record<string, string> = { 'minecraft:stick': 'minecraf
       locales: {
         en_us: {
           difficulties: { easy: { name: 'Easy' } },
+          options: { video_settings: { name: 'Video Settings...' } },
           advancements: { acquire_hardware: { name: 'Acquire Hardware', requirement: 'Smelt an iron ingot' } },
         },
         de_de: {
           difficulties: { easy: { name: 'Leicht' } },
+          options: { video_settings: { name: 'Videoeinstellungen…' } },
           advancements: { acquire_hardware: { name: 'Beschaffe dir Hardware', requirement: 'Verhütte einen Eisenbarren' } },
         },
         he_il: {
           difficulties: { easy: { name: 'קל' } },
+          options: { video_settings: { name: 'הגדרות וידאו...' } },
           advancements: { acquire_hardware: { name: 'השג חומרה', requirement: 'התך מטיל ברזל' } },
         },
       },
@@ -88,7 +93,7 @@ describe('App workspace composition', () => {
       'language-info-panel',
       'site-info-panel',
     ])
-    expect(screen.getByRole('button', { name: 'english - english (united states)' }).getAttribute('aria-pressed')).toBe('true')
+    expect(within(screen.getByRole('region', { name: 'Selected language' })).getByRole('button', { name: 'english - english (united states)' }).getAttribute('aria-pressed')).toBe('true')
     expect(screen.getByAltText('Stick')).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'english (us) search crafts' })).toBeTruthy()
     expect(screen.getByText('optimize recipe book results')).toBeTruthy()
@@ -104,9 +109,13 @@ describe('App workspace composition', () => {
     expect(JSON.parse(localStorage.getItem('mcsr.theme-preference.v1') ?? '{}')).toEqual({ schemaVersion: 2, mode: 'dark', color: 'pink' })
 
     fireEvent.click(await screen.findByRole('button', { name: 'Choose color theme' }))
-    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Select green theme' }))
-    expect(document.documentElement.dataset.themeColor).toBe('green')
-    expect(JSON.parse(localStorage.getItem('mcsr.theme-preference.v1') ?? '{}')).toEqual({ schemaVersion: 2, mode: 'dark', color: 'green' })
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Select cyan theme' }))
+    expect(document.documentElement.dataset.themeColor).toBe('cyan')
+    expect(JSON.parse(localStorage.getItem('mcsr.theme-preference.v1') ?? '{}')).toEqual({ schemaVersion: 2, mode: 'dark', color: 'cyan' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose color theme' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Select plain white / black theme' }))
+    expect(document.documentElement.dataset.themeColor).toBe('white')
 
     first.unmount()
     stubData()
@@ -114,7 +123,7 @@ describe('App workspace composition', () => {
 
     expect(screen.getByRole('switch', { name: 'Switch to light mode' }).getAttribute('aria-checked')).toBe('true')
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'))
-    expect(document.documentElement.dataset.themeColor).toBe('green')
+    expect(document.documentElement.dataset.themeColor).toBe('white')
   })
 
   test('opens a draft editor and persists a new set only after Save', async () => {
@@ -123,7 +132,7 @@ describe('App workspace composition', () => {
     await screen.findByRole('button', { name: 'Add item set' })
     fireEvent.click(screen.getByRole('button', { name: 'Add item set' }))
     expect(screen.getAllByRole('region', { name: 'New item set' })).toHaveLength(1)
-    expect(document.querySelector('.item-set-workspace__editor-overlay')).toBeTruthy()
+    expect(document.querySelector('.item-set-editor-overlay')).toBeTruthy()
     expect(JSON.parse(localStorage.getItem(workspaceKey) ?? '{"entries":[]}').entries).toEqual([])
     fireEvent.click(screen.getByRole('searchbox', { name: 'Search Goals' }))
     fireEvent.click(screen.getByRole('button', { name: 'Stick' }))
@@ -131,6 +140,67 @@ describe('App workspace composition', () => {
     await waitFor(() => expect(JSON.parse(localStorage.getItem(workspaceKey)!).entries).toEqual([
       expect.objectContaining({ targetIds: ['minecraft:stick'], inventoryItemIds: [] }),
     ]))
+  })
+
+  test('replaces and persists the entire item-set column from one collection code', async () => {
+    localStorage.setItem(workspaceKey, JSON.stringify({
+      schemaVersion: 2,
+      entries: [{ id: 'old', targetIds: ['minecraft:stick'], inventoryItemIds: [], enabled: true, gridSize: 3, order: 0 }],
+    }))
+    stubData()
+    render(<App />)
+    await screen.findByRole('button', { name: 'Add item set' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'share' }))
+    const code = createItemSetWorkspaceShareCode([
+      { targetIds: ['minecraft:stick'], inventoryItemIds: ['minecraft:bucket'], enabled: false, gridSize: 3, retainCraftOrder: true },
+      { targetIds: ['minecraft:stick'], inventoryItemIds: [], enabled: true, gridSize: 3, retainCraftOrder: false },
+    ])
+    fireEvent.change(screen.getByLabelText('Import item set collection code'), { target: { value: code } })
+    fireEvent.click(screen.getByRole('button', { name: 'replace' }))
+
+    await waitFor(() => expect(JSON.parse(localStorage.getItem(workspaceKey)!).entries).toEqual([
+      {
+        id: 'item-set-1', targetIds: ['minecraft:stick'], inventoryItemIds: ['minecraft:bucket'], enabled: false, gridSize: 3, retainCraftOrder: true, order: 0,
+      },
+      {
+        id: 'item-set-2', targetIds: ['minecraft:stick'], inventoryItemIds: [], enabled: true, gridSize: 3, order: 1,
+      },
+    ]))
+  })
+
+  test('opens craft lookup with its standalone item-set setup menu', async () => {
+    stubData()
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'craft lookup' }))
+
+    expect(await screen.findByRole('region', { name: 'lookup setup' })).toBeTruthy()
+    expect(screen.getByRole('searchbox', { name: 'Search Goals' })).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Look up crafts' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(document.querySelector('.craft-lookup__empty')?.textContent).toContain('Choose goals and an inventory')
+
+    fireEvent.click(screen.getByRole('searchbox', { name: 'Search Goals' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Stick' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Look up crafts' }))
+    expect(await screen.findByRole('heading', { name: 'best languages' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'no viable craft' })).toBeTruthy()
+  })
+
+  test('keeps the Craft Lookup goals while navigating without persisting them after reload', async () => {
+    stubData()
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'craft lookup' }))
+    await screen.findByRole('region', { name: 'lookup setup' })
+    fireEvent.click(screen.getByRole('searchbox', { name: 'Search Goals' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Stick' }))
+    expect(screen.getByRole('button', { name: 'Remove Stick' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'site info' }))
+    await screen.findByRole('heading', { name: 'site info' })
+    fireEvent.click(screen.getByRole('button', { name: 'craft lookup' }))
+
+    expect(await screen.findByRole('button', { name: 'Remove Stick' })).toBeTruthy()
+    expect(localStorage.getItem('mcsr.craft-lookup.v1')).toBeNull()
   })
 
   test('reports an icon manifest coverage error as blocking', async () => {
@@ -205,7 +275,8 @@ describe('App workspace composition', () => {
     stubData()
     render(<App />)
 
-    expect((await screen.findByRole('button', { name: 'english - english (united states)' })).getAttribute('aria-pressed')).toBe('true')
+    const selectedLanguage = await screen.findByRole('region', { name: 'Selected language' })
+    expect(within(selectedLanguage).getByRole('button', { name: 'english - english (united states)' }).getAttribute('aria-pressed')).toBe('true')
   })
 
   test('applies RTL direction to Minecraft-derived workspace content', async () => {
@@ -235,9 +306,11 @@ describe('App workspace composition', () => {
     fireEvent.click(screen.getByRole('button', { name: 'language info' }))
 
     expect(await screen.findByRole('heading', { name: 'more language info (german)' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'german - deutsch (deutschland)' }).getAttribute('aria-pressed')).toBe('true')
+    expect(within(screen.getByRole('region', { name: 'Selected language' })).getByRole('button', { name: 'german - deutsch (deutschland)' }).getAttribute('aria-pressed')).toBe('true')
     expect(document.querySelector('.language-selector')).toBe(sharedLanguageSelector)
     expect(screen.getByText('Leicht')).toBeTruthy()
+    expect(screen.getByText('Videoeinstellungen')).toBeTruthy()
+    expect(screen.queryByText('Videoeinstellungen…')).toBeNull()
     fireEvent.pointerEnter(screen.getByText('Beschaffe dir Hardware').closest('.language-info-panel__row')!)
     expect((await screen.findByRole('tooltip')).textContent).toBe('obtain iron')
     expect(document.querySelector('.language-info-panel')).toBeTruthy()
@@ -260,6 +333,7 @@ describe('App workspace composition', () => {
     await screen.findByRole('region', { name: 'Languages' })
     fireEvent.click(screen.getByRole('button', { name: 'site info' }))
 
+    await waitFor(() => expect(screen.getByRole('button', { name: 'site info' }).getAttribute('aria-current')).toBe('page'))
     expect(screen.getByRole('heading', { name: 'site info' })).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'regular and overlap crafts' })).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'craft order' })).toBeTruthy()

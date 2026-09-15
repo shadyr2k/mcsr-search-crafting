@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import type { IconManifest } from '../data/iconManifest'
 import { ItemIcon } from './ItemIcon'
@@ -15,6 +15,8 @@ interface ItemPickerProps {
   manifest?: IconManifest
   preserveSelectionOrder?: boolean
   allowSelection?: (item: PickerItem) => boolean
+  className?: string
+  trailingAction?: ReactNode
   onOpenChange?: (open: boolean) => void
   onChange: (itemIds: string[]) => void
 }
@@ -30,6 +32,8 @@ export function ItemPicker({
   manifest,
   preserveSelectionOrder = false,
   allowSelection = () => true,
+  className,
+  trailingAction,
   onOpenChange,
   onChange,
 }: ItemPickerProps) {
@@ -101,27 +105,30 @@ export function ItemPicker({
 
   return <div
     ref={pickerRef}
-    className="item-picker"
+    className={`item-picker${className ? ` ${className}` : ''}`}
     onBlurCapture={(event) => {
       if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false)
     }}
   >
     <label htmlFor={searchId}>{searchLabel}</label>
-    <div className="item-picker__selected" role="region" aria-label={`${label} selected items`}>
-      {selectedItems.length === 0
-        ? <span className="item-picker__empty">none selected</span>
-        : selectedItems.map((item) => <button
-            key={item.id}
-            type="button"
-            className="item-picker__selected-item"
-            aria-label={`Remove ${item.name}`}
-            title={`Remove ${item.name}`}
-            onClick={() => toggleItem(item.id)}
-          >
-            {manifest
-              ? <ItemIcon itemId={item.id} name={item.name} manifest={manifest} size="compact" />
-              : <span>{item.name}</span>}
-          </button>)}
+    <div className={`item-picker__selection-row${trailingAction ? ' item-picker__selection-row--has-action' : ''}`}>
+      <div className="item-picker__selected" role="region" aria-label={`${label} selected items`}>
+        {selectedItems.length === 0
+          ? <span className="item-picker__empty">none selected</span>
+          : selectedItems.map((item) => <button
+              key={item.id}
+              type="button"
+              className="item-picker__selected-item"
+              aria-label={`Remove ${item.name}`}
+              title={`Remove ${item.name}`}
+              onClick={() => toggleItem(item.id)}
+            >
+              {manifest
+                ? <ItemIcon itemId={item.id} name={item.name} manifest={manifest} size="compact" />
+                : <span>{item.name}</span>}
+            </button>)}
+      </div>
+      {trailingAction}
     </div>
     <input
       id={searchId}

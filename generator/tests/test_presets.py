@@ -16,6 +16,11 @@ def test_builtin_presets_have_exact_approved_ids():
     assert presets[0].item_ids[1] == "minecraft:oak_leaves"
     assert "minecraft:bucket" in presets[1].item_ids
     assert "minecraft:white_wool" in presets[1].item_ids
+    assert "minecraft:dirt" not in presets[1].item_ids
+    assert "minecraft:cobblestone" not in presets[1].item_ids
+    assert "minecraft:dirt" not in presets[2].item_ids
+    assert "minecraft:cobblestone" not in presets[2].item_ids
+    assert "minecraft:glowstone_dust" in presets[2].item_ids
 
 
 def test_loader_rejects_unknown_fields(tmp_path):

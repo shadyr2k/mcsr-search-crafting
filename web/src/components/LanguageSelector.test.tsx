@@ -21,7 +21,9 @@ describe('LanguageSelector', () => {
     render(<LanguageSelector languages={languages} selectedLocale="en_us" enabledBannedLocales={new Set()} scores={new Map()} onSelect={vi.fn()} onBannedLocaleEnabledChange={vi.fn()} />)
 
     expect(screen.getByRole('heading', { name: 'language list' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'english - english (united states)' }).getAttribute('aria-pressed')).toBe('true')
+    const selectedLanguage = screen.getByRole('region', { name: 'Selected language' })
+    expect(within(selectedLanguage).getByRole('button', { name: 'english - english (united states)' }).getAttribute('aria-pressed')).toBe('true')
+    expect(within(screen.getByRole('region', { name: 'latin text' })).getByRole('button', { name: 'english - english (united states)' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'elfdalian - övdalska (swerre)' })).toBeTruthy()
     expect(screen.getByRole('button', { name: /ɥs/ })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'show all' })).toBeNull()
@@ -121,7 +123,7 @@ describe('LanguageSelector', () => {
       onBannedLocaleEnabledChange={vi.fn()}
     />)
 
-    expect(screen.getByText('1').getAttribute('style')).toContain('--language-score-position: 0')
+    expect(within(screen.getByRole('region', { name: 'Selected language' })).getByText('1').getAttribute('style')).toContain('--language-score-position: 0')
     expect(screen.getByText('9').getAttribute('style')).toContain('--language-score-position: 1')
   })
 

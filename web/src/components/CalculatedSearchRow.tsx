@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import type { IconManifest } from '../data/iconManifest'
 import type { RankedSearch, RecipeResultCollection, RowOptimizationState, SearchItem, TargetWorkspaceEntry } from '../domain/types'
@@ -15,6 +15,13 @@ interface CalculatedSearchRowProps {
   icons: IconManifest
   collections?: ReadonlyMap<string, RecipeResultCollection>
   onRetry?: () => void
+  summaryLead?: ReactNode
+  summaryLabel?: string
+  hidePreviewDecorations?: boolean
+  hideOutcomeScore?: boolean
+  previewMode?: 'default' | 'junkless-single' | 'junkless-overlap'
+  hideOverflowingPreviews?: boolean
+  className?: string
 }
 
 interface CraftGroup {
@@ -118,6 +125,32 @@ function orderedOverlapCrafts(overlap: readonly CraftGroup[]): CraftGroup[] {
 
 const MAX_COMPACT_JUNK_ICONS = 3
 
+function JunkPreview({
+  itemIds,
+  iconCount,
+  items,
+  icons,
+  decorative = false,
+}: {
+  itemIds: readonly string[]
+  iconCount: number
+  items: ReadonlyMap<string, SearchItem>
+  icons: IconManifest
+  decorative?: boolean
+}) {
+  const visibleItemIds = itemIds.slice(0, iconCount)
+  const remainingItemCount = itemIds.length - visibleItemIds.length
+  return <>
+    <span className="craft-result__junk-icons" aria-hidden="true">
+      {visibleItemIds.map((itemId, index) => {
+        const item = items.get(itemId)
+        return <ItemIcon key={`${itemId}-${index}`} itemId={itemId} name={item?.name ?? itemId} manifest={icons} />
+      })}
+    </span>
+    {remainingItemCount > 0 && <span className="craft-result__more-junk" {...(!decorative && { 'aria-label': `${remainingItemCount} more junk items` })}>+{remainingItemCount}</span>}
+  </>
+}
+
 function compactPreviews(regular: readonly CraftGroup[], overlap: readonly CraftGroup[]): CraftGroup[] {
   const previews = regular.slice(0, 2)
   const orderedOverlap = orderedOverlapCrafts(overlap)
@@ -196,17 +229,50 @@ function CraftItems({ contents, items, icons, showJunk = true }: {
   icons: IconManifest
   showJunk?: boolean
 }) {
-  const visibleJunkCount = contents.junkItemIds.length > MAX_COMPACT_JUNK_ICONS
-    // Reserve the final compact slot for the aggregate count. Keeping one
-    // fewer icon is clearer than clipping the "+n" indicator.
-    ? MAX_COMPACT_JUNK_ICONS - 2
-    : contents.junkItemIds.length
-  const visibleJunk = contents.junkItemIds.slice(0, visibleJunkCount)
-  const remainingJunkCount = contents.junkItemIds.length - visibleJunk.length
-  const visibleItemCount = contents.targetItemIds.length + visibleJunk.length
+  const itemPreviewRef = useRef<HTMLSpanElement>(null)
+  const maxVisibleJunkIcons = Math.min(contents.junkItemIds.length, MAX_COMPACT_JUNK_ICONS)
+  // -1 means even the aggregate count does not fit; show the full list only
+  // after the craft is expanded instead of clipping the card.
+  const [visibleJunkIconCount, setVisibleJunkIconCount] = useState(maxVisibleJunkIcons)
+
+  useLayoutEffect(() => {
+    const preview = itemPreviewRef.current
+    if (!preview || !showJunk || contents.junkItemIds.length === 0) {
+      setVisibleJunkIconCount(maxVisibleJunkIcons)
+      return
+    }
+
+    const updateJunkVisibility = () => {
+      const targets = preview.querySelector<HTMLElement>('.craft-result__targets')
+      if (!targets) return
+
+      const gap = Number.parseFloat(getComputedStyle(preview).gap) || 0
+      const targetWidth = targets.getBoundingClientRect().width
+      const availableWidth = preview.clientWidth
+      const nextVisibleCount = Array.from({ length: maxVisibleJunkIcons + 1 }, (_, index) => maxVisibleJunkIcons - index)
+        .find((iconCount) => {
+          const sizer = preview.querySelector<HTMLElement>(`[data-junk-icon-count="${iconCount}"]`)
+          return sizer !== null && targetWidth + gap + sizer.getBoundingClientRect().width <= availableWidth
+        })
+      setVisibleJunkIconCount(nextVisibleCount ?? -1)
+    }
+
+    // jsdom has no layout engine or ResizeObserver. Leave the complete preview
+    // in place there; browser layout will make the responsive choice below.
+    if (typeof ResizeObserver === 'undefined') {
+      setVisibleJunkIconCount(maxVisibleJunkIcons)
+      return
+    }
+
+    updateJunkVisibility()
+    const observer = new ResizeObserver(updateJunkVisibility)
+    observer.observe(preview)
+    return () => observer.disconnect()
+  }, [contents.junkItemIds, maxVisibleJunkIcons, showJunk])
+
   return <span
+    ref={itemPreviewRef}
     className="craft-result__items"
-    style={{ '--craft-item-count': Math.max(visibleItemCount, 1) } as CSSProperties}
     aria-label="Matched items and junk preview"
   >
     <span className="craft-result__targets" aria-label={`Matched targets: ${contents.targetItemIds.length} items`}>
@@ -215,17 +281,82 @@ function CraftItems({ contents, items, icons, showJunk = true }: {
         return <ItemIcon key={itemId} itemId={itemId} name={item?.name ?? itemId} manifest={icons} />
       })}
     </span>
-    {showJunk && contents.junkItemIds.length > 0 && <span
-      className="craft-result__junk"
-      aria-label={`Junk preview: ${visibleJunk.length} of ${contents.junkItemIds.length} items`}
-    >
-      {visibleJunk.map((itemId, index) => {
-        const item = items.get(itemId)
-        return <ItemIcon key={`${itemId}-${index}`} itemId={itemId} name={item?.name ?? itemId} manifest={icons} />
-      })}
-      {remainingJunkCount > 0 && <span className="craft-result__more-junk" aria-label={`${remainingJunkCount} more junk items`}>+{remainingJunkCount}</span>}
-    </span>}
+    {showJunk && contents.junkItemIds.length > 0 && <>
+      {visibleJunkIconCount >= 0 && <>
+        <span className="craft-result__junk-divider" aria-hidden="true" />
+        <span
+          className="craft-result__junk"
+          aria-label={`Junk preview: ${visibleJunkIconCount} of ${contents.junkItemIds.length} items`}
+        >
+          <JunkPreview itemIds={contents.junkItemIds} iconCount={visibleJunkIconCount} items={items} icons={icons} />
+        </span>
+      </>}
+      <span className="craft-result__junk-sizers" aria-hidden="true">
+        {Array.from({ length: maxVisibleJunkIcons + 1 }, (_, index) => maxVisibleJunkIcons - index).map((iconCount) => <span
+          key={iconCount}
+          className="craft-result__junk-sizer"
+          data-junk-icon-count={iconCount}
+        >
+          <span className="craft-result__junk-divider" />
+          <JunkPreview itemIds={contents.junkItemIds} iconCount={iconCount} items={items} icons={icons} decorative />
+        </span>)}
+      </span>
+    </>}
   </span>
+}
+
+function CraftPreviews({
+  previews,
+  label,
+  hidePreviewDecorations,
+  hideOverflowingPreviews,
+}: {
+  previews: readonly CraftGroup[]
+  label: string
+  hidePreviewDecorations: boolean
+  hideOverflowingPreviews: boolean
+}) {
+  const previewsRef = useRef<HTMLUListElement>(null)
+  const [visiblePreviewCount, setVisiblePreviewCount] = useState(previews.length)
+
+  useLayoutEffect(() => {
+    if (!hideOverflowingPreviews) {
+      setVisiblePreviewCount(previews.length)
+      return
+    }
+
+    const list = previewsRef.current
+    if (!list || typeof ResizeObserver === 'undefined') return
+    const measure = () => {
+      const gap = Number.parseFloat(getComputedStyle(list).gap) || 0
+      let used = 0
+      let visibleCount = 0
+      for (const preview of [...list.children] as HTMLElement[]) {
+        const nextWidth = preview.getBoundingClientRect().width
+        if (nextWidth === 0 || used + (visibleCount === 0 ? 0 : gap) + nextWidth > list.clientWidth) break
+        used += (visibleCount === 0 ? 0 : gap) + nextWidth
+        visibleCount += 1
+      }
+      setVisiblePreviewCount((current) => current === visibleCount ? current : visibleCount)
+    }
+
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(list.parentElement ?? list)
+    return () => observer.disconnect()
+  }, [hideOverflowingPreviews, previews])
+
+  return <ul ref={previewsRef} className="craft-previews" aria-label={`Craft previews for ${label}`}>
+    {previews.map((craft, index) => <li
+      key={`${craft.kind}:${craft.key}`}
+      className={`craft-preview craft-preview--${craft.kind}${hideOverflowingPreviews && index >= visiblePreviewCount ? ' craft-preview--overflow-hidden' : ''}`}
+      aria-label={`${categoryName(craft.kind)} craft: ${searchDescription(craft.search)}`}
+      aria-hidden={hideOverflowingPreviews && index >= visiblePreviewCount ? true : undefined}
+    >
+      <SearchQuery search={craft.search} />
+      {!hidePreviewDecorations && craftContents(craft).junkItemIds.length === 0 && <span className="craft-preview__star" aria-label="Junkless craft">★</span>}
+    </li>)}
+  </ul>
 }
 
 function RemainingJunk({ itemIds, items, icons, label = `All junk: ${itemIds.length} items` }: { itemIds: readonly string[]; items: ReadonlyMap<string, SearchItem>; icons: IconManifest; label?: string }) {
@@ -405,26 +536,52 @@ function TargetItems({ entry, items, icons }: {
   </span>
 }
 
-export function CalculatedSearchRow({ entry, entryNumber, state, items, icons, collections, onRetry }: CalculatedSearchRowProps) {
+export function CalculatedSearchRow({
+  entry,
+  entryNumber,
+  state,
+  items,
+  icons,
+  collections,
+  onRetry,
+  summaryLead,
+  summaryLabel,
+  hidePreviewDecorations = false,
+  hideOutcomeScore = false,
+  previewMode = 'default',
+  hideOverflowingPreviews = false,
+  className,
+}: CalculatedSearchRowProps) {
   const [expanded, setExpanded] = useState(false)
   const [hasExpanded, setHasExpanded] = useState(false)
+  const [isClosingCrafts, setIsClosingCrafts] = useState(false)
+  const [isReleasingCraftSpacing, setIsReleasingCraftSpacing] = useState(false)
+  const craftSpacingReleaseTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const [regularView, setRegularView] = useState<'junkless' | 'other'>('junkless')
   const [overlapView, setOverlapView] = useState<'junkless' | 'other'>('junkless')
+  const [expandedRegularViews, setExpandedRegularViews] = useState({ junkless: false, other: false })
   const [expandedOverlapViews, setExpandedOverlapViews] = useState({ junkless: false, other: false })
   const [showNumberCrafts, setShowNumberCrafts] = useState(true)
   const listId = useId()
-  const label = `item set ${entryNumber}`
+  const label = summaryLabel ?? `item set ${entryNumber}`
+  const rowClassName = `calculated-search-row${className ? ` ${className}` : ''}`
+  useEffect(() => () => {
+    if (craftSpacingReleaseTimer.current !== undefined) clearTimeout(craftSpacingReleaseTimer.current)
+  }, [])
   if (!entry.enabled) return null
-  if (state === undefined || state.status === 'idle') return <section className="calculated-search-row" aria-label={`Calculated searches for ${label}`}><span>Waiting for goals</span></section>
-  if (state.status === 'pending') return <section className="calculated-search-row" aria-label={`Calculated searches for ${label}`}><span>Calculating…</span></section>
-  if (state.status === 'error') return <section className="calculated-search-row" aria-label={`Calculated searches for ${label}`}>
+  if (state === undefined || state.status === 'idle') return <section className={rowClassName} aria-label={`Calculated searches for ${label}`}><span>Waiting for goals</span></section>
+  if (state.status === 'pending') return <section className={rowClassName} aria-label={`Calculated searches for ${label}`}><span>Calculating…</span></section>
+  if (state.status === 'error') return <section className={rowClassName} aria-label={`Calculated searches for ${label}`}>
     <span>Calculation error</span>
     {onRetry && <button type="button" onClick={onRetry} aria-label={`Retry item set ${entryNumber}`}>Retry</button>}
   </section>
-  if (state.outcome.kind === 'no-viable') return <section className="calculated-search-row" aria-label={`Calculated searches for ${label}`}>
-    <TargetItems entry={entry} items={items} icons={icons} />
-    <div className="calculated-search-row__status">
-      <span>No viable search</span>
-      <strong className="metric">{state.outcome.bestScore}</strong>
+  if (state.outcome.kind === 'no-viable') return <section className={rowClassName} aria-label={`Calculated searches for ${label}`}>
+    <div className="calculated-search-row__summary">
+      {summaryLead ?? <TargetItems entry={entry} items={items} icons={icons} />}
+      <div className="calculated-search-row__status">
+        <span>No viable search</span>
+        {!hideOutcomeScore && <strong className="metric">{state.outcome.bestScore}</strong>}
+      </div>
     </div>
   </section>
 
@@ -433,11 +590,35 @@ export function CalculatedSearchRow({ entry, entryNumber, state, items, icons, c
   const hasNumberCrafts = [...regular, ...overlap].some(usesNumberQuery)
   const displayedRegular = showNumberCrafts ? regular : regular.filter((craft) => !usesNumberQuery(craft))
   const displayedOverlap = orderedOverlapCrafts(showNumberCrafts ? overlap : overlap.filter((craft) => !usesNumberQuery(craft)))
-  const previews = compactPreviews(displayedRegular, displayedOverlap)
+  const previews = previewMode === 'junkless-single'
+    ? displayedRegular.filter(isJunkless).slice(0, 3)
+    : previewMode === 'junkless-overlap'
+    ? displayedOverlap.filter(isJunkless).slice(0, 3)
+    : compactPreviews(displayedRegular, displayedOverlap)
+  const junklessRegular = displayedRegular.filter((craft) => craftContents(craft).junkItemIds.length === 0)
+  const otherRegular = displayedRegular.filter((craft) => craftContents(craft).junkItemIds.length > 0)
   const junklessOverlap = displayedOverlap.filter((craft) => craftContents(craft).junkItemIds.length === 0)
   const otherOverlap = displayedOverlap.filter((craft) => craftContents(craft).junkItemIds.length > 0)
+  const visibleRegularView = regularView === 'junkless' && junklessRegular.length === 0 ? 'other' : regularView
   const visibleOverlapView = overlapView === 'junkless' && junklessOverlap.length === 0 ? 'other' : overlapView
+  const visibleRegularCrafts = visibleRegularView === 'junkless' ? junklessRegular : otherRegular
   const visibleOverlapCrafts = visibleOverlapView === 'junkless' ? junklessOverlap : otherOverlap
+  const hasSingleVisibleCategory = (visibleRegularCrafts.length > 0) !== (visibleOverlapCrafts.length > 0)
+  const regularHeaderControl = <div className="overlap-category-toggle" role="group" aria-label="Regular craft category">
+    <button
+      type="button"
+      aria-pressed={visibleRegularView === 'junkless'}
+      disabled={junklessRegular.length === 0}
+      onClick={() => setRegularView('junkless')}
+    >junkless</button>
+    <span aria-hidden="true">|</span>
+    <button
+      type="button"
+      aria-pressed={visibleRegularView === 'other'}
+      disabled={otherRegular.length === 0}
+      onClick={() => setRegularView('other')}
+    >other</button>
+  </div>
   const overlapHeaderControl = <div className="overlap-category-toggle" role="group" aria-label="Overlap craft category">
     <button
       type="button"
@@ -468,26 +649,34 @@ export function CalculatedSearchRow({ entry, entryNumber, state, items, icons, c
     >hide</button>
   </div>
   const toggleCrafts = () => {
-    setExpanded((current) => {
-      const next = !current
-      if (next) setHasExpanded(true)
-      return next
-    })
+    if (expanded) {
+      setExpanded(false)
+      setIsClosingCrafts(true)
+      setIsReleasingCraftSpacing(false)
+      if (craftSpacingReleaseTimer.current !== undefined) clearTimeout(craftSpacingReleaseTimer.current)
+      craftSpacingReleaseTimer.current = setTimeout(() => setIsReleasingCraftSpacing(true), 220)
+    } else {
+      if (craftSpacingReleaseTimer.current !== undefined) clearTimeout(craftSpacingReleaseTimer.current)
+      setIsClosingCrafts(false)
+      setIsReleasingCraftSpacing(false)
+      setHasExpanded(true)
+      setExpanded(true)
+    }
   }
 
-  return <section className="calculated-search-row" aria-label={`Calculated searches for ${label}`}>
-    <div className="calculated-search-row__summary">
-      <TargetItems entry={entry} items={items} icons={icons} />
-      <ul className="craft-previews" aria-label={`Craft previews for ${label}`}>
-        {previews.map((craft) => <li key={`${craft.kind}:${craft.key}`} className={`craft-preview craft-preview--${craft.kind}`} aria-label={`${categoryName(craft.kind)} craft: ${searchDescription(craft.search)}`}>
-          <SearchQuery search={craft.search} />
-          {craftContents(craft).junkItemIds.length === 0 && <span className="craft-preview__star" aria-label="Junkless craft">★</span>}
-        </li>)}
-      </ul>
+  return <section className={rowClassName} aria-label={`Calculated searches for ${label}`}>
+    <div className={`calculated-search-row__summary${previews.every((craft) => craft.kind === 'overlap') ? ' calculated-search-row__summary--only-overlap' : ''}`}>
+      {summaryLead ?? <TargetItems entry={entry} items={items} icons={icons} />}
+      <CraftPreviews
+        previews={previews}
+        label={label}
+        hidePreviewDecorations={hidePreviewDecorations}
+        hideOverflowingPreviews={hideOverflowingPreviews}
+      />
       <button
         type="button"
         className="calculated-search-row__toggle"
-        aria-label={`${expanded ? 'Hide' : 'Show all'} crafts for item set ${entryNumber}`}
+        aria-label={`${expanded ? 'Hide' : 'Show all'} crafts for ${label}`}
         aria-controls={listId}
         aria-expanded={expanded}
         onClick={toggleCrafts}
@@ -495,10 +684,28 @@ export function CalculatedSearchRow({ entry, entryNumber, state, items, icons, c
         <ArrowSprite direction={expanded ? 'up' : 'down'} />
       </button>
     </div>
-    {hasExpanded && <div id={listId} className={`craft-categories${expanded ? ' craft-categories--open' : ''}`} aria-hidden={!expanded}>
-      <div className="craft-categories__content">
+    {hasExpanded && <div
+      id={listId}
+      className={`craft-categories${expanded ? ' craft-categories--open' : ''}${isClosingCrafts ? ' craft-categories--closing' : ''}${isReleasingCraftSpacing ? ' craft-categories--releasing' : ''}`}
+      aria-hidden={!expanded}
+      onAnimationEnd={(event) => {
+        if (event.target === event.currentTarget && !expanded && event.animationName === 'craft-disclosure-close') {
+          if (craftSpacingReleaseTimer.current !== undefined) clearTimeout(craftSpacingReleaseTimer.current)
+          setIsClosingCrafts(false)
+          setIsReleasingCraftSpacing(false)
+        }
+      }}
+    >
+      <div className={`craft-categories__content${hasSingleVisibleCategory ? ' craft-categories__content--single-category' : ''}`}>
       {numberCraftFilter}
-      {displayedRegular.length > 0 && <CraftCategory category={{ kind: 'single', name: 'Regular crafts', title: 'regular crafts', crafts: displayedRegular }} items={items} icons={icons} collections={collections} />}
+      {visibleRegularCrafts.length > 0 && <CraftCategory
+        category={{ kind: 'single', name: 'Regular crafts', title: 'regular crafts', headerControl: regularHeaderControl, crafts: visibleRegularCrafts }}
+        items={items}
+        icons={icons}
+        collections={collections}
+        showMore={expandedRegularViews[visibleRegularView]}
+        onShowMoreChange={(showMore) => setExpandedRegularViews((current) => ({ ...current, [visibleRegularView]: showMore }))}
+      />}
       {visibleOverlapCrafts.length > 0 && <CraftCategory
         category={{ kind: 'overlap', name: 'Overlap crafts', title: 'overlap crafts', headerControl: overlapHeaderControl, crafts: visibleOverlapCrafts }}
         items={items}

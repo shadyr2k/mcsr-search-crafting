@@ -269,11 +269,14 @@ export function LanguageSelector({
 
   return <section ref={containerRef} className="language-selector" aria-label="Languages">
     <h2 className="language-selector__title">language list</h2>
-    <p className="language-selector__selected" aria-live="polite">
-      selected: {selectedLanguage
+    <section className="language-selector__selected" aria-label="Selected language" aria-live="polite">
+      <p>selected: <span className="language-selector__selected-mobile-name">{selectedLanguage
         ? <><span>{englishLanguageName(selectedLanguage)}</span> - {languageDisplayName(selectedLanguage)}</>
-        : 'english'}
-    </p>
+        : 'english'}</span></p>
+      {selectedLanguage && <ul>
+        <LanguageOption key={selectedLanguage.locale} language={selectedLanguage} {...languageOptionProps} />
+      </ul>}
+    </section>
     <input
       className="language-selector__search"
       type="search"

@@ -28,6 +28,11 @@ interface LanguageInfoPanelProps {
   languageName: string
 }
 
+function displayTranslation(entryId: string, translation: string): string {
+  if (entryId !== 'video_settings') return translation
+  return translation.replace(/\s*(?:\.\s*){3,}$|\s*…\s*$/u, '')
+}
+
 export function LanguageInfoPanel({ locale, languageName }: LanguageInfoPanelProps) {
   const [info, setInfo] = useState<LocalizedLanguageInfo>()
   const [error, setError] = useState<string>()
@@ -64,7 +69,7 @@ export function LanguageInfoPanel({ locale, languageName }: LanguageInfoPanelPro
       <dl>
         {section.entries.map((entry) => {
           const localized = localizedEntries?.get(entry.id)
-          const translation = localized?.name ?? entry.english
+          const translation = displayTranslation(entry.id, localized?.name ?? entry.english)
           const isAdvancement = section.id === 'advancements'
           const tooltipId = `${tooltipPrefix}-${entry.id}`
           const tooltipText = isAdvancement ? advancementTooltip(entry.id, entry.englishRequirement) : undefined

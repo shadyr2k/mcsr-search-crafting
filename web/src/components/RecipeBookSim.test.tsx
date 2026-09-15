@@ -42,7 +42,10 @@ const languages = [
   { locale: 'fr_fr', name: 'Français', region: 'France', script: 'latin' as const },
 ]
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  localStorage.clear()
+})
 
 describe('RecipeBookSim', () => {
   test('filters selected-inventory craftable outputs and honors the crafting grid size', () => {
@@ -92,10 +95,15 @@ describe('RecipeBookSim', () => {
           ],
         }],
       ]),
+      inventoryItems: new Map([
+        ['minecraft:oak_log', { id: 'minecraft:oak_log', name: 'Bûche de chêne' }],
+        ['minecraft:iron_ingot', { id: 'minecraft:iron_ingot', name: 'Lingot de fer' }],
+      ]),
     }
     render(<RecipeBookSim
       data={localizedData}
       englishItems={data.items}
+      englishInventoryItems={data.inventoryItems}
       icons={icons}
       customSlots={[]}
       languages={languages}
@@ -116,6 +124,15 @@ describe('RecipeBookSim', () => {
     expect(within(detail).getByText('makes')).toBeTruthy()
     expect(within(detail).getByText('x4')).toBeTruthy()
     expect(within(detail).getByText('crafting', { selector: 'mark' })).toBeTruthy()
+    const addItem = within(detail).getByRole('button', { name: 'Add Oak Planks to simulator inventory' })
+    fireEvent.click(addItem)
+    expect(addItem.hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: 'Remove Oak Planks (Planches de chêne)' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Oak Log (Bûche de chêne)' }))
+    fireEvent.click(screen.getByRole('searchbox', { name: 'Search Simulator inventory' }))
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search Simulator inventory' }), { target: { value: 'oak' } })
+    expect(screen.getByRole('button', { name: 'Oak Log (Bûche de chêne)' })).toBeTruthy()
   })
 
   test('keeps empty cells in a shaped recipe layout', () => {
@@ -206,12 +223,21 @@ describe('RecipeBookSim', () => {
       customSlots={[]}
       languages={languages}
       selectedLocale="fr_fr"
+      scores={new Map([
+        ['fr_fr', { status: 'ready', score: 1 }],
+        ['en_us', { status: 'ready', score: 9 }],
+      ])}
       enabledBannedLocales={new Set()}
       onLocaleChange={onLocaleChange}
     />)
 
     expect(within(screen.getByRole('region', { name: 'Special characters' })).getByText('â')).toBeTruthy()
-    fireEvent.change(screen.getByRole('combobox', { name: 'Simulator language' }), { target: { value: 'en_us' } })
+    const languageButton = screen.getByRole('button', { name: 'Simulator language' })
+    expect(within(languageButton).getByText('1').getAttribute('style')).toContain('--language-score-position: 0')
+    fireEvent.click(languageButton)
+    const languageChoices = within(screen.getByRole('listbox', { name: 'Simulator language choices' }))
+    expect(languageChoices.getByText('9').getAttribute('style')).toContain('--language-score-position: 1')
+    fireEvent.click(languageChoices.getByRole('option', { name: /english - english \(united states\)/ }))
     expect(onLocaleChange).toHaveBeenCalledWith('en_us')
   })
 

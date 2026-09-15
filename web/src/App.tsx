@@ -1,26 +1,34 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import './App.css'
 import { CalculatedSearchRow } from './components/CalculatedSearchRow'
+import { CraftLookup, newCraftLookupSession, type CraftLookupSession } from './components/CraftLookup'
+import { CraftingSheet } from './components/CraftingSheet'
 import { ItemIcon } from './components/ItemIcon'
 import { ItemSetEditor, type ItemSetEditorCommit, type ItemSetEditorState } from './components/ItemSetEditor'
 import { ItemSetWorkspace } from './components/ItemSetWorkspace'
 import { LanguageInfoPanel } from './components/LanguageInfoPanel'
 import { RecipeBookSim } from './components/RecipeBookSim'
 import { SiteInfoPanel } from './components/SiteInfoPanel'
-import { englishLocaleName, isBannedLocale, isRtlLocale, LanguageSelector, resultsColumnTitle } from './components/LanguageSelector'
+import { englishLocaleName, isBannedLocale, isRtlLocale, LanguageSelector } from './components/LanguageSelector'
 import { assertIconCoverage, loadIconManifest, type IconManifest } from './data/iconManifest'
 import { loadGeneratedData, loadLanguageMetadata, loadLocalizedGeneratedData } from './data/schema'
 import type { CustomInventoryPreset, GeneratedData, ItemSetDraft, LanguageMetadata, TargetWorkspace, TargetWorkspaceEntry } from './domain/types'
 import { useRowOptimizations } from './hooks/useRowOptimizations'
+import { useCraftingSheet } from './hooks/useCraftingSheet'
 import { useLanguageScores } from './hooks/useLanguageScores'
 import { clearCustomInventorySlot, loadCustomInventorySlots, loadLanguagePreferences, loadTargetWorkspace, loadThemePreference, saveCustomInventorySlot, saveLanguagePreferences, saveTargetWorkspace, saveThemePreference, type ThemeColor, type ThemePreference } from './persistence/storage'
 import { ThemePicker } from './components/ThemePicker'
 import { draftFromEntry, newItemSetDraft } from './workspace/entryDraft'
+import type { SharedItemSetDraft } from './workspace/itemSetShare'
 import { starterWorkspace } from './workspace/starterWorkspace'
 
 type OpenEditor = (ItemSetEditorState & { entryId?: string }) | null
-type AppPage = 'home' | 'language-info' | 'site-info' | 'recipe-book-sim'
+type AppPage = 'home' | 'language-info' | 'craft-lookup' | 'site-info' | 'recipe-book-sim'
+type PageTransitionPhase = 'idle' | 'exiting' | 'entering'
+
+const PAGE_EXIT_DURATION_MS = 320
+const PAGE_ENTER_DURATION_MS = 420
 
 function sharesLanguageColumn(left: AppPage, right: AppPage): boolean {
   return (left === 'home' && right === 'language-info') || (left === 'language-info' && right === 'home')
@@ -58,6 +66,16 @@ export function commitDraft(workspace: TargetWorkspace, commit: ItemSetEditorCom
   return { entries: orderedEntries(entries).map((candidate, order) => ({ ...candidate, order })) }
 }
 
+export function workspaceFromSharedDrafts(drafts: readonly SharedItemSetDraft[]): TargetWorkspace {
+  return {
+    entries: drafts.map((draft, order) => ({
+      ...draft,
+      id: `item-set-${order + 1}`,
+      order,
+    })),
+  }
+}
+
 function deleteEntry(workspace: TargetWorkspace, entryId: string): TargetWorkspace {
   return { entries: orderedEntries(workspace.entries.filter((entry) => entry.id !== entryId)).map((entry, order) => ({ ...entry, order })) }
 }
@@ -76,7 +94,8 @@ function App() {
   const [enabledBannedLocales, setEnabledBannedLocales] = useState<ReadonlySet<string>>(new Set())
   const [theme, setTheme] = useState<ThemePreference>({ mode: 'light', color: 'pink' })
   const [page, setPage] = useState<AppPage>('home')
-  const [hasNavigated, setHasNavigated] = useState(false)
+  const [pageTransitionPhase, setPageTransitionPhase] = useState<PageTransitionPhase>('idle')
+  const [usesSharedLanguageTransition, setUsesSharedLanguageTransition] = useState(false)
   const [loadingLocale, setLoadingLocale] = useState<string>()
   const [error, setError] = useState<string>()
   const [warning, setWarning] = useState<string>()
@@ -84,11 +103,16 @@ function App() {
   const [customSlots, setCustomSlots] = useState<Array<CustomInventoryPreset | null>>([null, null, null])
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false)
   const [editor, setEditor] = useState<OpenEditor>(null)
+  const [craftLookupSession, setCraftLookupSession] = useState<CraftLookupSession>(newCraftLookupSession)
   const languageSelectorRef = useRef<HTMLElement>(null)
   const workspaceTransitionRef = useRef<HTMLDivElement>(null)
   const priorLanguagePositionRef = useRef<DOMRect | undefined>(undefined)
   const languageAnimationFrameRef = useRef<number | undefined>(undefined)
+  const pendingPageRef = useRef<AppPage | undefined>(undefined)
+  const pageTransitionTimeoutRef = useRef<number | undefined>(undefined)
+  const entries = useMemo(() => orderedEntries(workspace.entries), [workspace.entries])
   const { states, retry } = useRowOptimizations(data, workspace.entries)
+  const craftingSheet = useCraftingSheet(selectedLocale, entries, states)
   const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales)
 
   useEffect(() => {
@@ -99,7 +123,6 @@ function App() {
     setWorkspace(saved.value)
     setTheme(savedTheme.value)
     setWarning([slots.warning, saved.warning, savedTheme.warning].filter(Boolean).join(' ') || undefined)
-    setWorkspaceLoaded(true)
     Promise.all([loadGeneratedData(), loadIconManifest(), loadLanguageMetadata()]).then(([loadedData, loadedIcons, loadedLanguages]) => {
       assertIconCoverage(loadedIcons, loadedData)
       const availableLocales = new Set(loadedLanguages.map((language) => language.locale))
@@ -110,6 +133,7 @@ function App() {
         : languagePreferences.value.selectedLocale
       const initialWorkspace = saved.isFirstVisit ? starterWorkspace(loadedData) : saved.value
       setWorkspace(normalizeWorkspaceGridSizes(initialWorkspace, loadedData))
+      setWorkspaceLoaded(true)
       setBaseData(loadedData)
       setData(loadedData)
       setIcons(loadedIcons)
@@ -183,6 +207,7 @@ function App() {
 
   useEffect(() => () => {
     if (languageAnimationFrameRef.current !== undefined) cancelAnimationFrame(languageAnimationFrameRef.current)
+    if (pageTransitionTimeoutRef.current !== undefined) clearTimeout(pageTransitionTimeoutRef.current)
   }, [])
 
   function openEdit(entryId: string) {
@@ -259,23 +284,58 @@ function App() {
   }
 
   function selectPage(nextPage: AppPage) {
-    if (nextPage === page) return
+    const clearPageTransitionTimer = () => {
+      if (pageTransitionTimeoutRef.current === undefined) return
+      clearTimeout(pageTransitionTimeoutRef.current)
+      pageTransitionTimeoutRef.current = undefined
+    }
+
+    if (nextPage === page) {
+      if (pageTransitionPhase === 'exiting') {
+        clearPageTransitionTimer()
+        pendingPageRef.current = undefined
+        setPageTransitionPhase('idle')
+      }
+      return
+    }
+    if (pageTransitionPhase === 'exiting') {
+      pendingPageRef.current = nextPage
+      return
+    }
+
     if (languageAnimationFrameRef.current !== undefined) cancelAnimationFrame(languageAnimationFrameRef.current)
     const selector = languageSelectorRef.current
-    if (sharesLanguageColumn(page, nextPage) && canAnimateLanguageColumn()) {
+    const shareLanguageColumn = sharesLanguageColumn(page, nextPage) && canAnimateLanguageColumn()
+    if (shareLanguageColumn) {
+      clearPageTransitionTimer()
       priorLanguagePositionRef.current = selector?.getBoundingClientRect()
+      setPageTransitionPhase('idle')
+      setUsesSharedLanguageTransition(true)
+      setPage(nextPage)
     } else {
       priorLanguagePositionRef.current = undefined
       if (selector) {
         selector.style.transition = ''
         selector.style.transform = ''
       }
+      clearPageTransitionTimer()
+      pendingPageRef.current = nextPage
+      setUsesSharedLanguageTransition(false)
+      setPageTransitionPhase('exiting')
+      pageTransitionTimeoutRef.current = window.setTimeout(() => {
+        const pendingPage = pendingPageRef.current
+        pendingPageRef.current = undefined
+        if (pendingPage === undefined) return
+        setPage(pendingPage)
+        setPageTransitionPhase('entering')
+        pageTransitionTimeoutRef.current = window.setTimeout(() => {
+          setPageTransitionPhase('idle')
+          pageTransitionTimeoutRef.current = undefined
+        }, PAGE_ENTER_DURATION_MS)
+      }, PAGE_EXIT_DURATION_MS)
     }
-    setHasNavigated(true)
-    setPage(nextPage)
   }
 
-  const entries = orderedEntries(workspace.entries)
   const editorNumber = editor?.entryId === undefined ? undefined : entries.findIndex((entry) => entry.id === editor.entryId) + 1
   const selectedLanguage = languages.find((language) => language.locale === selectedLocale)
   const selectedLanguageName = selectedLanguage ? englishLocaleName(selectedLanguage, languages) : 'english (us)'
@@ -288,8 +348,9 @@ function App() {
           <p className="app-header__subtitle">optimize recipe book results</p>
         </div>
         <nav className="app-header__nav" aria-label="Main navigation">
-          <button type="button" aria-current={page === 'home' ? 'page' : undefined} onClick={() => selectPage('home')}>craft info</button>
+          <button type="button" className="app-header__nav-search-crafting" aria-current={page === 'home' ? 'page' : undefined} onClick={() => selectPage('home')}>search crafting</button>
           <button type="button" aria-current={page === 'language-info' ? 'page' : undefined} onClick={() => selectPage('language-info')}>language info</button>
+          <button type="button" aria-current={page === 'craft-lookup' ? 'page' : undefined} onClick={() => selectPage('craft-lookup')}>craft lookup</button>
           <button type="button" aria-current={page === 'recipe-book-sim' ? 'page' : undefined} onClick={() => selectPage('recipe-book-sim')}>recipe book sim</button>
           <button type="button" aria-current={page === 'site-info' ? 'page' : undefined} onClick={() => selectPage('site-info')}>site info</button>
         </nav>
@@ -311,44 +372,76 @@ function App() {
       </div>
     </header>
     {warning && <p role="alert">{warning}</p>}{error && <p role="alert">{error}</p>}
+    <div className={`page-transition${pageTransitionPhase === 'idle' ? '' : ` page-transition--${pageTransitionPhase}`}`}>
     {data && icons && page === 'recipe-book-sim' && <RecipeBookSim
       data={data}
       englishItems={baseData?.items ?? data.items}
+      englishInventoryItems={baseData?.inventoryItems ?? data.inventoryItems}
       icons={icons}
       customSlots={customSlots}
       languages={languages}
       selectedLocale={selectedLocale}
       enabledBannedLocales={enabledBannedLocales}
+      scores={languageScores}
       onLocaleChange={selectLocale}
     />}
-    {data && icons && page !== 'recipe-book-sim' && <div ref={workspaceTransitionRef} className={`workspace-grid workspace-transition workspace-transition--${page}${hasNavigated ? ' workspace-transition--animated' : ''}`}>
+    {baseData && icons && page === 'craft-lookup' && <CraftLookup
+      data={baseData}
+      icons={icons}
+      session={craftLookupSession}
+      languages={languages}
+      enabledBannedLocales={enabledBannedLocales}
+      customSlots={customSlots}
+      onSessionChange={setCraftLookupSession}
+      onSaveCustomSlot={saveSlot}
+      onClearCustomSlot={clearSlot}
+    />}
+    {data && icons && page !== 'recipe-book-sim' && page !== 'craft-lookup' && <div ref={workspaceTransitionRef} className={`workspace-grid workspace-transition workspace-transition--${page}${usesSharedLanguageTransition ? ' workspace-transition--shared-language' : ''}`}>
       <ItemSetWorkspace
         dir={isRtlLocale(selectedLocale) ? 'rtl' : 'ltr'}
         entries={workspace.entries}
         items={data.items}
+        inventoryItems={data.inventoryItems}
         icons={icons}
         onWorkspaceChange={setWorkspace}
+        onImport={(drafts) => setWorkspace(normalizeWorkspaceGridSizes(workspaceFromSharedDrafts(drafts), data))}
         onEdit={openEdit}
         onAdd={openAdd}
-        editor={editor && <ItemSetEditor
+      />
+      <LanguageSelector containerRef={languageSelectorRef} languages={languages} selectedLocale={selectedLocale} enabledBannedLocales={enabledBannedLocales} scores={languageScores} loadingLocale={loadingLocale} onSelect={selectLocale} onBannedLocaleEnabledChange={setBannedLocaleEnabled} />
+      <section className="results-column" dir={isRtlLocale(selectedLocale) ? 'rtl' : 'ltr'} aria-label="Calculated searches">
+        <CraftingSheet
+          languageName={selectedLanguageName}
+          entries={craftingSheet.entries}
+          disabledEntries={craftingSheet.disabledEntries}
+          characterSet={craftingSheet.characterSet}
+          characterUsages={craftingSheet.characterUsages}
+          items={data.items}
+          icons={icons}
+          isCalculating={craftingSheet.isCalculating}
+          warning={craftingSheet.warning}
+          onSelectCraft={craftingSheet.selectCraft}
+          onSetEntryDisabled={craftingSheet.setEntryDisabled}
+          onReset={craftingSheet.reset}
+        />
+        {entries.map((entry, index) => <CalculatedSearchRow
+          key={entry.id} entry={entry} entryNumber={index + 1} state={states.get(entry.id)} items={data.items} icons={icons} collections={data.collections} onRetry={() => retry(entry.id)}
+        />)}
+      </section>
+      {editor && <div className="item-set-editor-overlay">
+        <ItemSetEditor
           state={editor} entryNumber={editorNumber} data={data} pickerData={baseData} icons={icons} customSlots={customSlots}
           onDraftChange={updateDraft}
           onSave={(commit) => { setWorkspace((current) => commitDraft(current, commit)); setEditor(null) }}
           onCancel={() => setEditor(null)}
           onDelete={editor.entryId ? () => { setWorkspace((current) => deleteEntry(current, editor.entryId!)); setEditor(null) } : undefined}
           onSaveCustomSlot={saveSlot} onClearCustomSlot={clearSlot}
-        />}
-      />
-      <LanguageSelector containerRef={languageSelectorRef} languages={languages} selectedLocale={selectedLocale} enabledBannedLocales={enabledBannedLocales} scores={languageScores} loadingLocale={loadingLocale} onSelect={selectLocale} onBannedLocaleEnabledChange={setBannedLocaleEnabled} />
-      <section className="results-column" dir={isRtlLocale(selectedLocale) ? 'rtl' : 'ltr'} aria-label="Calculated searches">
-        <h2 className="results-column__title" dir="ltr">{resultsColumnTitle(selectedLocale, languages)}</h2>
-        {entries.map((entry, index) => <CalculatedSearchRow
-          key={entry.id} entry={entry} entryNumber={index + 1} state={states.get(entry.id)} items={data.items} icons={icons} collections={data.collections} onRetry={() => retry(entry.id)}
-        />)}
-      </section>
+        />
+      </div>}
       {languages.length > 0 && <LanguageInfoPanel locale={selectedLocale} languageName={selectedLanguageName} />}
       <SiteInfoPanel />
     </div>}
+    </div>
   </main>
 }
 

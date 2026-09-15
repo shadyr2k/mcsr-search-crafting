@@ -2,12 +2,16 @@ import { describe, expect, test } from 'vitest'
 
 import {
   clearCustomInventorySlot,
+  loadCraftingSheetPreferences,
   loadCustomInventorySlots,
   loadLanguagePreferences,
+  loadRecipeBookInventory,
   loadThemePreference,
   loadTargetWorkspace,
   saveCustomInventorySlot,
+  saveCraftingSheetPreferences,
   saveLanguagePreferences,
+  saveRecipeBookInventory,
   saveThemePreference,
   saveTargetWorkspace,
 } from './storage'
@@ -172,6 +176,23 @@ describe('custom inventory slot persistence', () => {
     expect(loaded.value).toEqual([null, inventory('stone', ['minecraft:cobblestone']), null])
     expect(loaded.warning).toMatch(/inventory/i)
     expect(recoveryValue(storage, 'inventory-slots')).toBe(raw)
+  })
+})
+
+describe('recipe book inventory persistence', () => {
+  test('round trips a deduplicated simulator inventory', () => {
+    const storage = new MemoryStorage()
+
+    saveRecipeBookInventory(['minecraft:iron_ingot', 'minecraft:oak_log', 'minecraft:iron_ingot'], storage)
+
+    expect(loadRecipeBookInventory([], storage)).toEqual({
+      value: ['minecraft:iron_ingot', 'minecraft:oak_log'],
+      warning: undefined,
+    })
+    expect(JSON.parse(storage.getItem('mcsr.recipe-book-inventory.v1')!)).toEqual({
+      schemaVersion: 1,
+      itemIds: ['minecraft:iron_ingot', 'minecraft:oak_log'],
+    })
   })
 })
 
@@ -383,13 +404,62 @@ describe('language preference persistence', () => {
   })
 })
 
+describe('crafting sheet persistence', () => {
+  test('round trips language-specific craft overrides and disabled rows', () => {
+    const storage = new MemoryStorage()
+    const preferences = {
+      selectionsByLocale: {
+        de_de: {
+          tools: { craftKey: 'single:hammer' },
+        },
+        en_us: {
+          tools: { craftKey: 'overlap:ha→ham', disabled: true },
+          armor: { disabled: true },
+        },
+      },
+    }
+
+    saveCraftingSheetPreferences(preferences, storage)
+
+    expect(loadCraftingSheetPreferences(storage)).toEqual({ value: preferences, warning: undefined })
+    expect(JSON.parse(storage.getItem('mcsr.crafting-sheet.v1')!)).toEqual({
+      schemaVersion: 1,
+      selectionsByLocale: {
+        de_de: { tools: { craftKey: 'single:hammer' } },
+        en_us: {
+          armor: { disabled: true },
+          tools: { craftKey: 'overlap:ha→ham', disabled: true },
+        },
+      },
+    })
+  })
+
+  test('drops malformed nested selections while preserving valid language choices and the raw recovery record', () => {
+    const storage = new MemoryStorage()
+    const raw = JSON.stringify({
+      schemaVersion: 1,
+      selectionsByLocale: {
+        en_us: { tools: { craftKey: 'valid' }, broken: { craftKey: 3 } },
+        de_de: 'not-a-selection-map',
+      },
+    })
+    storage.setItem('mcsr.crafting-sheet.v1', raw)
+
+    const loaded = loadCraftingSheetPreferences(storage)
+
+    expect(loaded.value).toEqual({ selectionsByLocale: { en_us: { tools: { craftKey: 'valid' } } } })
+    expect(loaded.warning).toMatch(/crafting-sheet/i)
+    expect(recoveryValue(storage, 'crafting-sheet')).toBe(raw)
+  })
+})
+
 describe('theme preference persistence', () => {
   test('round trips the selected theme mode and color', () => {
     const storage = new MemoryStorage()
 
-    saveThemePreference({ mode: 'dark', color: 'green' }, storage)
+    saveThemePreference({ mode: 'dark', color: 'cyan' }, storage)
 
-    expect(loadThemePreference(storage)).toEqual({ value: { mode: 'dark', color: 'green' }, warning: undefined })
+    expect(loadThemePreference(storage)).toEqual({ value: { mode: 'dark', color: 'cyan' }, warning: undefined })
   })
 
   test('migrates a saved light or dark preference to the pink theme', () => {

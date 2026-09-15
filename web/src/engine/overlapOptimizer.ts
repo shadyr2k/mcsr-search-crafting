@@ -207,8 +207,14 @@ function transitionState(
   }
 }
 
-function stateKey(state: Pick<SearchState, 'coveredMask' | 'lastQuery'>): string {
-  return `${state.coveredMask.toString()}:${state.lastQuery}`
+function stateKey(state: Pick<SearchState, 'coveredMask' | 'lastQuery' | 'totalJunkAppearances'>): string {
+  // The UI exposes junkless and other overlap paths as separate alternatives.
+  // Keep the best path in each category: a junkless path may otherwise
+  // dominate an equally positioned path which deliberately includes junk,
+  // making the latter impossible to show under "other". This still lets each
+  // path freely mix subset-covering regular steps with overlap steps.
+  const junkCategory = state.totalJunkAppearances === 0 ? 'junkless' : 'other'
+  return `${state.coveredMask.toString()}:${state.lastQuery}:${junkCategory}`
 }
 
 function retainBetterState(states: Map<string, SearchState>, candidate: SearchState): void {

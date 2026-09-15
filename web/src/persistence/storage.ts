@@ -1,9 +1,11 @@
-import type { CustomInventoryPreset, TargetWorkspace, TargetWorkspaceEntry } from '../domain/types'
+import type { CraftingSheetPreferences, CraftingSheetSelection, CustomInventoryPreset, TargetWorkspace, TargetWorkspaceEntry } from '../domain/types'
 
 const INVENTORY_SLOTS_KEY = 'mcsr.inventory-slots.v1'
 const TARGET_WORKSPACE_KEY = 'mcsr.target-workspace.v1'
 const LANGUAGE_PREFERENCES_KEY = 'mcsr.language-preferences.v1'
 const THEME_PREFERENCE_KEY = 'mcsr.theme-preference.v1'
+const RECIPE_BOOK_INVENTORY_KEY = 'mcsr.recipe-book-inventory.v1'
+const CRAFTING_SHEET_PREFERENCES_KEY = 'mcsr.crafting-sheet.v1'
 const SLOT_COUNT = 3
 
 export interface PersistenceLoadResult<T> {
@@ -47,7 +49,7 @@ export interface LanguagePreferences {
 }
 
 export type ThemeMode = 'light' | 'dark'
-export type ThemeColor = 'pink' | 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple' | 'gray'
+export type ThemeColor = 'pink' | 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple' | 'gray' | 'white' | 'cyan'
 
 export interface ThemePreference {
   mode: ThemeMode
@@ -65,6 +67,15 @@ interface VersionedThemePreferenceV1 {
 
 interface VersionedThemePreference extends ThemePreference {
   schemaVersion: 2
+}
+
+interface VersionedRecipeBookInventory {
+  schemaVersion: 1
+  itemIds: string[]
+}
+
+interface VersionedCraftingSheetPreferences extends CraftingSheetPreferences {
+  schemaVersion: 1
 }
 
 const volatileRecordsByStorage = new WeakMap<Storage, Map<string, string | null>>()
@@ -467,6 +478,101 @@ export function saveLanguagePreferences(
   return { warning: target.warning }
 }
 
+function defaultCraftingSheetPreferences(): CraftingSheetPreferences {
+  return { selectionsByLocale: {} }
+}
+
+function normalizeCraftingSheetSelection(value: unknown): CraftingSheetSelection | undefined | null {
+  if (!isRecord(value)) return null
+  if (!Object.keys(value).every((key) => key === 'craftKey' || key === 'disabled')) return null
+  if (value.craftKey !== undefined && (typeof value.craftKey !== 'string' || value.craftKey.length === 0)) return null
+  if (value.disabled !== undefined && typeof value.disabled !== 'boolean') return null
+  const selection: CraftingSheetSelection = {}
+  if (typeof value.craftKey === 'string') selection.craftKey = value.craftKey
+  if (value.disabled === true) selection.disabled = true
+  return selection.craftKey !== undefined || selection.disabled === true ? selection : undefined
+}
+
+function normalizeCraftingSheetPreferences(value: unknown): {
+  value: CraftingSheetPreferences
+  hasInvalidMember: boolean
+} | undefined {
+  if (!isRecord(value)
+    || value.schemaVersion !== 1
+    || !isRecord(value.selectionsByLocale)
+    || !Object.keys(value).every((key) => key === 'schemaVersion' || key === 'selectionsByLocale')) return undefined
+
+  const selectionsByLocale: Record<string, Record<string, CraftingSheetSelection>> = {}
+  let hasInvalidMember = false
+  for (const [locale, selections] of Object.entries(value.selectionsByLocale)) {
+    if (!isRecord(selections)) {
+      hasInvalidMember = true
+      continue
+    }
+    const normalizedSelections: Record<string, CraftingSheetSelection> = {}
+    for (const [entryId, selection] of Object.entries(selections)) {
+      const normalized = normalizeCraftingSheetSelection(selection)
+      if (normalized === null) {
+        hasInvalidMember = true
+        continue
+      }
+      if (normalized !== undefined) normalizedSelections[entryId] = normalized
+    }
+    if (Object.keys(normalizedSelections).length > 0) selectionsByLocale[locale] = normalizedSelections
+  }
+  return { value: { selectionsByLocale }, hasInvalidMember }
+}
+
+function encodeCraftingSheetPreferences(preferences: CraftingSheetPreferences): VersionedCraftingSheetPreferences {
+  const selectionsByLocale: Record<string, Record<string, CraftingSheetSelection>> = {}
+  for (const locale of Object.keys(preferences.selectionsByLocale).sort()) {
+    const selections = preferences.selectionsByLocale[locale]
+    const normalizedSelections: Record<string, CraftingSheetSelection> = {}
+    for (const entryId of Object.keys(selections).sort()) {
+      const selection = normalizeCraftingSheetSelection(selections[entryId])
+      if (selection === null) throw new TypeError('Crafting sheet selections must contain only valid craft keys and disabled flags.')
+      if (selection !== undefined) normalizedSelections[entryId] = selection
+    }
+    if (Object.keys(normalizedSelections).length > 0) selectionsByLocale[locale] = normalizedSelections
+  }
+  return { schemaVersion: 1, selectionsByLocale }
+}
+
+function saveCraftingSheetPreferencesRecord(preferences: CraftingSheetPreferences, storage: ResilientStorage): void {
+  storage.setItem(CRAFTING_SHEET_PREFERENCES_KEY, JSON.stringify(encodeCraftingSheetPreferences(preferences)))
+}
+
+export function loadCraftingSheetPreferences(storage?: Storage): PersistenceLoadResult<CraftingSheetPreferences> {
+  const target = storageOrDefault(storage)
+  const fallback = defaultCraftingSheetPreferences()
+  const raw = target.getItem(CRAFTING_SHEET_PREFERENCES_KEY)
+  if (raw === null) return { value: fallback, warning: target.warning }
+  try {
+    const parsed = parseJson(target, CRAFTING_SHEET_PREFERENCES_KEY)
+    const normalized = normalizeCraftingSheetPreferences(parsed)
+    if (!normalized) return recover(target, CRAFTING_SHEET_PREFERENCES_KEY, 'crafting-sheet', raw, fallback)
+    if (normalized.hasInvalidMember) {
+      return recoverInvalidMembers(target, 'crafting-sheet', raw, normalized.value, saveCraftingSheetPreferencesRecord)
+    }
+    return { value: normalized.value, warning: target.warning }
+  } catch {
+    return recover(target, CRAFTING_SHEET_PREFERENCES_KEY, 'crafting-sheet', raw, fallback)
+  }
+}
+
+export function saveCraftingSheetPreferences(
+  preferences: CraftingSheetPreferences,
+  storage?: Storage,
+): PersistenceSaveResult {
+  const normalized = normalizeCraftingSheetPreferences({ schemaVersion: 1, ...preferences })
+  if (!normalized || normalized.hasInvalidMember) {
+    throw new TypeError('Crafting sheet preferences must contain language-specific craft selections.')
+  }
+  const target = storageOrDefault(storage)
+  saveCraftingSheetPreferencesRecord(normalized.value, target)
+  return { warning: target.warning }
+}
+
 function defaultThemePreference(): ThemePreference {
   return { mode: 'light', color: 'pink' }
 }
@@ -482,7 +588,7 @@ function isThemePreference(value: unknown): value is VersionedThemePreference {
   return isRecord(value)
     && value.schemaVersion === 2
     && (value.mode === 'light' || value.mode === 'dark')
-    && (value.color === 'pink' || value.color === 'red' || value.color === 'orange' || value.color === 'yellow' || value.color === 'green' || value.color === 'blue' || value.color === 'purple' || value.color === 'gray')
+    && (value.color === 'pink' || value.color === 'red' || value.color === 'orange' || value.color === 'yellow' || value.color === 'green' || value.color === 'blue' || value.color === 'purple' || value.color === 'gray' || value.color === 'white' || value.color === 'cyan')
     && Object.keys(value).every((key) => key === 'schemaVersion' || key === 'mode' || key === 'color')
 }
 
@@ -514,5 +620,51 @@ export function saveThemePreference(theme: ThemePreference, storage?: Storage): 
   }
   const target = storageOrDefault(storage)
   saveThemePreferenceRecord(theme, target)
+  return { warning: target.warning }
+}
+
+function normalizeRecipeBookInventory(itemIds: readonly string[]): string[] {
+  return [...new Set(itemIds)].sort()
+}
+
+function isRecipeBookInventory(value: unknown): value is VersionedRecipeBookInventory {
+  return isRecord(value)
+    && value.schemaVersion === 1
+    && isStringArray(value.itemIds)
+    && Object.keys(value).every((key) => key === 'schemaVersion' || key === 'itemIds')
+}
+
+function saveRecipeBookInventoryRecord(itemIds: readonly string[], storage: ResilientStorage): void {
+  storage.setItem(RECIPE_BOOK_INVENTORY_KEY, JSON.stringify({
+    schemaVersion: 1,
+    itemIds: normalizeRecipeBookInventory(itemIds),
+  } satisfies VersionedRecipeBookInventory))
+}
+
+export function loadRecipeBookInventory(
+  fallbackItemIds: readonly string[] = [],
+  storage?: Storage,
+): PersistenceLoadResult<string[]> {
+  const target = storageOrDefault(storage)
+  const fallback = normalizeRecipeBookInventory(fallbackItemIds)
+  const raw = target.getItem(RECIPE_BOOK_INVENTORY_KEY)
+  if (raw === null) return { value: fallback, warning: target.warning }
+  try {
+    const parsed = parseJson(target, RECIPE_BOOK_INVENTORY_KEY)
+    if (!isRecipeBookInventory(parsed)) {
+      return recover(target, RECIPE_BOOK_INVENTORY_KEY, 'recipe-book-inventory', raw, fallback)
+    }
+    const itemIds = normalizeRecipeBookInventory(parsed.itemIds)
+    if (itemIds.length !== parsed.itemIds.length) saveRecipeBookInventoryRecord(itemIds, target)
+    return { value: itemIds, warning: target.warning }
+  } catch {
+    return recover(target, RECIPE_BOOK_INVENTORY_KEY, 'recipe-book-inventory', raw, fallback)
+  }
+}
+
+export function saveRecipeBookInventory(itemIds: readonly string[], storage?: Storage): PersistenceSaveResult {
+  if (!isStringArray(itemIds)) throw new TypeError('Recipe book inventories must contain only item IDs.')
+  const target = storageOrDefault(storage)
+  saveRecipeBookInventoryRecord(itemIds, target)
   return { warning: target.warning }
 }

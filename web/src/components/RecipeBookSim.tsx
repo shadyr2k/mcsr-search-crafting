@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 
 import recipeNextHoverTexture from '../assets/ui/recipe_arrow_next_disabled.png'
 import recipeNextTexture from '../assets/ui/recipe_arrow_next.png'
@@ -7,23 +7,26 @@ import recipePreviousTexture from '../assets/ui/recipe_arrow_previous.png'
 import recipeFilterCraftableTexture from '../assets/ui/recipe_filter_craftable.png'
 import recipeResultSlotTexture from '../assets/ui/recipe_result_slot.png'
 import type { IconManifest } from '../data/iconManifest'
-import type { CraftingRecipe, CustomInventoryPreset, GeneratedData, IngredientSlot, InventoryPreset, LanguageMetadata, SearchItem } from '../domain/types'
+import type { CraftingRecipe, CustomInventoryPreset, GeneratedData, IngredientSlot, InventoryItem, InventoryPreset, LanguageMetadata, LanguageScoreState, SearchItem } from '../domain/types'
 import { matchEligibleCollectionOutputs } from '../engine/collectionSearch'
 import { eligibleRecipes } from '../engine/craftability'
 import { normalizeSearchText } from '../engine/search'
+import { loadRecipeBookInventory, saveRecipeBookInventory } from '../persistence/storage'
 import { GridSizeSwitch } from './GridSizeSwitch'
 import { ItemIcon } from './ItemIcon'
 import { ItemPicker } from './ItemPicker'
-import { englishLocaleName, isBannedLocale } from './LanguageSelector'
+import { englishLanguageName, englishLocaleName, isBannedLocale, languageDisplayName } from './LanguageSelector'
 
 interface RecipeBookSimProps {
   data: GeneratedData
   englishItems?: ReadonlyMap<string, SearchItem>
+  englishInventoryItems?: ReadonlyMap<string, InventoryItem>
   icons: IconManifest
   customSlots: Array<CustomInventoryPreset | null>
   languages: readonly LanguageMetadata[]
   selectedLocale: string
   enabledBannedLocales: ReadonlySet<string>
+  scores?: ReadonlyMap<string, LanguageScoreState>
   onLocaleChange: (locale: string) => void
 }
 
@@ -36,6 +39,20 @@ function presetIconId(presetId: string): string | undefined {
   if (presetId === 'nether-bastion') return 'minecraft:gold_block'
   if (presetId === 'nether-fortress') return 'minecraft:blaze_rod'
   return undefined
+}
+
+function scoreText(score: number): string {
+  return Number.isInteger(score) ? String(score) : score.toFixed(1)
+}
+
+function scorePositions(scores: ReadonlyMap<string, LanguageScoreState>): ReadonlyMap<string, number> {
+  const readyScores = [...scores.entries()]
+    .filter((entry): entry is [string, Extract<LanguageScoreState, { status: 'ready' }>] => entry[1].status === 'ready')
+  if (readyScores.length === 0) return new Map()
+  const values = readyScores.map(([, score]) => score.score)
+  const lowest = Math.min(...values)
+  const range = Math.max(...values) - lowest
+  return new Map(readyScores.map(([locale, score]) => [locale, range === 0 ? .5 : (score.score - lowest) / range]))
 }
 
 function matchesTooltip(item: SearchItem, query: string): boolean {
@@ -104,19 +121,24 @@ function recipeGridCells(recipe: CraftingRecipe, gridSize: 2 | 3): Array<Ingredi
 export function RecipeBookSim({
   data,
   englishItems = data.items,
+  englishInventoryItems = data.inventoryItems,
   icons,
   customSlots,
   languages,
   selectedLocale,
   enabledBannedLocales,
+  scores = new Map(),
   onLocaleChange,
 }: RecipeBookSimProps) {
   const defaultInventory = data.presets.get('overworld')?.itemIds ?? []
-  const [inventoryItemIds, setInventoryItemIds] = useState<string[]>(defaultInventory)
+  const [inventoryItemIds, setInventoryItemIds] = useState<string[]>(() => (
+    loadRecipeBookInventory(defaultInventory).value.filter((itemId) => data.inventoryItems.has(itemId) || data.items.has(itemId))
+  ))
   const [gridSize, setGridSize] = useState<2 | 3>(3)
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(0)
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null)
+  const [languageMenuOpen, setLanguageMenuOpen] = useState(false)
   // Match Minecraft's localized tooltip text literally. In particular, a
   // space is a searchable character rather than formatting to discard.
   const normalizedQuery = normalizeSearchText(query)
@@ -127,6 +149,8 @@ export function RecipeBookSim({
     englishLocaleName(left, languages).localeCompare(englishLocaleName(right, languages))
   )), [enabledBannedLocales, languages])
   const selectedLanguage = languages.find((language) => language.locale === selectedLocale)
+  const selectedLanguageScore = scores.get(selectedLocale)
+  const scorePositionByLocale = useMemo(() => scorePositions(scores), [scores])
   const specialCharacters = useMemo(() => (
     selectedLanguage?.script === 'latin' ? latinSpecialCharacters(data.items) : []
   ), [data.items, selectedLanguage?.script])
@@ -141,6 +165,29 @@ export function RecipeBookSim({
       itemIds: preset.itemIds,
     }] : []),
   ], [customSlots, data.presets])
+  const inventoryPickerItems = useMemo(() => {
+    const pickerItems = new Map([...data.inventoryItems].map(([itemId, item]) => {
+      const englishName = englishInventoryItems.get(itemId)?.name ?? item.name
+      return [itemId, {
+        ...item,
+        name: englishName === item.name ? englishName : `${englishName} (${item.name})`,
+      }]
+    }))
+
+    // Recipe results are not necessarily ingredient inventory entries. Keep an
+    // added result in the picker so it is visibly present and removable.
+    for (const itemId of inventoryItemIds) {
+      if (pickerItems.has(itemId)) continue
+      const item = data.items.get(itemId)
+      if (!item) continue
+      const englishName = englishItems.get(itemId)?.name ?? item.name
+      pickerItems.set(itemId, {
+        id: itemId,
+        name: englishName === item.name ? englishName : `${englishName} (${item.name})`,
+      })
+    }
+    return pickerItems
+  }, [data.inventoryItems, data.items, englishInventoryItems, englishItems, inventoryItemIds])
   const results = useMemo(() => {
     const eligible = eligibleRecipes(data.recipes, inventory, gridSize)
     const outputCounts = new Map<string, number>()
@@ -200,6 +247,13 @@ export function RecipeBookSim({
     ? recipeGridCells(selectedResult.recipe, selectedRecipeGridSize)
     : []
 
+  function updateInventory(itemIds: readonly string[]) {
+    const nextItemIds = [...new Set(itemIds)].sort()
+    setInventoryItemIds(nextItemIds)
+    saveRecipeBookInventory(nextItemIds)
+    setPage(0)
+  }
+
   return <section className="recipe-book-sim" aria-label="Recipe book simulator">
     <div className="recipe-book-sim__layout">
       <div className="recipe-book-sim__configuration">
@@ -210,14 +264,49 @@ export function RecipeBookSim({
           </div>
         </header>
         <aside className="recipe-book-sim__controls" aria-label="Recipe book controls">
-        <label className="recipe-book-sim__language">
+        <div className="recipe-book-sim__language">
           <span>language</span>
-          <select value={selectedLocale} onChange={(event) => onLocaleChange(event.target.value)} aria-label="Simulator language">
-            {selectableLanguages.map((language) => <option key={language.locale} value={language.locale}>
-              {englishLocaleName(language, languages)}
-            </option>)}
-          </select>
-        </label>
+          <div className="recipe-book-sim__language-menu">
+            <button
+              type="button"
+              className="recipe-book-sim__language-trigger"
+              aria-label="Simulator language"
+              aria-haspopup="listbox"
+              aria-expanded={languageMenuOpen}
+              onClick={() => setLanguageMenuOpen((open) => !open)}
+            >
+              <span>{selectedLanguage ? `${englishLanguageName(selectedLanguage)} - ${languageDisplayName(selectedLanguage)}` : 'english'}</span>
+              {selectedLanguageScore?.status === 'ready' && <strong
+                className="recipe-book-sim__language-score"
+                style={{ '--language-score-position': scorePositionByLocale.get(selectedLocale) } as CSSProperties}
+              >{scoreText(selectedLanguageScore.score)}</strong>}
+              {selectedLanguageScore?.status === 'pending' && <span className="recipe-book-sim__language-score">…</span>}
+            </button>
+            {languageMenuOpen && <ul role="listbox" aria-label="Simulator language choices">
+              {selectableLanguages.map((language) => {
+                const score = scores.get(language.locale)
+                return <li key={language.locale}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={language.locale === selectedLocale}
+                    onClick={() => {
+                      setLanguageMenuOpen(false)
+                      onLocaleChange(language.locale)
+                    }}
+                  >
+                    <span>{englishLanguageName(language)} - {languageDisplayName(language)}</span>
+                    {score?.status === 'ready' && <strong
+                      className="recipe-book-sim__language-score"
+                      style={{ '--language-score-position': scorePositionByLocale.get(language.locale) } as CSSProperties}
+                    >{scoreText(score.score)}</strong>}
+                    {score?.status === 'pending' && <span className="recipe-book-sim__language-score">…</span>}
+                  </button>
+                </li>
+              })}
+            </ul>}
+          </div>
+        </div>
         {specialCharacters.length > 0 && <div className="recipe-book-sim__characters" role="region" aria-label="Special characters">
           <span>special characters</span>
           <ul>{specialCharacters.map((character) => <li key={character}>{character}</li>)}</ul>
@@ -231,8 +320,7 @@ export function RecipeBookSim({
               aria-pressed={preset.itemIds.length === inventoryItemIds.length && preset.itemIds.every((itemId) => inventory.has(itemId))}
               aria-label={`Use inventory preset ${preset.name}`}
               onClick={() => {
-                setInventoryItemIds([...new Set(preset.itemIds)].sort())
-                setPage(0)
+                updateInventory(preset.itemIds)
               }}
             >
               {preset.iconItemId
@@ -243,14 +331,11 @@ export function RecipeBookSim({
           </div>
         </div>
         <ItemPicker
-          items={data.inventoryItems}
+          items={inventoryPickerItems}
           label="Simulator inventory"
           selectedIds={inventoryItemIds}
           manifest={icons}
-          onChange={(itemIds) => {
-            setInventoryItemIds(itemIds)
-            setPage(0)
-          }}
+          onChange={updateInventory}
         />
         <GridSizeSwitch
           value={gridSize}
@@ -323,9 +408,18 @@ export function RecipeBookSim({
         {selectedResult && <aside className="recipe-book-sim__detail" aria-label={`${selectedResult.item.name} recipe details`}>
           <header>
             <ItemIcon itemId={selectedResult.item.id} name={selectedResult.item.name} manifest={icons} size="detail" />
-            <div>
-              <h3>{englishItems.get(selectedResult.item.id)?.name ?? selectedResult.item.name}</h3>
+            <div className="recipe-book-sim__detail-title">
+              <div className="recipe-book-sim__detail-heading">
+                <h3>{englishItems.get(selectedResult.item.id)?.name ?? selectedResult.item.name}</h3>
+              </div>
               <p>{selectedResult.item.name}</p>
+              <button
+                type="button"
+                className="recipe-book-sim__detail-add"
+                aria-label={`Add ${englishItems.get(selectedResult.item.id)?.name ?? selectedResult.item.name} to simulator inventory`}
+                disabled={inventory.has(selectedResult.item.id)}
+                onClick={() => updateInventory([...inventoryItemIds, selectedResult.item.id])}
+              >{inventory.has(selectedResult.item.id) ? 'added' : 'add'}</button>
             </div>
           </header>
           <section className="recipe-book-sim__detail-recipe" aria-label="Recipe">

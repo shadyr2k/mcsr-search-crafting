@@ -5,12 +5,14 @@ import type { ThemeColor, ThemePreference } from '../persistence/storage'
 import { ItemIcon } from './ItemIcon'
 
 const themeOptions: ReadonlyArray<{ color: ThemeColor; label: string; itemId: string }> = [
+  { color: 'white', label: 'plain white / black', itemId: 'minecraft:white_dye' },
   { color: 'pink', label: 'pink', itemId: 'minecraft:pink_dye' },
   { color: 'red', label: 'red', itemId: 'minecraft:red_dye' },
   { color: 'orange', label: 'orange', itemId: 'minecraft:orange_dye' },
   { color: 'yellow', label: 'yellow', itemId: 'minecraft:yellow_dye' },
   { color: 'green', label: 'green', itemId: 'minecraft:green_dye' },
   { color: 'blue', label: 'blue', itemId: 'minecraft:blue_dye' },
+  { color: 'cyan', label: 'cyan', itemId: 'minecraft:cyan_dye' },
   { color: 'purple', label: 'purple', itemId: 'minecraft:purple_dye' },
   { color: 'gray', label: 'regular gray', itemId: 'minecraft:gray_dye' },
 ]

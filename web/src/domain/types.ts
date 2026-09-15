@@ -121,6 +121,20 @@ export interface TargetWorkspace {
   entries: TargetWorkspaceEntry[]
 }
 
+/**
+ * A user's override for one calculated item-set craft on the crafting sheet.
+ * Omitting `craftKey` means that the sheet should use its calculated default.
+ */
+export interface CraftingSheetSelection {
+  craftKey?: string
+  disabled?: boolean
+}
+
+/** Crafting-sheet overrides are independent for every selected language. */
+export interface CraftingSheetPreferences {
+  selectionsByLocale: Record<string, Record<string, CraftingSheetSelection>>
+}
+
 export type ItemSetDraft = Omit<TargetWorkspaceEntry, 'id' | 'order'> & {
   sourceEntryId?: string
 }

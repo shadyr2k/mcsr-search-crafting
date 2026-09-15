@@ -3,12 +3,16 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { parseIconManifest } from '../data/iconManifest'
 import type { SearchItem, TargetWorkspaceEntry } from '../domain/types'
+import { createItemSetWorkspaceShareCode } from '../workspace/itemSetShare'
 import { ItemSetWorkspace } from './ItemSetWorkspace'
 
 afterEach(cleanup)
 
 const items = new Map<string, SearchItem>([
   ['minecraft:stick', { id: 'minecraft:stick', name: 'Stick', confidence: 'exact', searchLines: [] }],
+])
+const inventoryItems = new Map([
+  ['minecraft:oak_planks', { id: 'minecraft:oak_planks', name: 'Oak Planks' }],
 ])
 const icons = parseIconManifest({
   schema_version: 1,
@@ -31,8 +35,10 @@ describe('ItemSetWorkspace', () => {
     render(<ItemSetWorkspace
       entries={[entry]}
       items={items}
+      inventoryItems={inventoryItems}
       icons={icons}
       onWorkspaceChange={onWorkspaceChange}
+      onImport={vi.fn()}
       onEdit={onEdit}
       onAdd={vi.fn()}
     />)
@@ -51,8 +57,10 @@ describe('ItemSetWorkspace', () => {
     render(<ItemSetWorkspace
       entries={[]}
       items={items}
+      inventoryItems={inventoryItems}
       icons={icons}
       onWorkspaceChange={vi.fn()}
+      onImport={vi.fn()}
       onEdit={vi.fn()}
       onAdd={onAdd}
     />)
@@ -66,8 +74,10 @@ describe('ItemSetWorkspace', () => {
     render(<ItemSetWorkspace
       entries={[entry, secondEntry]}
       items={items}
+      inventoryItems={inventoryItems}
       icons={icons}
       onWorkspaceChange={onWorkspaceChange}
+      onImport={vi.fn()}
       onEdit={vi.fn()}
       onAdd={vi.fn()}
     />)
@@ -87,5 +97,42 @@ describe('ItemSetWorkspace', () => {
       expect.objectContaining({ id: 'saved', order: 1 }),
     ] })
     expect(screen.queryByRole('button', { name: /Move item set/i })).toBeNull()
+  })
+
+  test('exports and imports the complete ordered item-set column from its header', () => {
+    const onImport = vi.fn()
+    render(<ItemSetWorkspace
+      entries={[entry, { ...secondEntry, enabled: false, gridSize: 3, retainCraftOrder: true, inventoryItemIds: ['minecraft:oak_planks'] }]}
+      items={items}
+      inventoryItems={inventoryItems}
+      icons={icons}
+      onWorkspaceChange={vi.fn()}
+      onImport={onImport}
+      onEdit={vi.fn()}
+      onAdd={vi.fn()}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'share' }))
+    fireEvent.click(screen.getByRole('button', { name: 'export' }))
+    expect((screen.getByLabelText('Item set collection share code') as HTMLTextAreaElement).value).toMatch(/^mcsr-item-sets-v1\./)
+
+    const code = createItemSetWorkspaceShareCode([{
+      targetIds: ['minecraft:stick'],
+      inventoryItemIds: ['minecraft:oak_planks'],
+      enabled: false,
+      gridSize: 3,
+      retainCraftOrder: true,
+    }])
+    fireEvent.change(screen.getByLabelText('Import item set collection code'), { target: { value: code } })
+    fireEvent.click(screen.getByRole('button', { name: 'replace' }))
+
+    expect(onImport).toHaveBeenCalledWith([{
+      targetIds: ['minecraft:stick'],
+      inventoryItemIds: ['minecraft:oak_planks'],
+      enabled: false,
+      gridSize: 3,
+      retainCraftOrder: true,
+    }])
+    expect(screen.getByRole('status').textContent).toContain('Replaced the column with 1 item set.')
   })
 })

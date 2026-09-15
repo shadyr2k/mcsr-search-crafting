@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import type { CraftingRecipe, RecipeResultCollection, SearchItem } from '../domain/types'
-import { MAXIMUM_ORDINARY_BACKSPACES, optimizeOverlap, optimizeOverlapPrepared, transitionPresentation, type OverlapResult } from './overlapOptimizer'
+import { MAXIMUM_ORDINARY_BACKSPACES, optimizeOverlap, optimizeOverlapPrepared, optimizeOverlapPreparedCooperatively, transitionPresentation, type OverlapResult } from './overlapOptimizer'
 import type { OptimizeInput, PreparedCandidate } from './singleOptimizer'
 
 function item(id: string, text: string): SearchItem {
@@ -245,6 +245,40 @@ describe('optimizeOverlap', () => {
     expect(shared.steps[0].junkItemIds).toEqual([])
     expect(results.every((result) => result.steps.length <= targets.length)).toBe(true)
     expect(results.every((result) => result.steps.every(({ newTargetIds }) => newTargetIds.length > 0))).toBe(true)
+  })
+
+  test('keeps the best junk-bearing sequence alongside a junkless one that ends on the same craft', async () => {
+    const targetIds = ['target:0', 'target:1', 'target:2', 'target:3']
+    const candidate = (query: string, targetMask: bigint, junkItemIds: string[] = []): PreparedCandidate => ({
+      query,
+      targetMask,
+      coveredTargetIds: targetIds.filter((_, index) => (targetMask & (1n << BigInt(index))) !== 0n),
+      junkItemIds,
+      explanations: [],
+    })
+
+    const prepared = {
+      targetIds,
+      candidates: [
+        // This regular craft handles two, but not all, targets in either
+        // overlap sequence.
+        candidate('r', 0b0011n),
+        candidate('ra', 0b0100n),
+        candidate('rb', 0b0100n, ['junk:middle']),
+        candidate('rc', 0b1000n),
+      ],
+    }
+    const results = optimizeOverlapPrepared(prepared, { retainTargetOrder: true })
+    const cooperativeResults = await optimizeOverlapPreparedCooperatively(prepared, {
+      retainTargetOrder: true,
+      workChunkSize: 1,
+      yieldControl: async () => {},
+    })
+
+    expect(results.map(sequence)).toContainEqual(['r', 'ra', 'rc'])
+    expect(results.map(sequence)).toContainEqual(['r', 'rb', 'rc'])
+    expect(findSequence(results, ['r', 'rb', 'rc']).totalJunkAppearances).toBe(1)
+    expect(cooperativeResults).toEqual(results)
   })
 
   test('uses deterministic tie metrics when replacing states and ranking complete results', () => {
