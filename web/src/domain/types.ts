@@ -130,6 +130,7 @@ export interface CraftingSheetSelection {
   disabled?: boolean
   mode?: 'combined' | 'individual'
   itemCraftKeys?: Record<string, string>
+  itemOrder?: string[]
 }
 
 /** Crafting-sheet overrides are independent for every selected language. */

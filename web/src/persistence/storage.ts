@@ -484,16 +484,19 @@ function defaultCraftingSheetPreferences(): CraftingSheetPreferences {
 
 function normalizeCraftingSheetSelection(value: unknown): CraftingSheetSelection | undefined | null {
   if (!isRecord(value)) return null
-  if (!Object.keys(value).every((key) => ['craftKey', 'disabled', 'mode', 'itemCraftKeys'].includes(key))) return null
+  if (!Object.keys(value).every((key) => ['craftKey', 'disabled', 'mode', 'itemCraftKeys', 'itemOrder'].includes(key))) return null
   if (value.craftKey !== undefined && (typeof value.craftKey !== 'string' || value.craftKey.length === 0)) return null
   if (value.disabled !== undefined && typeof value.disabled !== 'boolean') return null
   if (value.mode !== undefined && value.mode !== 'combined' && value.mode !== 'individual') return null
+  if (value.itemOrder !== undefined && (!Array.isArray(value.itemOrder)
+    || !value.itemOrder.every((itemId) => typeof itemId === 'string' && itemId.length > 0))) return null
   if (value.itemCraftKeys !== undefined && (!isRecord(value.itemCraftKeys)
     || !Object.values(value.itemCraftKeys).every((key) => typeof key === 'string' && key.length > 0))) return null
   const selection: CraftingSheetSelection = {}
   if (typeof value.craftKey === 'string') selection.craftKey = value.craftKey
   if (value.disabled === true) selection.disabled = true
   if (value.mode === 'individual' || value.mode === 'combined') selection.mode = value.mode
+  if (Array.isArray(value.itemOrder) && value.itemOrder.length > 0) selection.itemOrder = [...new Set(value.itemOrder)]
   if (isRecord(value.itemCraftKeys) && Object.keys(value.itemCraftKeys).length > 0) {
     selection.itemCraftKeys = Object.fromEntries(Object.entries(value.itemCraftKeys).sort(([left], [right]) => left.localeCompare(right))) as Record<string, string>
   }

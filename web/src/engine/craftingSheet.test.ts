@@ -174,4 +174,36 @@ describe('crafting sheet model', () => {
     expect(model.entries[0].options).toHaveLength(12)
     expect(model.entries[0].options[11]).toMatchObject({ label: 'q11', scoreDelta: 11 })
   })
+
+  test.each([
+    ['lea', 'lab', 'l', 2, 'ab', 5],
+    ['leap', 'labs', 'l', 3, 'abs', 7],
+    ['leaps', 'labs', '', 5, 'labs', 9],
+    ['leaps', 'labor', '', 5, 'labor', 10],
+    ['lea', 'bed', '', 3, 'bed', 6],
+    ['la', 'lab', 'la', 0, 'b', 3],
+    ['lea', 'lea', 'lea', 0, '', 3],
+  ])('reuses the prefix from %s to %s within the normal backspace limit', (from, to, prefix, backspaces, suffix, chars) => {
+    const itemSet = { ...entry('tools', 0), targetIds: ['helmet', 'pickaxe'] }
+    const state = ready(itemSet.id, [search('all')])
+    const model = createCraftingSheetModel([itemSet], new Map([[itemSet.id, {
+      ...state, outcome: { ...state.outcome, itemSearches: { helmet: [search(from)], pickaxe: [search(to)] } },
+    }]]), { tools: { mode: 'individual' } })
+    expect(model.entries[0].selectedSearch?.steps[1]).toMatchObject({ retainedPrefix: prefix, freeBackspaceCount: backspaces, typedSuffix: suffix })
+    expect(model.totalTypedCharacters).toBe(chars)
+    expect(model.totalScore).toBe(Math.max(0, from.length - 2) + suffix.length)
+    expect(model.entries[0].itemChoices[1].options[0].totalTypedCharacters).toBe(suffix.length)
+  })
+
+  test('restores the chosen item order, discards stale IDs, and appends new targets', () => {
+    const itemSet = { ...entry('tools', 0), targetIds: ['helmet', 'pickaxe', 'new'] }
+    const state = ready(itemSet.id, [search('all')])
+    const model = createCraftingSheetModel([itemSet], new Map([[itemSet.id, {
+      ...state, outcome: { ...state.outcome, itemSearches: { helmet: [search('lea')], pickaxe: [search('lab')], new: [search('bed')] } },
+    }]]), { tools: { mode: 'individual', itemOrder: ['pickaxe', 'old', 'pickaxe', 'helmet'] } })
+    expect(model.entries[0].itemChoices.map((choice) => choice.itemId)).toEqual(['pickaxe', 'helmet', 'new'])
+    expect(model.entries[0].itemIds).toEqual(['pickaxe', 'helmet', 'new'])
+    expect(model.entries[0].queryLabel).toBe('lab ←← ea (Shift+Home) bed')
+    expect(itemSet.targetIds).toEqual(['helmet', 'pickaxe', 'new'])
+  })
 })

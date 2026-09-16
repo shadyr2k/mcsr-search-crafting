@@ -27,6 +27,7 @@ export interface CraftingSheetProps {
   onSelectCraft: (entryId: string, optionId: string) => void
   onSetCraftMode: (entryId: string, mode: 'combined' | 'individual') => void
   onSelectItemCraft: (entryId: string, itemId: string, optionId: string) => void
+  onMoveItemCraft: (entryId: string, itemId: string, direction: -1 | 1) => void
   onSetEntryDisabled: (entryId: string, disabled: boolean) => void
   onReset: () => void
 }
@@ -60,7 +61,7 @@ function QuerySequence({ search }: { search: RankedSearch }) {
             ? <kbd className="crafting-sheet__key" aria-label={`${step.freeBackspaceCount} backspace${step.freeBackspaceCount === 1 ? '' : 's'}`} title={`${step.freeBackspaceCount} backspace${step.freeBackspaceCount === 1 ? '' : 's'}`}>
               <span aria-hidden="true">←{step.freeBackspaceCount > 1 ? ` ×${step.freeBackspaceCount}` : ''}</span>
             </kbd>
-            : <span className="crafting-sheet__key" aria-label="Continue typing">→</span>)}
+            : <span className="crafting-sheet__key" aria-label={step.typedSuffix ? 'Continue typing' : 'Keep search'}>{step.typedSuffix ? '→' : 'keep search'}</span>)}
         <span className="crafting-sheet__query-text" title={`Search: ${step.query.replaceAll(' ', '_')}`}>{(index === 0 ? step.query : step.typedSuffix).replaceAll(' ', '_')}</span>
       </Fragment>
     })}
@@ -120,11 +121,11 @@ function CraftPicker({ label, options, selectedOptionId, onSelect }: {
 function ItemLabels({ itemIds, items, icons }: { itemIds: readonly string[]; items: CraftingSheetProps['items']; icons: CraftingSheetProps['icons'] }) {
   return <span className="crafting-sheet__items">{itemIds.map((itemId) => <span key={itemId} className="crafting-sheet__item">
     {icons && <ItemIcon itemId={itemId} name={itemName(itemId, items)} manifest={icons} />}
-    <span>{itemName(itemId, items)}</span>
+    {!icons && <span role="img" aria-label={itemName(itemId, items)} title={itemName(itemId, items)}>◇</span>}
   </span>)}</span>
 }
 
-function ItemSetCard({ entry, items, icons, onSelectCraft, onSetCraftMode, onSelectItemCraft, onSetEntryDisabled }: Pick<CraftingSheetProps, 'items' | 'icons' | 'onSelectCraft' | 'onSetCraftMode' | 'onSelectItemCraft' | 'onSetEntryDisabled'> & { entry: CraftingSheetEntry }) {
+function ItemSetCard({ entry, items, icons, onSelectCraft, onSetCraftMode, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled }: Pick<CraftingSheetProps, 'items' | 'icons' | 'onSelectCraft' | 'onSetCraftMode' | 'onSelectItemCraft' | 'onMoveItemCraft' | 'onSetEntryDisabled'> & { entry: CraftingSheetEntry }) {
   const [isOpen, setIsOpen] = useState(false)
   const headingId = useId()
   const detailsId = useId()
@@ -169,11 +170,17 @@ function ItemSetCard({ entry, items, icons, onSelectCraft, onSetCraftMode, onSel
         {entry.mode === 'combined'
           ? <CraftPicker label={entry.label} options={entry.options} selectedOptionId={entry.selectedOptionId} onSelect={(id) => onSelectCraft(entry.id, id)} />
           : <div className="crafting-sheet__individual">
-            <p className="crafting-sheet__hint">Craft in the order below. Shift+Home replaces the search between items.</p>
+            <p className="crafting-sheet__hint">Reorder with the arrows. Shared prefixes use up to 3 backspaces; otherwise the search is replaced. Chars and scores reflect this order.</p>
             {entry.itemChoices.map((choice, index) => {
               const selected = choice.options.find((option) => option.id === choice.selectedOptionId)
               return <div className="crafting-sheet__individual-item" key={choice.itemId}>
-                <div className="crafting-sheet__individual-summary"><span className="crafting-sheet__step-number">{index + 1}</span><ItemLabels itemIds={[choice.itemId]} items={items} icons={icons} />
+                <div className="crafting-sheet__individual-summary"><span className="crafting-sheet__step-number">{index + 1}</span>
+                  <span className="crafting-sheet__reorder" role="group" aria-label={`Reorder ${itemName(choice.itemId, items)}`}>
+                    {([-1, 1] as const).map((direction) => <button key={direction} type="button" disabled={direction === -1 ? index === 0 : index === entry.itemChoices.length - 1}
+                      aria-label={`Move ${itemName(choice.itemId, items)} ${direction === -1 ? 'up' : 'down'}`} title={`Move ${direction === -1 ? 'up' : 'down'}`}
+                      onClick={() => onMoveItemCraft(entry.id, choice.itemId, direction)}><span aria-hidden="true"><ArrowSprite direction={direction === -1 ? 'up' : 'down'} compact /></span></button>)}
+                  </span>
+                  <ItemLabels itemIds={[choice.itemId]} items={items} icons={icons} />
                   {selected && <><QuerySequence search={selected.search} /><span className="crafting-sheet__item-cost">{selected.totalTypedCharacters} chars · {selected.junkCount} junk · {deltaLabel(choice.scoreDelta)}</span></>}
                 </div>
                 <CraftPicker label={itemName(choice.itemId, items)} options={choice.options} selectedOptionId={choice.selectedOptionId} onSelect={(id) => onSelectItemCraft(entry.id, choice.itemId, id)} />
@@ -215,7 +222,7 @@ function UsageChart({ usages }: { usages: readonly CraftingSheetCharacterUsage[]
   </div>
 }
 
-export function CraftingSheet({ languageName, entries, characterSet, characterUsages, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, defaultOpen = false, onSelectCraft, onSetCraftMode, onSelectItemCraft, onSetEntryDisabled, onReset }: CraftingSheetProps) {
+export function CraftingSheet({ languageName, entries, characterSet, characterUsages, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, defaultOpen = false, onSelectCraft, onSetCraftMode, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, onReset }: CraftingSheetProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
   const panelId = useId()
   const readyCount = entries.filter((entry) => !entry.disabled && entry.status === 'ready').length
@@ -247,7 +254,7 @@ export function CraftingSheet({ languageName, entries, characterSet, characterUs
       {warning && <p className="crafting-sheet__warning" role="status">{warning}</p>}
       <section className="crafting-sheet__sets" aria-label="Selected item sets"><h3>item sets</h3>
         {entries.length === 0 && <p className="crafting-sheet__empty">Add an item set with available crafts to build a crafting sheet.</p>}
-        {entries.map((entry) => <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onSelectCraft={onSelectCraft} onSetCraftMode={onSetCraftMode} onSelectItemCraft={onSelectItemCraft} onSetEntryDisabled={onSetEntryDisabled} />)}
+        {entries.map((entry) => <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onSelectCraft={onSelectCraft} onSetCraftMode={onSetCraftMode} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />)}
       </section>
       {usages.length > 0 && <details className="crafting-sheet__usage"><summary>character usage</summary><div className="crafting-sheet__usage-layout"><ol className="crafting-sheet__usage-list">{usages.map((usage) => <CharacterUsageRow key={usage.character} usage={usage} />)}</ol><UsageChart usages={usages} /></div></details>}
     </div>

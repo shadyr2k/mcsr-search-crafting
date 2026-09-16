@@ -6,6 +6,7 @@ import type {
 } from '../domain/types'
 import { MAX_RECIPE_BOOK_RESULTS } from './resultLimit'
 import { scoreStep } from './scoring'
+import { MAXIMUM_ORDINARY_BACKSPACES, transitionPresentation } from './overlapOptimizer'
 
 export interface CraftingSheetOption {
   /** Stable across a rank-order change as long as the calculated craft is the same. */
@@ -258,7 +259,9 @@ function candidateEntries(
     if (state?.status !== 'ready' || state.outcome.kind !== 'ranked') return
     const options = optionsForSearches(state.outcome.rankedSearches, state.outcome.bestScore)
     const optimalOptions = options.filter((option) => option.isOptimal)
-    const itemChoices = entry.targetIds.map((itemId) => {
+    const itemOrder = [...new Set([...(selections[entry.id]?.itemOrder ?? []), ...entry.targetIds])]
+      .filter((itemId) => entry.targetIds.includes(itemId))
+    const itemChoices = itemOrder.map((itemId) => {
       const searches = state.outcome.kind === 'ranked' ? state.outcome.itemSearches?.[itemId] ?? [] : []
       const itemOptions = optionsForSearches(searches, searches[0]?.totalScore ?? 0)
       const selected = itemOptions.find((option) => option.id === selections[entry.id]?.itemCraftKeys?.[itemId]) ?? itemOptions[0]
@@ -269,18 +272,24 @@ function candidateEntries(
   return { entries: result, isCalculating }
 }
 
+function individualTransition(previousQuery: string | undefined, query: string) {
+  if (previousQuery === undefined) return { retainedPrefix: '', freeBackspaceCount: 0, typedSuffix: query }
+  const transition = transitionPresentation(previousQuery, query)
+  if (transition.freeBackspaceCount <= MAXIMUM_ORDINARY_BACKSPACES) return transition
+  return { retainedPrefix: '', freeBackspaceCount: previousQuery.length, typedSuffix: query }
+}
+
 function individualSearch(candidate: CandidateEntry): RankedSearch | undefined {
   const searches = candidate.itemChoices.map((choice) => choice.options.find((option) => option.id === choice.selectedOptionId)?.search)
   if (searches.some((search) => !search)) return undefined
   const steps = searches.map((search, index) => {
     const source = search!.steps[0]
+    const transition = individualTransition(searches[index - 1]?.queries[0], source.query)
     const junk = scoreStep(0, source.junkItemIds.length)
-    const typingPenalty = index === 0 ? Math.max(0, source.query.length - 2) : source.query.length
+    const typingPenalty = index === 0 ? Math.max(0, source.query.length - 2) : transition.typedSuffix.length
     return {
       ...source,
-      retainedPrefix: '',
-      freeBackspaceCount: index === 0 ? 0 : searches[index - 1]!.queries[0].length,
-      typedSuffix: source.query,
+      ...transition,
       coveredTargetIds: [candidate.itemChoices[index].itemId],
       newTargetIds: [candidate.itemChoices[index].itemId],
       score: { typingPenalty, junkPresencePenalty: junk.junkPresencePenalty, junkCountPenalty: junk.junkCountPenalty, total: typingPenalty + junk.total },
@@ -294,6 +303,24 @@ function individualSearch(candidate: CandidateEntry): RankedSearch | undefined {
     totalTypedCharacters: steps.reduce((sum, step) => sum + step.typedSuffix.length, 0),
     totalScore: steps.reduce((sum, step) => sum + step.score.total, 0),
   }
+}
+
+/** Compare per-item alternatives against the query immediately before this row. */
+function contextualItemChoices(candidate: CandidateEntry): CraftingSheetItemChoice[] {
+  return candidate.itemChoices.map((choice, index) => {
+    const previous = candidate.itemChoices[index - 1]
+    const previousQuery = previous?.options.find((option) => option.id === previous.selectedOptionId)?.search.queries[0]
+    const scored = choice.options.map((option) => {
+      const query = option.search.queries[0]
+      const transition = individualTransition(previousQuery, query)
+      const typingPenalty = index === 0 ? Math.max(0, query.length - 2) : transition.typedSuffix.length
+      return { ...option, totalTypedCharacters: transition.typedSuffix.length, totalScore: typingPenalty + scoreStep(0, option.junkCount).total }
+    })
+    const bestScore = Math.min(...scored.map((option) => option.totalScore))
+    const options = scored.map((option) => ({ ...option, scoreDelta: option.totalScore - bestScore, isOptimal: option.totalScore === bestScore }))
+      .sort((left, right) => left.totalScore - right.totalScore || left.totalTypedCharacters - right.totalTypedCharacters)
+    return { ...choice, options, scoreDelta: options.find((option) => option.id === choice.selectedOptionId)?.scoreDelta ?? 0 }
+  })
 }
 
 /**
@@ -341,7 +368,7 @@ export function createCraftingSheetModel(
     const disabled = saved?.disabled === true
     const entry: CraftingSheetEntry = {
       id: candidate.entry.id,
-      itemIds: [...candidate.entry.targetIds],
+      itemIds: saved?.mode === 'individual' ? candidate.itemChoices.map((choice) => choice.itemId) : [...candidate.entry.targetIds],
       label: `item set ${candidate.entryNumber}`,
       queryLabel: selected.label,
       options: candidate.options,
@@ -350,7 +377,7 @@ export function createCraftingSheetModel(
       disabled,
       status: 'ready',
       mode: saved?.mode === 'individual' && individualSearch(candidate) ? 'individual' : 'combined',
-      itemChoices: candidate.itemChoices,
+      itemChoices: contextualItemChoices(candidate),
       selectedSearch: selected.search,
       totalTypedCharacters: selected.totalTypedCharacters,
       totalScore: selected.totalScore,

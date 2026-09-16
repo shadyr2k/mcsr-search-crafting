@@ -16,6 +16,7 @@ export interface CraftingSheetState extends CraftingSheetModel {
   selectCraft(entryId: string, optionId: string): void
   setCraftMode(entryId: string, mode: 'combined' | 'individual'): void
   selectItemCraft(entryId: string, itemId: string, optionId: string): void
+  moveItemCraft(entryId: string, itemId: string, direction: -1 | 1): void
   setEntryDisabled(entryId: string, disabled: boolean): void
   /** Restores this language's calculated craft choices and re-enables every row. */
   reset(): void
@@ -106,10 +107,24 @@ export function useCraftingSheet(
     persist(resetLocaleSelections(preferencesRef.current, locale))
   }, [locale, persist])
 
+  const moveItemCraft = useCallback((entryId: string, itemId: string, direction: -1 | 1) => {
+    const targets = entries.find((entry) => entry.id === entryId)?.targetIds
+    if (!targets) return
+    const selection = preferencesRef.current.selectionsByLocale[locale]?.[entryId]
+    const itemOrder = [...new Set([...(selection?.itemOrder ?? []), ...targets])].filter((id) => targets.includes(id))
+    const index = itemOrder.indexOf(itemId)
+    const destination = index + direction
+    if (index < 0 || destination < 0 || destination >= itemOrder.length) return
+    const displaced = itemOrder[destination]
+    itemOrder[destination] = itemOrder[index]
+    itemOrder[index] = displaced
+    persist(updateLocaleSelection(preferencesRef.current, locale, entryId, (current) => ({ ...current, mode: 'individual', itemOrder })))
+  }, [entries, locale, persist])
+
   const selections = preferences.selectionsByLocale[locale] ?? {}
   const model = useMemo(
     () => createCraftingSheetModel(entries, states, selections),
     [entries, selections, states],
   )
-  return { ...model, warning, selectCraft, setCraftMode, selectItemCraft, setEntryDisabled, reset }
+  return { ...model, warning, selectCraft, setCraftMode, selectItemCraft, moveItemCraft, setEntryDisabled, reset }
 }

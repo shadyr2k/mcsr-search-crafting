@@ -98,6 +98,8 @@
 .crafting-sheet__individual-item { display: grid; gap: .4rem; padding: .55rem 0; border-top: 1px solid var(--border); }
 .crafting-sheet__individual-summary { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .65rem; }
 .crafting-sheet__step-number { display: grid; place-items: center; width: 1.4rem; height: 1.4rem; border-radius: 50%; background: var(--panel); color: var(--muted); font-size: .7rem; }
+.crafting-sheet__reorder { display: inline-flex; gap: .2rem; }
+.crafting-sheet__reorder button { display: grid; place-items: center; width: 1.8rem; min-height: 1.8rem; padding: .15rem; border-width: 1px; }
 .crafting-sheet__item-cost { font-size: .7rem; color: var(--muted); margin-inline-start: auto; }
 .crafting-sheet__usage { border-top: 1px solid var(--border); padding-top: .75rem; }
 .crafting-sheet__usage > summary { cursor: pointer; color: var(--accent-strong); font-size: .9rem; padding: .25rem 0; }

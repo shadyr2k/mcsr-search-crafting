@@ -426,6 +426,7 @@ function App() {
           onSelectCraft={craftingSheet.selectCraft}
           onSetCraftMode={craftingSheet.setCraftMode}
           onSelectItemCraft={craftingSheet.selectItemCraft}
+          onMoveItemCraft={craftingSheet.moveItemCraft}
           onSetEntryDisabled={craftingSheet.setEntryDisabled}
           onReset={craftingSheet.reset}
         />

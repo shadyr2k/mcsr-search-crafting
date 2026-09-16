@@ -29,7 +29,7 @@ function props(): CraftingSheetProps {
   return {
     languageName: 'english', ...createCraftingSheetModel([entry], new Map([[entry.id, state]])),
     defaultOpen: true, onSelectCraft: vi.fn(), onSetEntryDisabled: vi.fn(), onReset: vi.fn(),
-    onSetCraftMode: vi.fn(), onSelectItemCraft: vi.fn(),
+    onSetCraftMode: vi.fn(), onSelectItemCraft: vi.fn(), onMoveItemCraft: vi.fn(),
   }
 }
 
@@ -42,8 +42,10 @@ describe('CraftingSheet', () => {
     expect(screen.getByLabelText('Total characters')).toHaveTextContent('2')
     expect(screen.getByLabelText('Distinct characters')).toHaveTextContent('2')
     expect(screen.getByRole('region', { name: 'item set 1' })).toBeVisible()
-    expect(screen.getByText('bed')).toBeVisible()
-    expect(screen.getByText('anchor')).toBeVisible()
+    expect(screen.getByRole('img', { name: 'bed' })).toBeVisible()
+    expect(screen.getByRole('img', { name: 'anchor' })).toBeVisible()
+    expect(screen.queryByText('bed')).not.toBeInTheDocument()
+    expect(screen.queryByText('anchor')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Expand item set 1' })).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByLabelText('Selected query for bed')).toHaveTextContent('be')
     expect(screen.queryByRole('button', { name: 'choose craft for item set 1' })).not.toBeInTheDocument()
@@ -92,6 +94,10 @@ describe('CraftingSheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'individual items' }))
     expect(input.onSetCraftMode).toHaveBeenCalledWith('bed-anchor', 'individual')
     rerender(<CraftingSheet {...input} entries={[{ ...input.entries[0], mode: 'individual' }]} />)
+    expect(screen.getByRole('button', { name: 'Move bed up' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Move anchor down' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Move anchor up' }))
+    expect(input.onMoveItemCraft).toHaveBeenCalledWith('bed-anchor', 'anchor', -1)
     fireEvent.click(screen.getByRole('button', { name: 'choose craft for bed' }))
     const choices = screen.getByRole('region', { name: 'Calculated crafts for bed' })
     fireEvent.click(within(choices).getByRole('button', { name: /^bed / }))
