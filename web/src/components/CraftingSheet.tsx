@@ -1,4 +1,4 @@
-import { Fragment, useId, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
 import type { IconManifest } from '../data/iconManifest'
 import type { RankedSearch, SearchItem } from '../domain/types'
@@ -37,6 +37,16 @@ function itemName(itemId: string, items: CraftingSheetProps['items']): string {
 
 function deltaLabel(delta: number): string {
   return delta === 0 ? 'best score' : `${delta > 0 ? '+' : ''}${delta} score`
+}
+
+function SheetDisclosure({ id, open, children }: { id: string; open: boolean; children: ReactNode }) {
+  const [hasOpened, setHasOpened] = useState(open)
+  useEffect(() => { if (open) setHasOpened(true) }, [open])
+  if (!open && !hasOpened) return null
+
+  return <div id={id} className={`crafting-sheet__details${open ? ' crafting-sheet__details--open' : ''}`} aria-hidden={!open} inert={!open}>
+    <div className="crafting-sheet__details-clip">{children}</div>
+  </div>
 }
 
 function QuerySequence({ search }: { search: RankedSearch }) {
@@ -94,7 +104,7 @@ function CraftPicker({ label, options, selectedOptionId, onSelect }: {
           <button type="button" aria-pressed={option.id === selectedOptionId} onClick={() => { onSelect(option.id); close() }}>
             <QuerySequence search={option.search} />
             <span className="crafting-sheet__option-metrics">
-              <span>{option.totalTypedCharacters} typed · {option.junkCount} junk</span>
+              <span>{option.totalTypedCharacters} chars · {option.junkCount} junk</span>
               <span className={option.isOptimal ? 'crafting-sheet__optimal' : ''}>{deltaLabel(option.scoreDelta)}</span>
               {selected && option.id !== selected.id && <span className="crafting-sheet__change">{option.totalScore - selected.totalScore > 0 ? '+' : ''}{option.totalScore - selected.totalScore} vs selected</span>}
             </span>
@@ -115,12 +125,30 @@ function ItemLabels({ itemIds, items, icons }: { itemIds: readonly string[]; ite
 }
 
 function ItemSetCard({ entry, items, icons, onSelectCraft, onSetCraftMode, onSelectItemCraft, onSetEntryDisabled }: Pick<CraftingSheetProps, 'items' | 'icons' | 'onSelectCraft' | 'onSetCraftMode' | 'onSelectItemCraft' | 'onSetEntryDisabled'> & { entry: CraftingSheetEntry }) {
+  const [isOpen, setIsOpen] = useState(false)
   const headingId = useId()
+  const detailsId = useId()
   return <section className={`crafting-sheet__entry${entry.disabled ? ' crafting-sheet__entry--disabled' : ''}`} aria-labelledby={headingId}>
     <header className="crafting-sheet__entry-heading">
-      <div><h4 id={headingId}>{entry.label}</h4><ItemLabels itemIds={entry.itemIds} items={items} icons={icons} /></div>
+      <button type="button" className="crafting-sheet__entry-toggle" aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${entry.label}`} aria-expanded={isOpen} aria-controls={detailsId} onClick={() => setIsOpen(!isOpen)}>
+        <span className="crafting-sheet__entry-summary">
+          <span id={headingId} className="crafting-sheet__entry-label">{entry.label}</span>
+          <span className="crafting-sheet__summary-items">{entry.itemIds.map((itemId) => {
+            const step = entry.selectedSearch?.steps.find((current) => current.newTargetIds.includes(itemId))
+              ?? entry.selectedSearch?.steps.find((current) => current.coveredTargetIds.includes(itemId))
+            return <span key={itemId} className="crafting-sheet__summary-item">
+              <ItemLabels itemIds={[itemId]} items={items} icons={icons} />
+              {step && <span className="crafting-sheet__query-preview" aria-label={`Selected query for ${itemName(itemId, items)}`} dir="ltr">[<span className="crafting-sheet__query-text">{step.query.replaceAll(' ', '_')}</span>]</span>}
+            </span>
+          })}</span>
+          {!isOpen && entry.status !== 'ready' && <span className="crafting-sheet__empty">{entry.status === 'pending' ? 'Calculating crafts…' : 'No available craft.'}</span>}
+        </span>
+        <span aria-hidden="true"><ArrowSprite direction={isOpen ? 'up' : 'down'} compact /></span>
+      </button>
       <label className="crafting-sheet__include"><input type="checkbox" checked={!entry.disabled} aria-label={`Include ${entry.label}`} onChange={(event) => onSetEntryDisabled(entry.id, !event.target.checked)} />{entry.disabled ? 'excluded' : 'included'}</label>
     </header>
+    <SheetDisclosure id={detailsId} open={isOpen}>
+    <div className="crafting-sheet__entry-body">
     {entry.status !== 'ready'
       ? <p className="crafting-sheet__empty">{entry.status === 'pending' ? 'Calculating crafts…' : 'No available craft for this item set. Check its inventory and targets.'}</p>
       : <>
@@ -129,7 +157,7 @@ function ItemSetCard({ entry, items, icons, onSelectCraft, onSetCraftMode, onSel
             <button type="button" aria-pressed={entry.mode === 'combined'} onClick={() => onSetCraftMode(entry.id, 'combined')}>combined craft</button>
             <button type="button" aria-pressed={entry.mode === 'individual'} onClick={() => onSetCraftMode(entry.id, 'individual')}>individual items</button>
           </div>}
-          <span className="crafting-sheet__entry-metrics"><strong>{entry.totalTypedCharacters} typed</strong><span>{entry.selectedSearch?.totalJunkAppearances ?? 0} junk</span><span title="Difference from this item set’s best calculated score">{deltaLabel(entry.scoreDelta)}</span></span>
+          <span className="crafting-sheet__entry-metrics"><strong>{entry.totalTypedCharacters} chars</strong><span>{entry.selectedSearch?.totalJunkAppearances ?? 0} junk</span><span title="Difference from this item set’s best calculated score">{deltaLabel(entry.scoreDelta)}</span></span>
         </div>
         <div className="crafting-sheet__plan">
           <span className="crafting-sheet__eyebrow">your sequence</span>
@@ -146,13 +174,15 @@ function ItemSetCard({ entry, items, icons, onSelectCraft, onSetCraftMode, onSel
               const selected = choice.options.find((option) => option.id === choice.selectedOptionId)
               return <div className="crafting-sheet__individual-item" key={choice.itemId}>
                 <div className="crafting-sheet__individual-summary"><span className="crafting-sheet__step-number">{index + 1}</span><ItemLabels itemIds={[choice.itemId]} items={items} icons={icons} />
-                  {selected && <><QuerySequence search={selected.search} /><span className="crafting-sheet__item-cost">{selected.totalTypedCharacters} typed · {selected.junkCount} junk · {deltaLabel(choice.scoreDelta)}</span></>}
+                  {selected && <><QuerySequence search={selected.search} /><span className="crafting-sheet__item-cost">{selected.totalTypedCharacters} chars · {selected.junkCount} junk · {deltaLabel(choice.scoreDelta)}</span></>}
                 </div>
                 <CraftPicker label={itemName(choice.itemId, items)} options={choice.options} selectedOptionId={choice.selectedOptionId} onSelect={(id) => onSelectItemCraft(entry.id, choice.itemId, id)} />
               </div>
             })}
           </div>}
       </>}
+    </div>
+    </SheetDisclosure>
   </section>
 }
 
@@ -198,15 +228,16 @@ export function CraftingSheet({ languageName, entries, characterSet, characterUs
         <span className="crafting-sheet__disclosure" aria-hidden="true"><ArrowSprite direction={isOpen ? 'up' : 'down'} compact /></span>
       </button>
     </h2></header>
-    {isOpen && <div id={panelId} className="crafting-sheet__panel">
+    <SheetDisclosure id={panelId} open={isOpen}>
+    <div className="crafting-sheet__panel">
       <div className="crafting-sheet__intro"><p>Your crafts, your way. Choose a sequence for each item set.</p><button type="button" className="crafting-sheet__reset" onClick={onReset}>reset sheet</button></div>
       <div className="crafting-sheet__totals" aria-live="polite" aria-atomic="true">
-        <div><strong aria-label="Total characters typed">{totalTypedCharacters}</strong><span>characters typed</span></div>
+        <div><strong aria-label="Total characters">{totalTypedCharacters}</strong><span>total characters</span></div>
         <div><strong aria-label="Distinct characters">{characterSet.length}</strong><span>distinct characters</span></div>
         <div><strong>{readyCount}</strong><span>included item sets</span></div>
         <div><strong>{totalScore}</strong><span>total score · {scoreDelta === 0 ? 'best' : `${scoreDelta > 0 ? '+' : ''}${scoreDelta} vs best`}</span></div>
       </div>
-      <p className="crafting-sheet__hint">Typing counts include spaces and repeated letters. Control keys are excluded. Lower score is better.</p>
+      <p className="crafting-sheet__hint">Character counts include spaces and repeated letters. Control keys are excluded. Lower score is better.</p>
       <div className="crafting-sheet__character-set-block"><h3>character set</h3>
         {characterSet.length > 0 ? <ul className="crafting-sheet__character-set" aria-label="Selected characters">{characterSet.map((character) => <li key={character} className="crafting-sheet__query-text">{character}</li>)}</ul> : <p className="crafting-sheet__empty">No search characters are needed.</p>}
         <p className="crafting-sheet__hint"><span className="crafting-sheet__query-text">_</span> = space · ← = backspace · Shift+Home = replace search</p>
@@ -219,6 +250,7 @@ export function CraftingSheet({ languageName, entries, characterSet, characterUs
         {entries.map((entry) => <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onSelectCraft={onSelectCraft} onSetCraftMode={onSetCraftMode} onSelectItemCraft={onSelectItemCraft} onSetEntryDisabled={onSetEntryDisabled} />)}
       </section>
       {usages.length > 0 && <details className="crafting-sheet__usage"><summary>character usage</summary><div className="crafting-sheet__usage-layout"><ol className="crafting-sheet__usage-list">{usages.map((usage) => <CharacterUsageRow key={usage.character} usage={usage} />)}</ol><UsageChart usages={usages} /></div></details>}
-    </div>}
+    </div>
+    </SheetDisclosure>
   </section>
 }
