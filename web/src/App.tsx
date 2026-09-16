@@ -416,11 +416,16 @@ function App() {
           disabledEntries={craftingSheet.disabledEntries}
           characterSet={craftingSheet.characterSet}
           characterUsages={craftingSheet.characterUsages}
+          totalTypedCharacters={craftingSheet.totalTypedCharacters}
+          totalScore={craftingSheet.totalScore}
+          scoreDelta={craftingSheet.scoreDelta}
           items={data.items}
           icons={icons}
           isCalculating={craftingSheet.isCalculating}
           warning={craftingSheet.warning}
           onSelectCraft={craftingSheet.selectCraft}
+          onSetCraftMode={craftingSheet.setCraftMode}
+          onSelectItemCraft={craftingSheet.selectItemCraft}
           onSetEntryDisabled={craftingSheet.setEntryDisabled}
           onReset={craftingSheet.reset}
         />

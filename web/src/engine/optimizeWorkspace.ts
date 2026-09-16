@@ -1,14 +1,16 @@
 import type {
   EntryOptimizationOutcome,
   GeneratedData,
+  RankedSearch,
   RowOptimizationState,
   TargetWorkspaceEntry,
 } from '../domain/types'
 
 import { eligibleRecipes } from './craftability'
 import { optimizeOverlapPreparedCooperatively, type OverlapResult } from './overlapOptimizer'
-import { incompleteScore } from './scoring'
-import { rankSearches } from './rankedSearch'
+import { incompleteScore, scoreStep } from './scoring'
+import { compareRankedSearches, rankedFromSingle, rankSearches } from './rankedSearch'
+import { maximumJunkItems } from './resultLimit'
 import {
   optimizeSinglePrepared,
   prepareOptimizationCooperatively,
@@ -32,6 +34,7 @@ export interface WorkspaceEntryResult {
   incomplete: IncompleteAttempt | null
   availableCompleteMethod: 'single' | 'overlap' | null
   bestScore: number
+  itemSearches?: Record<string, RankedSearch[]>
 }
 
 export interface WorkspaceResult {
@@ -102,6 +105,16 @@ async function optimizeEntry(
   })
   throwIfAborted(options.signal)
   const single = optimizeSinglePrepared(prepared)
+  const itemSearches = Object.fromEntries(entry.targetIds.map((itemId) => [itemId,
+    prepared.candidates.filter((candidate) => candidate.coveredTargetIds.includes(itemId)
+      && candidate.query.length <= 5
+      && candidate.junkItemIds.length <= maximumJunkItems(candidate.coveredTargetIds.length))
+      .map((candidate) => rankedFromSingle({
+        ...candidate,
+        coveredTargetIds: [itemId],
+        score: scoreStep(candidate.query.length, candidate.junkItemIds.length),
+      })).sort(compareRankedSearches),
+  ]))
   // One-step paths are single-query crafts. Keeping them out of this category
   // makes the independently displayed overlap alternative meaningful.
   const overlap = targetIds.length > 1
@@ -144,6 +157,7 @@ async function optimizeEntry(
     gridSize: entry.gridSize,
     visibleItemIds: [...visibleIds].sort(),
     single,
+    itemSearches,
     overlap,
     incomplete,
     availableCompleteMethod,
@@ -176,6 +190,7 @@ export async function optimizeWorkspaceEntry(
       kind: 'ranked',
       entryId: entry.id,
       rankedSearches,
+      itemSearches: legacy.itemSearches,
       bestScore: rankedSearches[0].totalScore,
       visibleItemIds: legacy.visibleItemIds,
     }

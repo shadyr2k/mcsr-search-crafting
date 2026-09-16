@@ -128,6 +128,8 @@ export interface TargetWorkspace {
 export interface CraftingSheetSelection {
   craftKey?: string
   disabled?: boolean
+  mode?: 'combined' | 'individual'
+  itemCraftKeys?: Record<string, string>
 }
 
 /** Crafting-sheet overrides are independent for every selected language. */
@@ -173,6 +175,8 @@ export type EntryOptimizationOutcome =
       rankedSearches: RankedSearch[]
       bestScore: number
       visibleItemIds: string[]
+      /** All bounded, independent queries, reusing the item's prepared matches. */
+      itemSearches?: Record<string, RankedSearch[]>
     }
   | {
       kind: 'no-viable'

@@ -4,6 +4,8 @@ import type {
   RowOptimizationState,
   TargetWorkspaceEntry,
 } from '../domain/types'
+import { MAX_RECIPE_BOOK_RESULTS } from './resultLimit'
+import { scoreStep } from './scoring'
 
 export interface CraftingSheetOption {
   /** Stable across a rank-order change as long as the calculated craft is the same. */
@@ -11,6 +13,18 @@ export interface CraftingSheetOption {
   /** A text-only version of the search sequence for the craft picker. */
   label: string
   isOptimal: boolean
+  search: RankedSearch
+  totalTypedCharacters: number
+  totalScore: number
+  scoreDelta: number
+  junkCount: number
+}
+
+export interface CraftingSheetItemChoice {
+  itemId: string
+  options: readonly CraftingSheetOption[]
+  selectedOptionId: string
+  scoreDelta: number
 }
 
 export interface CraftingSheetEntry {
@@ -22,6 +36,13 @@ export interface CraftingSheetEntry {
   selectedOptionId: string
   defaultOptionId: string
   disabled: boolean
+  status: 'ready' | 'pending' | 'unavailable'
+  mode: 'combined' | 'individual'
+  itemChoices: readonly CraftingSheetItemChoice[]
+  selectedSearch: RankedSearch | undefined
+  totalTypedCharacters: number
+  totalScore: number
+  scoreDelta: number
 }
 
 export interface CraftingSheetCharacterOccurrence {
@@ -47,6 +68,9 @@ export interface CraftingSheetModel {
   characterSet: readonly string[]
   characterUsages: readonly CraftingSheetCharacterUsage[]
   isCalculating: boolean
+  totalTypedCharacters: number
+  totalScore: number
+  scoreDelta: number
 }
 
 interface SearchOption extends CraftingSheetOption {
@@ -59,6 +83,7 @@ interface CandidateEntry {
   entryNumber: number
   options: readonly SearchOption[]
   optimalOptions: readonly SearchOption[]
+  itemChoices: readonly CraftingSheetItemChoice[]
 }
 
 const DEFAULT_SEARCH_LIMIT = 100_000
@@ -88,7 +113,12 @@ export function craftingSheetCraftKey(search: RankedSearch): string {
 }
 
 export function craftingSheetQueryLabel(search: RankedSearch): string {
-  return search.queries.map(displayQuery).join(' → ')
+  return search.steps.map((step, index) => {
+    if (index === 0) return displayQuery(step.query)
+    const shiftHome = step.retainedPrefix.length === 0 && step.freeBackspaceCount >= search.steps[index - 1].query.length
+    const action = shiftHome ? ' (Shift+Home) ' : step.freeBackspaceCount > 0 ? ` ${'←'.repeat(step.freeBackspaceCount)} ` : ' → '
+    return `${action}${displayQuery(step.typedSuffix)}`
+  }).join('')
 }
 
 function displayedCharacters(search: RankedSearch): ReadonlySet<string> {
@@ -101,14 +131,23 @@ function optionsForSearches(searches: readonly RankedSearch[], bestScore: number
   const seen = new Set<string>()
   const options: SearchOption[] = []
   for (const search of searches) {
+    if (search.steps.some((step) => step.query.length > 5
+      || step.junkItemIds.length + Math.max(1, step.coveredTargetIds.length) > MAX_RECIPE_BOOK_RESULTS)) continue
     const id = craftingSheetCraftKey(search)
     if (seen.has(id)) continue
     seen.add(id)
+    const totalTypedCharacters = search.steps.reduce((sum, step, index) => (
+      sum + Array.from(index === 0 ? step.query : step.typedSuffix).length
+    ), 0)
     options.push({
       id,
       label: craftingSheetQueryLabel(search),
       isOptimal: search.totalScore === bestScore,
-      search,
+      search: { ...search, totalTypedCharacters },
+      totalTypedCharacters,
+      totalScore: search.totalScore,
+      scoreDelta: search.totalScore - bestScore,
+      junkCount: search.totalJunkAppearances,
       characters: displayedCharacters(search),
     })
   }
@@ -208,6 +247,7 @@ function defaultOptionIds(
 function candidateEntries(
   entries: readonly TargetWorkspaceEntry[],
   states: ReadonlyMap<string, RowOptimizationState>,
+  selections: Readonly<Record<string, CraftingSheetSelection>>,
 ): { entries: CandidateEntry[]; isCalculating: boolean } {
   let isCalculating = false
   const result: CandidateEntry[] = []
@@ -218,9 +258,42 @@ function candidateEntries(
     if (state?.status !== 'ready' || state.outcome.kind !== 'ranked') return
     const options = optionsForSearches(state.outcome.rankedSearches, state.outcome.bestScore)
     const optimalOptions = options.filter((option) => option.isOptimal)
-    if (options.length > 0 && optimalOptions.length > 0) result.push({ entry, entryNumber: index + 1, options, optimalOptions })
+    const itemChoices = entry.targetIds.map((itemId) => {
+      const searches = state.outcome.kind === 'ranked' ? state.outcome.itemSearches?.[itemId] ?? [] : []
+      const itemOptions = optionsForSearches(searches, searches[0]?.totalScore ?? 0)
+      const selected = itemOptions.find((option) => option.id === selections[entry.id]?.itemCraftKeys?.[itemId]) ?? itemOptions[0]
+      return { itemId, options: itemOptions, selectedOptionId: selected?.id ?? '', scoreDelta: selected?.scoreDelta ?? 0 }
+    })
+    if (options.length > 0 && optimalOptions.length > 0) result.push({ entry, entryNumber: index + 1, options, optimalOptions, itemChoices })
   })
   return { entries: result, isCalculating }
+}
+
+function individualSearch(candidate: CandidateEntry): RankedSearch | undefined {
+  const searches = candidate.itemChoices.map((choice) => choice.options.find((option) => option.id === choice.selectedOptionId)?.search)
+  if (searches.some((search) => !search)) return undefined
+  const steps = searches.map((search, index) => {
+    const source = search!.steps[0]
+    const junk = scoreStep(0, source.junkItemIds.length)
+    const typingPenalty = index === 0 ? Math.max(0, source.query.length - 2) : source.query.length
+    return {
+      ...source,
+      retainedPrefix: '',
+      freeBackspaceCount: index === 0 ? 0 : searches[index - 1]!.queries[0].length,
+      typedSuffix: source.query,
+      coveredTargetIds: [candidate.itemChoices[index].itemId],
+      newTargetIds: [candidate.itemChoices[index].itemId],
+      score: { typingPenalty, junkPresencePenalty: junk.junkPresencePenalty, junkCountPenalty: junk.junkCountPenalty, total: typingPenalty + junk.total },
+    }
+  })
+  return {
+    kind: steps.length > 1 ? 'overlap' : 'single',
+    queries: steps.map((step) => step.query), steps,
+    coveredTargetIds: [...candidate.entry.targetIds],
+    totalJunkAppearances: steps.reduce((sum, step) => sum + step.junkItemIds.length, 0),
+    totalTypedCharacters: steps.reduce((sum, step) => sum + step.typedSuffix.length, 0),
+    totalScore: steps.reduce((sum, step) => sum + step.score.total, 0),
+  }
 }
 
 /**
@@ -233,11 +306,16 @@ export function createCraftingSheetModel(
   states: ReadonlyMap<string, RowOptimizationState>,
   selections: Readonly<Record<string, CraftingSheetSelection>> = {},
 ): CraftingSheetModel {
-  const candidates = candidateEntries(entries, states)
+  const candidates = candidateEntries(entries, states, selections)
   // This is the reset target: every row is active and every choice is an
   // equal-score craft selected for the smallest common character set.
   const defaults = defaultOptionIds(candidates.entries)
   const savedOptions = new Map(candidates.entries.flatMap((candidate) => {
+    if (selections[candidate.entry.id]?.mode === 'individual') {
+      const search = individualSearch(candidate)
+      const option = search ? optionsForSearches([search], candidate.options[0].totalScore)[0] : undefined
+      if (option) return [[candidate.entry.id, option] as const]
+    }
     const savedKey = selections[candidate.entry.id]?.craftKey
     const option = candidate.options.find((current) => current.id === savedKey)
     return option ? [[candidate.entry.id, option] as const] : []
@@ -259,17 +337,24 @@ export function createCraftingSheetModel(
     const selectedOptionId = savedOption?.id
       ?? selectedDefaults.get(candidate.entry.id)
       ?? defaultOptionId
-    const selected = candidate.options.find((option) => option.id === selectedOptionId)!
+    const selected = savedOption ?? candidate.options.find((option) => option.id === selectedOptionId)!
     const disabled = saved?.disabled === true
     const entry: CraftingSheetEntry = {
       id: candidate.entry.id,
       itemIds: [...candidate.entry.targetIds],
       label: `item set ${candidate.entryNumber}`,
       queryLabel: selected.label,
-      options: candidate.options.map(({ id, label, isOptimal }) => ({ id, label, isOptimal })),
+      options: candidate.options,
       selectedOptionId,
       defaultOptionId,
       disabled,
+      status: 'ready',
+      mode: saved?.mode === 'individual' && individualSearch(candidate) ? 'individual' : 'combined',
+      itemChoices: candidate.itemChoices,
+      selectedSearch: selected.search,
+      totalTypedCharacters: selected.totalTypedCharacters,
+      totalScore: selected.totalScore,
+      scoreDelta: selected.scoreDelta,
     }
 
     if (!disabled) for (const character of selected.characters) {
@@ -286,6 +371,19 @@ export function createCraftingSheetModel(
     return entry
   })
 
+  entries.forEach((entry, index) => {
+    if (!entry.enabled || entry.targetIds.length === 0 || sheetEntries.some((current) => current.id === entry.id)) return
+    const state = states.get(entry.id)
+    sheetEntries.push({
+      id: entry.id, itemIds: entry.targetIds, label: `item set ${index + 1}`, queryLabel: '',
+      options: [], selectedOptionId: '', defaultOptionId: '', disabled: selections[entry.id]?.disabled === true,
+      status: state === undefined || state.status === 'idle' || state.status === 'pending' ? 'pending' : 'unavailable',
+      mode: selections[entry.id]?.mode ?? 'combined', itemChoices: [], selectedSearch: undefined,
+      totalTypedCharacters: 0, totalScore: 0, scoreDelta: 0,
+    })
+  })
+  sheetEntries.sort((left, right) => entries.findIndex((entry) => entry.id === left.id) - entries.findIndex((entry) => entry.id === right.id))
+
   const characterUsages = [...characterOccurrences.entries()].map(([character, occurrences]) => ({
     character,
     craftCount: occurrences.length,
@@ -299,5 +397,8 @@ export function createCraftingSheetModel(
     characterSet: [...characterOccurrences.keys()].sort((left, right) => left.localeCompare(right)),
     characterUsages,
     isCalculating: candidates.isCalculating,
+    totalTypedCharacters: sheetEntries.reduce((sum, entry) => sum + (entry.disabled ? 0 : entry.totalTypedCharacters), 0),
+    totalScore: sheetEntries.reduce((sum, entry) => sum + (entry.disabled ? 0 : entry.totalScore), 0),
+    scoreDelta: sheetEntries.reduce((sum, entry) => sum + (entry.disabled ? 0 : entry.scoreDelta), 0),
   }
 }

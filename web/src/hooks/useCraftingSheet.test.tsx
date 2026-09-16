@@ -55,6 +55,33 @@ function statesFor(entryId: string, searches: RankedSearch[]): ReadonlyMap<strin
 afterEach(() => localStorage.clear())
 
 describe('useCraftingSheet', () => {
+  test('restores individual choices after reload, isolates languages, and resets the execution mode', () => {
+    const itemSet = { ...entry('bed-anchor'), targetIds: ['bed', 'anchor'] }
+    const searches = [search('a')]
+    const bedQueries = [search('b'), search('bed', 1)]
+    const anchorQueries = [search('aw')]
+    const states = new Map(statesFor(itemSet.id, searches))
+    const state = states.get(itemSet.id)!
+    if (state.status !== 'ready' || state.outcome.kind !== 'ranked') throw new Error('Expected fixture')
+    state.outcome.itemSearches = { bed: bedQueries, anchor: anchorQueries }
+    const hook = renderHook(({ locale }) => useCraftingSheet(locale, [itemSet], states), { initialProps: { locale: 'en_us' } })
+    act(() => hook.result.current.setCraftMode(itemSet.id, 'individual'))
+    act(() => hook.result.current.selectItemCraft(itemSet.id, 'bed', craftingSheetCraftKey(bedQueries[1])))
+    expect(hook.result.current.totalTypedCharacters).toBe(5)
+    expect(hook.result.current.entries[0].itemChoices[0].scoreDelta).toBe(1)
+    hook.rerender({ locale: 'de_de' })
+    expect(hook.result.current.entries[0].mode).toBe('combined')
+    hook.unmount()
+
+    const reloaded = renderHook(() => useCraftingSheet('en_us', [itemSet], states))
+    expect(reloaded.result.current.entries[0].queryLabel).toBe('bed (Shift+Home) aw')
+    act(() => reloaded.result.current.setEntryDisabled(itemSet.id, true))
+    expect(reloaded.result.current.totalTypedCharacters).toBe(0)
+    act(() => reloaded.result.current.reset())
+    expect(reloaded.result.current.entries[0]).toMatchObject({ mode: 'combined', disabled: false })
+    expect(reloaded.result.current.totalTypedCharacters).toBe(1)
+  })
+
   test('keeps selections and disabled rows separate for each language and resets one language to its calculated default', () => {
     const itemSet = entry('tools')
     const searches = [search('a'), search('zq', 1)]

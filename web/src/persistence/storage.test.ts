@@ -405,6 +405,24 @@ describe('language preference persistence', () => {
 })
 
 describe('crafting sheet persistence', () => {
+  test('round trips independent item choices and recovers malformed execution preferences', () => {
+    const storage = new MemoryStorage()
+    const preferences = { selectionsByLocale: { en_us: { beds: {
+      mode: 'individual' as const, itemCraftKeys: { bed: 'query:bed', anchor: 'query:aw' },
+    } } } }
+    saveCraftingSheetPreferences(preferences, storage)
+    expect(loadCraftingSheetPreferences(storage)).toEqual({ value: preferences, warning: undefined })
+    const raw = JSON.stringify({ schemaVersion: 1, selectionsByLocale: { en_us: {
+      ...preferences.selectionsByLocale.en_us,
+      badMode: { mode: 'unsupported' }, badItems: { itemCraftKeys: { bed: 123 } },
+    } } })
+    storage.setItem('mcsr.crafting-sheet.v1', raw)
+    const recovered = loadCraftingSheetPreferences(storage)
+    expect(recovered.value).toEqual(preferences)
+    expect(recovered.warning).toMatch(/crafting-sheet/i)
+    expect(recoveryValue(storage, 'crafting-sheet')).toBe(raw)
+  })
+
   test('round trips language-specific craft overrides and disabled rows', () => {
     const storage = new MemoryStorage()
     const preferences = {

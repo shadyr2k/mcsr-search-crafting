@@ -134,6 +134,23 @@ const data = generatedData([alpha, beta, hidden], [recipe(alpha.id, true), recip
 const inventory = new Set(['ingredient:shared'])
 
 describe('optimizeWorkspace', () => {
+  test('exposes bounded individual alternatives beyond ten without treating other targets as junk', async () => {
+    const bed = item('minecraft:bed', 'abcdef bed')
+    const anchor = item('minecraft:anchor', 'abcdef anchor')
+    const fixture = generatedData([bed, anchor], [recipe(bed.id, true), recipe(anchor.id, true)])
+    const result = await optimizeWorkspaceEntry(fixture, entry('bed-anchor', [bed.id, anchor.id], {
+      inventoryItemIds: ['ingredient:shared'],
+    }))
+    expect(result.kind).toBe('ranked')
+    if (result.kind !== 'ranked') throw new Error('Expected complete craft choices')
+    expect(result.itemSearches?.[bed.id].length).toBeGreaterThan(10)
+    expect(result.itemSearches?.[bed.id].some((search) => search.queries[0] === 'bed')).toBe(true)
+    expect(result.itemSearches?.[bed.id].every((search) => search.queries[0].length <= 5)).toBe(true)
+    expect(result.itemSearches?.[bed.id].find((search) => search.queries[0] === 'abcde')).toMatchObject({
+      coveredTargetIds: [bed.id], totalJunkAppearances: 0,
+    })
+  })
+
   test('optimizes each entry from only its own exact inventory', async () => {
     const craftable = await optimizeWorkspaceEntry(data, entry('craftable', [alpha.id], {
       inventoryItemIds: ['ingredient:shared'],

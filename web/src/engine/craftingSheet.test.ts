@@ -51,6 +51,19 @@ function ready(entryId: string, searches: RankedSearch[]) {
 }
 
 describe('crafting sheet model', () => {
+  test('counts the characters in the displayed execution including full replacements', () => {
+    const itemSet = entry('first', 0)
+    const replacement = search('abcd')
+    replacement.kind = 'overlap'
+    replacement.queries = ['abcd', 'ab']
+    replacement.steps.push({ ...search('ab').steps[0], freeBackspaceCount: 4 })
+    // Optimizer costs can retain a theoretical prefix; the sheet counts what is actually typed.
+    replacement.totalTypedCharacters = 4
+    const model = createCraftingSheetModel([itemSet], new Map([[itemSet.id, ready(itemSet.id, [replacement])]]))
+    expect(model.totalTypedCharacters).toBe(6)
+    expect(model.entries[0].selectedSearch?.totalTypedCharacters).toBe(6)
+  })
+
   test('jointly chooses equal-score crafts with the smallest shared character set while exposing every calculated option', () => {
     const first = entry('first', 0)
     const second = entry('second', 1)
@@ -126,8 +139,39 @@ describe('crafting sheet model', () => {
     ])
     const model = createCraftingSheetModel([first, pending], states, { first: { craftKey: 'old-craft' } })
 
-    expect(model.entries).toHaveLength(1)
+    expect(model.entries).toHaveLength(2)
+    expect(model.entries[1].status).toBe('pending')
     expect(model.entries[0].selectedOptionId).toBe(craftingSheetCraftKey(alternatives[0]))
     expect(model.isCalculating).toBe(true)
+  })
+
+  test('composes individual crafts in item order with full replacement typing and recalculates totals', () => {
+    const itemSet = { ...entry('bed-anchor', 0), targetIds: ['bed', 'anchor'] }
+    const bed = search('bed', 1)
+    const anchor = search('aw')
+    const state = ready(itemSet.id, [search('aw', 2)])
+    const model = createCraftingSheetModel([itemSet], new Map([[itemSet.id, {
+      ...state,
+      outcome: { ...state.outcome, itemSearches: { bed: [bed], anchor: [anchor] } },
+    }]]), { [itemSet.id]: { mode: 'individual' } })
+
+    expect(model.entries[0].selectedSearch).toMatchObject({
+      queries: ['bed', 'aw'], totalTypedCharacters: 5, totalScore: 3,
+      steps: [{ typedSuffix: 'bed' }, { retainedPrefix: '', freeBackspaceCount: 3, typedSuffix: 'aw' }],
+    })
+    expect(model.entries[0].queryLabel).toBe('bed (Shift+Home) aw')
+    expect(model.entries[0].scoreDelta).toBe(1)
+    expect(model.totalTypedCharacters).toBe(5)
+    expect(model.characterSet).toEqual(['a', 'b', 'd', 'e', 'w'])
+  })
+
+  test('offers choices beyond ten while enforcing per-query character and result limits', () => {
+    const itemSet = entry('first', 0)
+    const tooMuchJunk = search('junk')
+    tooMuchJunk.steps[0].junkItemIds = Array.from({ length: 40 }, (_, index) => `junk:${index}`)
+    const searches = [...Array.from({ length: 12 }, (_, index) => search(`q${index}`, index)), search('abcdef', 20), tooMuchJunk]
+    const model = createCraftingSheetModel([itemSet], new Map([[itemSet.id, ready(itemSet.id, searches)]]))
+    expect(model.entries[0].options).toHaveLength(12)
+    expect(model.entries[0].options[11]).toMatchObject({ label: 'q11', scoreDelta: 11 })
   })
 })

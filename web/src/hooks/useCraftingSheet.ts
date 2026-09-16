@@ -14,6 +14,8 @@ export type {
 export interface CraftingSheetState extends CraftingSheetModel {
   warning: string | undefined
   selectCraft(entryId: string, optionId: string): void
+  setCraftMode(entryId: string, mode: 'combined' | 'individual'): void
+  selectItemCraft(entryId: string, itemId: string, optionId: string): void
   setEntryDisabled(entryId: string, disabled: boolean): void
   /** Restores this language's calculated craft choices and re-enables every row. */
   reset(): void
@@ -87,6 +89,19 @@ export function useCraftingSheet(
     }))
   }, [locale, persist])
 
+  const setCraftMode = useCallback((entryId: string, mode: 'combined' | 'individual') => {
+    persist(updateLocaleSelection(preferencesRef.current, locale, entryId, (selection) => ({ ...selection, mode })))
+  }, [locale, persist])
+
+  const selectItemCraft = useCallback((entryId: string, itemId: string, optionId: string) => {
+    if (optionId.length === 0) return
+    persist(updateLocaleSelection(preferencesRef.current, locale, entryId, (selection) => ({
+      ...selection,
+      mode: 'individual',
+      itemCraftKeys: { ...selection.itemCraftKeys, [itemId]: optionId },
+    })))
+  }, [locale, persist])
+
   const reset = useCallback(() => {
     persist(resetLocaleSelections(preferencesRef.current, locale))
   }, [locale, persist])
@@ -96,5 +111,5 @@ export function useCraftingSheet(
     () => createCraftingSheetModel(entries, states, selections),
     [entries, selections, states],
   )
-  return { ...model, warning, selectCraft, setEntryDisabled, reset }
+  return { ...model, warning, selectCraft, setCraftMode, selectItemCraft, setEntryDisabled, reset }
 }
