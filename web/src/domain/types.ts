@@ -128,6 +128,7 @@ export interface TargetWorkspace {
 export interface CraftingSheetSelection {
   craftKey?: string
   disabled?: boolean
+  /** Legacy saved mode, retained only to restore pre-unification choices. */
   mode?: 'combined' | 'individual'
   itemCraftKeys?: Record<string, string>
   itemOrder?: string[]

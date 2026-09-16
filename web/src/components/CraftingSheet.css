@@ -66,19 +66,11 @@
 .crafting-sheet__include { display: inline-flex; align-items: center; gap: .3rem; color: var(--muted); font-size: .7rem; cursor: pointer; flex: 0 0 auto; min-height: 1.8rem; }
 .crafting-sheet__include input { width: 1rem; height: 1rem; min-height: 0; margin: 0; accent-color: var(--accent-strong); cursor: pointer; }
 .crafting-sheet__entry-toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .65rem; }
-.crafting-sheet__modes { display: inline-flex; flex-wrap: wrap; gap: .2rem; padding: .2rem; border-radius: .45rem; background: var(--panel); }
-.crafting-sheet__modes button { min-height: 2rem; padding: .3rem .55rem; border: 1px solid transparent; border-radius: .3rem; background: transparent; font-size: .75rem; }
-.crafting-sheet__modes button[aria-pressed='true'] { border-color: var(--border); background: var(--page); color: var(--accent-strong); }
 .crafting-sheet__entry-metrics { display: flex; flex-wrap: wrap; gap: .35rem .7rem; font-size: .73rem; color: var(--muted); }
 .crafting-sheet__entry-metrics strong { color: var(--accent-strong); font-weight: 500; }
 .crafting-sheet__plan { display: grid; gap: .5rem; padding: .65rem .75rem; border-inline-start: 3px solid var(--accent); background: color-mix(in srgb, var(--panel) 55%, var(--page)); border-radius: .2rem .45rem .45rem .2rem; }
 .crafting-sheet__sequence { display: inline-flex; align-items: center; flex-wrap: wrap; gap: .4rem; min-width: 0; }
 .crafting-sheet__key { display: inline-flex; align-items: center; padding: .15rem .3rem; border: 1px solid var(--border); border-radius: .25rem; color: var(--muted); background: var(--page); font: inherit; font-size: .66rem; white-space: nowrap; }
-.crafting-sheet__steps { display: grid; gap: .25rem; padding: .45rem 0 0; margin: 0; list-style: none; border-top: 1px solid var(--border); }
-.crafting-sheet__steps li { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; color: var(--muted); font-size: .72rem; }
-.crafting-sheet__steps .crafting-sheet__item { font-size: .74rem; }
-.crafting-sheet__search-hint { margin-inline-start: auto; }
-.crafting-sheet__search-hint .crafting-sheet__query-text { font-size: .7rem; }
 .crafting-sheet__picker { min-width: 0; }
 .crafting-sheet__choice-toggle { display: inline-flex; align-items: center; gap: .45rem; min-height: 2rem; padding: .3rem .5rem; font-size: .76rem; }
 .crafting-sheet__option-count { color: var(--muted); padding-inline: .25rem; border-inline-start: 1px solid var(--border); font-size: .68rem; }

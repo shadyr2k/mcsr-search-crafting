@@ -423,8 +423,6 @@ function App() {
           icons={icons}
           isCalculating={craftingSheet.isCalculating}
           warning={craftingSheet.warning}
-          onSelectCraft={craftingSheet.selectCraft}
-          onSetCraftMode={craftingSheet.setCraftMode}
           onSelectItemCraft={craftingSheet.selectItemCraft}
           onMoveItemCraft={craftingSheet.moveItemCraft}
           onSetEntryDisabled={craftingSheet.setEntryDisabled}

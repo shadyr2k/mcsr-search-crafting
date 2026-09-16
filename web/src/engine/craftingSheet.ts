@@ -38,7 +38,6 @@ export interface CraftingSheetEntry {
   defaultOptionId: string
   disabled: boolean
   status: 'ready' | 'pending' | 'unavailable'
-  mode: 'combined' | 'individual'
   itemChoices: readonly CraftingSheetItemChoice[]
   selectedSearch: RankedSearch | undefined
   totalTypedCharacters: number
@@ -248,7 +247,6 @@ function defaultOptionIds(
 function candidateEntries(
   entries: readonly TargetWorkspaceEntry[],
   states: ReadonlyMap<string, RowOptimizationState>,
-  selections: Readonly<Record<string, CraftingSheetSelection>>,
 ): { entries: CandidateEntry[]; isCalculating: boolean } {
   let isCalculating = false
   const result: CandidateEntry[] = []
@@ -259,12 +257,10 @@ function candidateEntries(
     if (state?.status !== 'ready' || state.outcome.kind !== 'ranked') return
     const options = optionsForSearches(state.outcome.rankedSearches, state.outcome.bestScore)
     const optimalOptions = options.filter((option) => option.isOptimal)
-    const itemOrder = [...new Set([...(selections[entry.id]?.itemOrder ?? []), ...entry.targetIds])]
-      .filter((itemId) => entry.targetIds.includes(itemId))
-    const itemChoices = itemOrder.map((itemId) => {
+    const itemChoices = entry.targetIds.map((itemId) => {
       const searches = state.outcome.kind === 'ranked' ? state.outcome.itemSearches?.[itemId] ?? [] : []
       const itemOptions = optionsForSearches(searches, searches[0]?.totalScore ?? 0)
-      const selected = itemOptions.find((option) => option.id === selections[entry.id]?.itemCraftKeys?.[itemId]) ?? itemOptions[0]
+      const selected = itemOptions[0]
       return { itemId, options: itemOptions, selectedOptionId: selected?.id ?? '', scoreDelta: selected?.scoreDelta ?? 0 }
     })
     if (options.length > 0 && optimalOptions.length > 0) result.push({ entry, entryNumber: index + 1, options, optimalOptions, itemChoices })
@@ -272,28 +268,35 @@ function candidateEntries(
   return { entries: result, isCalculating }
 }
 
-function individualTransition(previousQuery: string | undefined, query: string) {
+function queryTransition(previousQuery: string | undefined, query: string) {
   if (previousQuery === undefined) return { retainedPrefix: '', freeBackspaceCount: 0, typedSuffix: query }
   const transition = transitionPresentation(previousQuery, query)
   if (transition.freeBackspaceCount <= MAXIMUM_ORDINARY_BACKSPACES) return transition
   return { retainedPrefix: '', freeBackspaceCount: previousQuery.length, typedSuffix: query }
 }
 
-function individualSearch(candidate: CandidateEntry): RankedSearch | undefined {
+function composeItemSearch(candidate: CandidateEntry): RankedSearch | undefined {
   const searches = candidate.itemChoices.map((choice) => choice.options.find((option) => option.id === choice.selectedOptionId)?.search)
   if (searches.some((search) => !search)) return undefined
-  const steps = searches.map((search, index) => {
+  const steps: RankedSearch['steps'] = []
+  searches.forEach((search, index) => {
     const source = search!.steps[0]
-    const transition = individualTransition(searches[index - 1]?.queries[0], source.query)
+    const previous = steps[steps.length - 1]
+    if (previous?.query === source.query) {
+      previous.coveredTargetIds.push(candidate.itemChoices[index].itemId)
+      previous.newTargetIds.push(candidate.itemChoices[index].itemId)
+      return
+    }
+    const transition = queryTransition(searches[index - 1]?.queries[0], source.query)
     const junk = scoreStep(0, source.junkItemIds.length)
     const typingPenalty = index === 0 ? Math.max(0, source.query.length - 2) : transition.typedSuffix.length
-    return {
+    steps.push({
       ...source,
       ...transition,
       coveredTargetIds: [candidate.itemChoices[index].itemId],
       newTargetIds: [candidate.itemChoices[index].itemId],
       score: { typingPenalty, junkPresencePenalty: junk.junkPresencePenalty, junkCountPenalty: junk.junkCountPenalty, total: typingPenalty + junk.total },
-    }
+    })
   })
   return {
     kind: steps.length > 1 ? 'overlap' : 'single',
@@ -312,15 +315,41 @@ function contextualItemChoices(candidate: CandidateEntry): CraftingSheetItemChoi
     const previousQuery = previous?.options.find((option) => option.id === previous.selectedOptionId)?.search.queries[0]
     const scored = choice.options.map((option) => {
       const query = option.search.queries[0]
-      const transition = individualTransition(previousQuery, query)
+      const transition = queryTransition(previousQuery, query)
       const typingPenalty = index === 0 ? Math.max(0, query.length - 2) : transition.typedSuffix.length
-      return { ...option, totalTypedCharacters: transition.typedSuffix.length, totalScore: typingPenalty + scoreStep(0, option.junkCount).total }
+      const junkCount = query === previousQuery ? 0 : option.junkCount
+      return { ...option, junkCount, totalTypedCharacters: transition.typedSuffix.length, totalScore: typingPenalty + scoreStep(0, junkCount).total }
     })
     const bestScore = Math.min(...scored.map((option) => option.totalScore))
     const options = scored.map((option) => ({ ...option, scoreDelta: option.totalScore - bestScore, isOptimal: option.totalScore === bestScore }))
       .sort((left, right) => left.totalScore - right.totalScore || left.totalTypedCharacters - right.totalTypedCharacters)
     return { ...choice, options, scoreDelta: options.find((option) => option.id === choice.selectedOptionId)?.scoreDelta ?? 0 }
   })
+}
+
+function editableCandidate(candidate: CandidateEntry, seed: SearchOption, saved?: CraftingSheetSelection): CandidateEntry {
+  // Older combined selections may also contain inactive individual overrides.
+  const overrides = saved?.mode === 'combined' ? undefined : saved
+  const seedOrder = seed.search.steps.flatMap((step) => step.newTargetIds)
+  const order = [...new Set([
+    ...(overrides?.itemOrder ?? (saved?.mode === 'individual' ? candidate.entry.targetIds : seedOrder)),
+    ...candidate.entry.targetIds,
+  ])].filter((itemId) => candidate.entry.targetIds.includes(itemId))
+  const itemChoices = order.map((itemId) => {
+    const choice = candidate.itemChoices.find((current) => current.itemId === itemId)!
+    const seedStep = seed.search.steps.find((step) => step.newTargetIds.includes(itemId))
+      ?? seed.search.steps.find((step) => step.coveredTargetIds.includes(itemId))
+    const selected = choice.options.find((option) => option.id === overrides?.itemCraftKeys?.[itemId])
+      ?? (saved?.mode !== 'individual' ? choice.options.find((option) => option.search.queries[0] === seedStep?.query) : undefined)
+      ?? choice.options[0]
+    return { ...choice, selectedOptionId: selected?.id ?? '', scoreDelta: selected?.scoreDelta ?? 0 }
+  })
+  return { ...candidate, itemChoices }
+}
+
+function composedOption(candidate: CandidateEntry, seed: SearchOption): SearchOption {
+  const search = composeItemSearch(candidate)
+  return search ? optionsForSearches([search], candidate.options[0].totalScore)[0] ?? seed : seed
 }
 
 /**
@@ -333,19 +362,17 @@ export function createCraftingSheetModel(
   states: ReadonlyMap<string, RowOptimizationState>,
   selections: Readonly<Record<string, CraftingSheetSelection>> = {},
 ): CraftingSheetModel {
-  const candidates = candidateEntries(entries, states, selections)
+  const candidates = candidateEntries(entries, states)
   // This is the reset target: every row is active and every choice is an
   // equal-score craft selected for the smallest common character set.
   const defaults = defaultOptionIds(candidates.entries)
   const savedOptions = new Map(candidates.entries.flatMap((candidate) => {
-    if (selections[candidate.entry.id]?.mode === 'individual') {
-      const search = individualSearch(candidate)
-      const option = search ? optionsForSearches([search], candidate.options[0].totalScore)[0] : undefined
-      if (option) return [[candidate.entry.id, option] as const]
-    }
-    const savedKey = selections[candidate.entry.id]?.craftKey
-    const option = candidate.options.find((current) => current.id === savedKey)
-    return option ? [[candidate.entry.id, option] as const] : []
+    const saved = selections[candidate.entry.id]
+    const savedOption = candidate.options.find((current) => current.id === saved?.craftKey)
+    const hasOverrides = saved?.mode === 'individual' || (saved?.mode !== 'combined' && (saved?.itemCraftKeys !== undefined || saved?.itemOrder !== undefined))
+    if (!savedOption && !hasOverrides) return []
+    const seed = savedOption ?? candidate.options.find((option) => option.id === defaults.get(candidate.entry.id)) ?? candidate.options[0]
+    return [[candidate.entry.id, composedOption(editableCandidate(candidate, seed, saved), seed)] as const]
   }))
   const fixedOptions = new Map([...savedOptions].filter(([entryId]) => selections[entryId]?.disabled !== true))
   const defaultableEntries = candidates.entries.filter((candidate) => (
@@ -361,14 +388,16 @@ export function createCraftingSheetModel(
     const defaultOptionId = defaults.get(candidate.entry.id) ?? candidate.options[0].id
     const saved = selections[candidate.entry.id]
     const savedOption = savedOptions.get(candidate.entry.id)
-    const selectedOptionId = savedOption?.id
-      ?? selectedDefaults.get(candidate.entry.id)
-      ?? defaultOptionId
-    const selected = savedOption ?? candidate.options.find((option) => option.id === selectedOptionId)!
+    const seed = candidate.options.find((option) => option.id === saved?.craftKey)
+      ?? candidate.options.find((option) => option.id === selectedDefaults.get(candidate.entry.id))
+      ?? candidate.options.find((option) => option.id === defaultOptionId)!
+    const editable = editableCandidate(candidate, seed, saved)
+    const selected = savedOption ?? composedOption(editable, seed)
+    const selectedOptionId = selected.id
     const disabled = saved?.disabled === true
     const entry: CraftingSheetEntry = {
       id: candidate.entry.id,
-      itemIds: saved?.mode === 'individual' ? candidate.itemChoices.map((choice) => choice.itemId) : [...candidate.entry.targetIds],
+      itemIds: editable.itemChoices.map((choice) => choice.itemId),
       label: `item set ${candidate.entryNumber}`,
       queryLabel: selected.label,
       options: candidate.options,
@@ -376,8 +405,7 @@ export function createCraftingSheetModel(
       defaultOptionId,
       disabled,
       status: 'ready',
-      mode: saved?.mode === 'individual' && individualSearch(candidate) ? 'individual' : 'combined',
-      itemChoices: contextualItemChoices(candidate),
+      itemChoices: contextualItemChoices(editable),
       selectedSearch: selected.search,
       totalTypedCharacters: selected.totalTypedCharacters,
       totalScore: selected.totalScore,
@@ -405,7 +433,7 @@ export function createCraftingSheetModel(
       id: entry.id, itemIds: entry.targetIds, label: `item set ${index + 1}`, queryLabel: '',
       options: [], selectedOptionId: '', defaultOptionId: '', disabled: selections[entry.id]?.disabled === true,
       status: state === undefined || state.status === 'idle' || state.status === 'pending' ? 'pending' : 'unavailable',
-      mode: selections[entry.id]?.mode ?? 'combined', itemChoices: [], selectedSearch: undefined,
+      itemChoices: [], selectedSearch: undefined,
       totalTypedCharacters: 0, totalScore: 0, scoreDelta: 0,
     })
   })

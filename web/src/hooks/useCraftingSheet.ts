@@ -13,8 +13,6 @@ export type {
 
 export interface CraftingSheetState extends CraftingSheetModel {
   warning: string | undefined
-  selectCraft(entryId: string, optionId: string): void
-  setCraftMode(entryId: string, mode: 'combined' | 'individual'): void
   selectItemCraft(entryId: string, itemId: string, optionId: string): void
   moveItemCraft(entryId: string, itemId: string, direction: -1 | 1): void
   setEntryDisabled(entryId: string, disabled: boolean): void
@@ -74,14 +72,6 @@ export function useCraftingSheet(
     setWarning((current) => combineWarnings(current, result.warning))
   }, [])
 
-  const selectCraft = useCallback((entryId: string, optionId: string) => {
-    if (optionId.length === 0) return
-    persist(updateLocaleSelection(preferencesRef.current, locale, entryId, (selection) => ({
-      ...selection,
-      craftKey: optionId,
-    })))
-  }, [locale, persist])
-
   const setEntryDisabled = useCallback((entryId: string, disabled: boolean) => {
     persist(updateLocaleSelection(preferencesRef.current, locale, entryId, (selection) => {
       if (disabled) return { ...selection, disabled: true }
@@ -90,41 +80,42 @@ export function useCraftingSheet(
     }))
   }, [locale, persist])
 
-  const setCraftMode = useCallback((entryId: string, mode: 'combined' | 'individual') => {
-    persist(updateLocaleSelection(preferencesRef.current, locale, entryId, (selection) => ({ ...selection, mode })))
-  }, [locale, persist])
-
   const selectItemCraft = useCallback((entryId: string, itemId: string, optionId: string) => {
     if (optionId.length === 0) return
+    const current = createCraftingSheetModel(entries, states, preferencesRef.current.selectionsByLocale[locale]).entries.find((entry) => entry.id === entryId)
+    if (!current?.itemChoices.find((choice) => choice.itemId === itemId)?.options.some((option) => option.id === optionId)) return
     persist(updateLocaleSelection(preferencesRef.current, locale, entryId, (selection) => ({
-      ...selection,
-      mode: 'individual',
-      itemCraftKeys: { ...selection.itemCraftKeys, [itemId]: optionId },
+      disabled: selection.disabled,
+      itemOrder: current.itemChoices.map((choice) => choice.itemId),
+      itemCraftKeys: { ...Object.fromEntries(current.itemChoices.map((choice) => [choice.itemId, choice.selectedOptionId])), [itemId]: optionId },
     })))
-  }, [locale, persist])
+  }, [entries, states, locale, persist])
 
   const reset = useCallback(() => {
     persist(resetLocaleSelections(preferencesRef.current, locale))
   }, [locale, persist])
 
   const moveItemCraft = useCallback((entryId: string, itemId: string, direction: -1 | 1) => {
-    const targets = entries.find((entry) => entry.id === entryId)?.targetIds
-    if (!targets) return
-    const selection = preferencesRef.current.selectionsByLocale[locale]?.[entryId]
-    const itemOrder = [...new Set([...(selection?.itemOrder ?? []), ...targets])].filter((id) => targets.includes(id))
+    const current = createCraftingSheetModel(entries, states, preferencesRef.current.selectionsByLocale[locale]).entries.find((entry) => entry.id === entryId)
+    if (!current) return
+    const itemOrder = current.itemChoices.map((choice) => choice.itemId)
     const index = itemOrder.indexOf(itemId)
     const destination = index + direction
     if (index < 0 || destination < 0 || destination >= itemOrder.length) return
     const displaced = itemOrder[destination]
     itemOrder[destination] = itemOrder[index]
     itemOrder[index] = displaced
-    persist(updateLocaleSelection(preferencesRef.current, locale, entryId, (current) => ({ ...current, mode: 'individual', itemOrder })))
-  }, [entries, locale, persist])
+    persist(updateLocaleSelection(preferencesRef.current, locale, entryId, (selection) => ({
+      disabled: selection.disabled,
+      itemOrder,
+      itemCraftKeys: Object.fromEntries(current.itemChoices.map((choice) => [choice.itemId, choice.selectedOptionId])),
+    })))
+  }, [entries, states, locale, persist])
 
   const selections = preferences.selectionsByLocale[locale] ?? {}
   const model = useMemo(
     () => createCraftingSheetModel(entries, states, selections),
     [entries, selections, states],
   )
-  return { ...model, warning, selectCraft, setCraftMode, selectItemCraft, moveItemCraft, setEntryDisabled, reset }
+  return { ...model, warning, selectItemCraft, moveItemCraft, setEntryDisabled, reset }
 }

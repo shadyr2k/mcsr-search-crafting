@@ -46,6 +46,7 @@ function statesFor(entryId: string, searches: RankedSearch[]): ReadonlyMap<strin
       kind: 'ranked',
       entryId,
       rankedSearches: searches,
+      itemSearches: { [`minecraft:${entryId}`]: searches },
       bestScore: searches[0].totalScore,
       visibleItemIds: [],
     },
@@ -55,18 +56,21 @@ function statesFor(entryId: string, searches: RankedSearch[]): ReadonlyMap<strin
 afterEach(() => localStorage.clear())
 
 describe('useCraftingSheet', () => {
-  test('restores individual choices after reload, isolates languages, and resets the execution mode', () => {
+  test('keeps other queries fixed on edit, restores choices after reload, and resets to the suggested sequence', () => {
     const itemSet = { ...entry('bed-anchor'), targetIds: ['bed', 'anchor'] }
     const searches = [search('a')]
-    const bedQueries = [search('b'), search('bed', 1)]
-    const anchorQueries = [search('aw')]
+    searches[0].steps[0].newTargetIds = ['bed', 'anchor']
+    searches[0].steps[0].coveredTargetIds = ['bed', 'anchor']
+    const bedQueries = [search('b'), search('bed', 1), searches[0]]
+    const anchorQueries = [search('aw'), searches[0]]
     const states = new Map(statesFor(itemSet.id, searches))
     const state = states.get(itemSet.id)!
     if (state.status !== 'ready' || state.outcome.kind !== 'ranked') throw new Error('Expected fixture')
     state.outcome.itemSearches = { bed: bedQueries, anchor: anchorQueries }
     const hook = renderHook(({ locale }) => useCraftingSheet(locale, [itemSet], states), { initialProps: { locale: 'en_us' } })
-    act(() => hook.result.current.setCraftMode(itemSet.id, 'individual'))
     act(() => hook.result.current.selectItemCraft(itemSet.id, 'bed', craftingSheetCraftKey(bedQueries[1])))
+    expect(hook.result.current.entries[0].queryLabel).toBe('bed (Shift+Home) a')
+    act(() => hook.result.current.selectItemCraft(itemSet.id, 'anchor', craftingSheetCraftKey(anchorQueries[0])))
     expect(hook.result.current.totalTypedCharacters).toBe(5)
     expect(hook.result.current.entries[0].itemChoices[0].scoreDelta).toBe(1)
     act(() => hook.result.current.moveItemCraft(itemSet.id, 'anchor', -1))
@@ -74,7 +78,7 @@ describe('useCraftingSheet', () => {
     act(() => hook.result.current.moveItemCraft(itemSet.id, 'anchor', -1))
     expect(hook.result.current.entries[0].itemIds).toEqual(['anchor', 'bed'])
     hook.rerender({ locale: 'de_de' })
-    expect(hook.result.current.entries[0].mode).toBe('combined')
+    expect(hook.result.current.entries[0].queryLabel).toBe('a')
     hook.unmount()
 
     const reloaded = renderHook(() => useCraftingSheet('en_us', [itemSet], states))
@@ -82,7 +86,7 @@ describe('useCraftingSheet', () => {
     act(() => reloaded.result.current.setEntryDisabled(itemSet.id, true))
     expect(reloaded.result.current.totalTypedCharacters).toBe(0)
     act(() => reloaded.result.current.reset())
-    expect(reloaded.result.current.entries[0]).toMatchObject({ mode: 'combined', disabled: false })
+    expect(reloaded.result.current.entries[0]).toMatchObject({ disabled: false })
     expect(reloaded.result.current.entries[0].itemChoices.map((choice) => choice.itemId)).toEqual(['bed', 'anchor'])
     expect(reloaded.result.current.totalTypedCharacters).toBe(1)
   })
@@ -95,7 +99,7 @@ describe('useCraftingSheet', () => {
       initialProps: { locale: 'en_us' },
     })
 
-    act(() => hook.result.current.selectCraft(itemSet.id, craftingSheetCraftKey(searches[1])))
+    act(() => hook.result.current.selectItemCraft(itemSet.id, itemSet.targetIds[0], craftingSheetCraftKey(searches[1])))
     expect(hook.result.current.characterSet).toEqual(['q', 'z'])
 
     hook.rerender({ locale: 'de_de' })

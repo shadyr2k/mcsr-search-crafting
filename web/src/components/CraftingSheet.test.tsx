@@ -28,8 +28,8 @@ function props(): CraftingSheetProps {
   } }
   return {
     languageName: 'english', ...createCraftingSheetModel([entry], new Map([[entry.id, state]])),
-    defaultOpen: true, onSelectCraft: vi.fn(), onSetEntryDisabled: vi.fn(), onReset: vi.fn(),
-    onSetCraftMode: vi.fn(), onSelectItemCraft: vi.fn(), onMoveItemCraft: vi.fn(),
+    defaultOpen: true, onSetEntryDisabled: vi.fn(), onReset: vi.fn(),
+    onSelectItemCraft: vi.fn(), onMoveItemCraft: vi.fn(),
   }
 }
 
@@ -39,8 +39,8 @@ describe('CraftingSheet', () => {
     const toggle = screen.getByRole('button', { name: 'english search crafts' })
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(toggle)
-    expect(screen.getByLabelText('Total characters')).toHaveTextContent('2')
-    expect(screen.getByLabelText('Distinct characters')).toHaveTextContent('2')
+    expect(screen.getByLabelText('Total characters')).toHaveTextContent('4')
+    expect(screen.getByLabelText('Distinct characters')).toHaveTextContent('4')
     expect(screen.getByRole('region', { name: 'item set 1' })).toBeVisible()
     expect(screen.getByRole('img', { name: 'bed' })).toBeVisible()
     expect(screen.getByRole('img', { name: 'anchor' })).toBeVisible()
@@ -48,7 +48,7 @@ describe('CraftingSheet', () => {
     expect(screen.queryByText('anchor')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Expand item set 1' })).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByLabelText('Selected query for bed')).toHaveTextContent('be')
-    expect(screen.queryByRole('button', { name: 'choose craft for item set 1' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'choose craft for bed' })).not.toBeInTheDocument()
   })
 
   test('keeps inclusion independent of expansion and retains the editor while animating closed', () => {
@@ -59,14 +59,14 @@ describe('CraftingSheet', () => {
     expect(input.onSetEntryDisabled).toHaveBeenCalledWith('bed-anchor', true)
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(toggle)
-    expect(screen.getByRole('button', { name: 'choose craft for item set 1' })).toBeVisible()
-    expect(screen.getByText('2 chars')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'choose craft for bed' })).toBeVisible()
+    expect(screen.getByText('4 chars')).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: 'Collapse item set 1' }))
     const details = document.getElementById(toggle.getAttribute('aria-controls')!)!
     expect(details).toHaveAttribute('aria-hidden', 'true')
     expect(details).toHaveAttribute('inert')
-    expect(within(details).getByText('choose craft')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'choose craft for item set 1' })).not.toBeInTheDocument()
+    expect(within(details).getAllByText('choose craft')).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: 'choose craft for bed' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'english search crafts' }))
     expect(screen.queryByRole('region', { name: 'Selected item sets' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'english search crafts' }))
@@ -77,23 +77,22 @@ describe('CraftingSheet', () => {
     const input = props()
     render(<CraftingSheet {...input} />)
     fireEvent.click(screen.getByRole('button', { name: 'Expand item set 1' }))
-    fireEvent.click(screen.getByRole('button', { name: 'choose craft for item set 1' }))
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Filter crafts for item set 1' }), { target: { value: 'q44' } })
-    const choices = screen.getByRole('region', { name: 'Calculated crafts for item set 1' })
+    fireEvent.click(screen.getByRole('button', { name: 'choose craft for bed' }))
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filter crafts for bed' }), { target: { value: 'q44' } })
+    const choices = screen.getByRole('region', { name: 'Calculated crafts for bed' })
     const option = within(choices).getByRole('button', { name: /q44/ })
     expect(option).toHaveTextContent('+1 score')
     fireEvent.click(option)
-    expect(input.onSelectCraft).toHaveBeenCalledWith('bed-anchor', input.entries[0].options.find((value) => value.label === 'q44')!.id)
+    expect(input.onSelectItemCraft).toHaveBeenCalledWith('bed-anchor', 'bed', input.entries[0].itemChoices[0].options.find((value) => value.label === 'q44')!.id)
     expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
   })
 
-  test('switches to individual items and allows each item to choose a craft', () => {
+  test('offers one editor for query choices and reordering without mode tabs', () => {
     const input = props()
-    const { rerender } = render(<CraftingSheet {...input} />)
+    render(<CraftingSheet {...input} />)
     fireEvent.click(screen.getByRole('button', { name: 'Expand item set 1' }))
-    fireEvent.click(screen.getByRole('button', { name: 'individual items' }))
-    expect(input.onSetCraftMode).toHaveBeenCalledWith('bed-anchor', 'individual')
-    rerender(<CraftingSheet {...input} entries={[{ ...input.entries[0], mode: 'individual' }]} />)
+    expect(screen.queryByRole('button', { name: 'individual items' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'combined craft' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Move bed up' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Move anchor down' })).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: 'Move anchor up' }))

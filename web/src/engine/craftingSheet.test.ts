@@ -3,6 +3,8 @@ import { describe, expect, test } from 'vitest'
 import type { RankedSearch, RowOptimizationState, TargetWorkspaceEntry } from '../domain/types'
 import { craftingSheetCraftKey, createCraftingSheetModel } from './craftingSheet'
 
+const choiceId = craftingSheetCraftKey
+
 function entry(id: string, order: number): TargetWorkspaceEntry {
   return {
     id,
@@ -51,6 +53,36 @@ function ready(entryId: string, searches: RankedSearch[]) {
 }
 
 describe('crafting sheet model', () => {
+  test('seeds the unified editor from the selected shared craft and counts its junk once', () => {
+    const itemSet = { ...entry('tools', 0), targetIds: ['helmet', 'pickaxe'] }
+    const shared = search('gold', 4.5)
+    shared.coveredTargetIds = [...itemSet.targetIds]
+    shared.steps[0] = { ...shared.steps[0], coveredTargetIds: [...itemSet.targetIds], newTargetIds: [...itemSet.targetIds], junkItemIds: ['junk'] }
+    shared.totalJunkAppearances = 1
+    const state = ready(itemSet.id, [shared])
+    const states = new Map([[itemSet.id, { ...state, outcome: { ...state.outcome, itemSearches: {
+      helmet: [search('lea'), shared], pickaxe: [search('lab'), shared],
+    } } }]])
+    const model = createCraftingSheetModel([itemSet], states)
+    expect(model.entries[0].itemChoices.map((choice) => choice.options.find((option) => option.id === choice.selectedOptionId)?.label)).toEqual(['gold', 'gold'])
+    expect(model.entries[0].selectedSearch).toMatchObject({ kind: 'single', queries: ['gold'], totalJunkAppearances: 1, totalTypedCharacters: 4, totalScore: 4.5 })
+    expect(model.entries[0].selectedSearch?.steps[0].newTargetIds).toEqual(['helmet', 'pickaxe'])
+    expect(model.entries[0].itemChoices[1].options.find((option) => option.id === choiceId(shared))).toMatchObject({ totalTypedCharacters: 0, junkCount: 0, totalScore: 0 })
+
+    const edited = createCraftingSheetModel([itemSet], states, { tools: { itemCraftKeys: { helmet: choiceId(shared), pickaxe: choiceId(search('lab')) }, itemOrder: ['helmet', 'pickaxe'] } })
+    expect(edited.entries[0].selectedSearch?.queries).toEqual(['gold', 'lab'])
+    expect(edited.totalTypedCharacters).toBe(7)
+    const legacyCombined = createCraftingSheetModel([itemSet], states, { tools: {
+      mode: 'combined', craftKey: choiceId(shared), itemCraftKeys: { helmet: choiceId(search('lea')) }, itemOrder: ['pickaxe', 'helmet'],
+    } })
+    expect(legacyCombined.entries[0].queryLabel).toBe('gold')
+    expect(legacyCombined.entries[0].itemIds).toEqual(['helmet', 'pickaxe'])
+    const legacyIndividual = createCraftingSheetModel([itemSet], states, { tools: {
+      mode: 'individual', itemCraftKeys: { helmet: choiceId(search('lea')), pickaxe: choiceId(search('lab')) },
+    } })
+    expect(legacyIndividual.entries[0].queryLabel).toBe('lea ←← ab')
+  })
+
   test('counts the characters in the displayed execution including full replacements', () => {
     const itemSet = entry('first', 0)
     const replacement = search('abcd')
@@ -189,7 +221,8 @@ describe('crafting sheet model', () => {
     const model = createCraftingSheetModel([itemSet], new Map([[itemSet.id, {
       ...state, outcome: { ...state.outcome, itemSearches: { helmet: [search(from)], pickaxe: [search(to)] } },
     }]]), { tools: { mode: 'individual' } })
-    expect(model.entries[0].selectedSearch?.steps[1]).toMatchObject({ retainedPrefix: prefix, freeBackspaceCount: backspaces, typedSuffix: suffix })
+    if (from === to) expect(model.entries[0].selectedSearch?.steps).toHaveLength(1)
+    else expect(model.entries[0].selectedSearch?.steps[1]).toMatchObject({ retainedPrefix: prefix, freeBackspaceCount: backspaces, typedSuffix: suffix })
     expect(model.totalTypedCharacters).toBe(chars)
     expect(model.totalScore).toBe(Math.max(0, from.length - 2) + suffix.length)
     expect(model.entries[0].itemChoices[1].options[0].totalTypedCharacters).toBe(suffix.length)

@@ -24,8 +24,6 @@ export interface CraftingSheetProps {
   isCalculating?: boolean
   warning?: string
   defaultOpen?: boolean
-  onSelectCraft: (entryId: string, optionId: string) => void
-  onSetCraftMode: (entryId: string, mode: 'combined' | 'individual') => void
   onSelectItemCraft: (entryId: string, itemId: string, optionId: string) => void
   onMoveItemCraft: (entryId: string, itemId: string, direction: -1 | 1) => void
   onSetEntryDisabled: (entryId: string, disabled: boolean) => void
@@ -125,7 +123,7 @@ function ItemLabels({ itemIds, items, icons }: { itemIds: readonly string[]; ite
   </span>)}</span>
 }
 
-function ItemSetCard({ entry, items, icons, onSelectCraft, onSetCraftMode, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled }: Pick<CraftingSheetProps, 'items' | 'icons' | 'onSelectCraft' | 'onSetCraftMode' | 'onSelectItemCraft' | 'onMoveItemCraft' | 'onSetEntryDisabled'> & { entry: CraftingSheetEntry }) {
+function ItemSetCard({ entry, items, icons, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled }: Pick<CraftingSheetProps, 'items' | 'icons' | 'onSelectItemCraft' | 'onMoveItemCraft' | 'onSetEntryDisabled'> & { entry: CraftingSheetEntry }) {
   const [isOpen, setIsOpen] = useState(false)
   const headingId = useId()
   const detailsId = useId()
@@ -154,23 +152,16 @@ function ItemSetCard({ entry, items, icons, onSelectCraft, onSetCraftMode, onSel
       ? <p className="crafting-sheet__empty">{entry.status === 'pending' ? 'Calculating crafts…' : 'No available craft for this item set. Check its inventory and targets.'}</p>
       : <>
         <div className="crafting-sheet__entry-toolbar">
-          {entry.itemIds.length > 1 && <div className="crafting-sheet__modes" role="group" aria-label={`Execution mode for ${entry.label}`}>
-            <button type="button" aria-pressed={entry.mode === 'combined'} onClick={() => onSetCraftMode(entry.id, 'combined')}>combined craft</button>
-            <button type="button" aria-pressed={entry.mode === 'individual'} onClick={() => onSetCraftMode(entry.id, 'individual')}>individual items</button>
-          </div>}
+
           <span className="crafting-sheet__entry-metrics"><strong>{entry.totalTypedCharacters} chars</strong><span>{entry.selectedSearch?.totalJunkAppearances ?? 0} junk</span><span title="Difference from this item set’s best calculated score">{deltaLabel(entry.scoreDelta)}</span></span>
         </div>
         <div className="crafting-sheet__plan">
           <span className="crafting-sheet__eyebrow">your sequence</span>
           {entry.selectedSearch && <QuerySequence search={entry.selectedSearch} />}
-          {entry.selectedSearch && entry.mode === 'combined' && entry.selectedSearch.steps.length > 1 && <ol className="crafting-sheet__steps" aria-label={`Craft order for ${entry.label}`}>
-            {entry.selectedSearch.steps.map((step, index) => <li key={index}><span>{index + 1}.</span><ItemLabels itemIds={step.newTargetIds} items={items} icons={icons} /><span className="crafting-sheet__search-hint">search <span className="crafting-sheet__query-text">{step.query.replaceAll(' ', '_')}</span></span></li>)}
-          </ol>}
+
         </div>
-        {entry.mode === 'combined'
-          ? <CraftPicker label={entry.label} options={entry.options} selectedOptionId={entry.selectedOptionId} onSelect={(id) => onSelectCraft(entry.id, id)} />
-          : <div className="crafting-sheet__individual">
-            <p className="crafting-sheet__hint">Reorder with the arrows. Shared prefixes use up to 3 backspaces; otherwise the search is replaced. Chars and scores reflect this order.</p>
+        <div className="crafting-sheet__individual">
+            <p className="crafting-sheet__hint">Reorder with the arrows. Matching queries share a step. Shared prefixes use up to 3 backspaces; otherwise the search is replaced. Chars and scores reflect this order.</p>
             {entry.itemChoices.map((choice, index) => {
               const selected = choice.options.find((option) => option.id === choice.selectedOptionId)
               return <div className="crafting-sheet__individual-item" key={choice.itemId}>
@@ -186,7 +177,7 @@ function ItemSetCard({ entry, items, icons, onSelectCraft, onSetCraftMode, onSel
                 <CraftPicker label={itemName(choice.itemId, items)} options={choice.options} selectedOptionId={choice.selectedOptionId} onSelect={(id) => onSelectItemCraft(entry.id, choice.itemId, id)} />
               </div>
             })}
-          </div>}
+          </div>
       </>}
     </div>
     </SheetDisclosure>
@@ -222,7 +213,7 @@ function UsageChart({ usages }: { usages: readonly CraftingSheetCharacterUsage[]
   </div>
 }
 
-export function CraftingSheet({ languageName, entries, characterSet, characterUsages, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, defaultOpen = false, onSelectCraft, onSetCraftMode, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, onReset }: CraftingSheetProps) {
+export function CraftingSheet({ languageName, entries, characterSet, characterUsages, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, defaultOpen = false, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, onReset }: CraftingSheetProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
   const panelId = useId()
   const readyCount = entries.filter((entry) => !entry.disabled && entry.status === 'ready').length
@@ -254,7 +245,7 @@ export function CraftingSheet({ languageName, entries, characterSet, characterUs
       {warning && <p className="crafting-sheet__warning" role="status">{warning}</p>}
       <section className="crafting-sheet__sets" aria-label="Selected item sets"><h3>item sets</h3>
         {entries.length === 0 && <p className="crafting-sheet__empty">Add an item set with available crafts to build a crafting sheet.</p>}
-        {entries.map((entry) => <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onSelectCraft={onSelectCraft} onSetCraftMode={onSetCraftMode} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />)}
+        {entries.map((entry) => <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />)}
       </section>
       {usages.length > 0 && <details className="crafting-sheet__usage"><summary>character usage</summary><div className="crafting-sheet__usage-layout"><ol className="crafting-sheet__usage-list">{usages.map((usage) => <CharacterUsageRow key={usage.character} usage={usage} />)}</ol><UsageChart usages={usages} /></div></details>}
     </div>
