@@ -514,6 +514,62 @@ test('keeps long craft lists inside the panel and themed page background', async
   await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(5, 5, 5)')
 })
 
+test('keeps the background fixed when scrolling back up and collapsing crafts', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Choose color theme' }).click()
+  await page.getByRole('menuitemradio', { name: 'Select plain white / black theme' }).click()
+  await page.getByRole('switch', { name: 'Switch to dark mode' }).click()
+
+  for (const width of [1440, 375]) {
+    await page.setViewportSize({ width, height: 800 })
+    for (const mode of ['dark', 'light']) {
+      if (await page.locator('html').getAttribute('data-theme') !== mode) {
+        await page.getByRole('switch', { name: `Switch to ${mode} mode` }).click()
+      }
+      const toggle = page.getByRole('button', { name: 'Show all crafts for item set 6' })
+      await toggle.click()
+      await expect(page.locator('.craft-categories--open')).toBeVisible()
+      const background = () => page.screenshot({
+        fullPage: false,
+        // Keep the real layout while isolating the background from panel shadows.
+        style: '.app-shell, .app-shell * { visibility: hidden !important; }',
+      })
+      const before = await background()
+      const expectSameBackground = async () => {
+        const after = await background()
+        const difference = await page.evaluate(async ([first, second]) => {
+          const pixels = async (base64: string) => {
+            const image = new Image()
+            image.src = `data:image/png;base64,${base64}`
+            await image.decode()
+            const canvas = document.createElement('canvas')
+            canvas.width = image.width
+            canvas.height = image.height
+            const context = canvas.getContext('2d')!
+            context.drawImage(image, 0, 0)
+            return context.getImageData(0, 0, canvas.width, canvas.height).data
+          }
+          const [a, b] = await Promise.all([pixels(first), pixels(second)])
+          if (a.length !== b.length) return 255
+          return a.reduce((maximum, channel, index) => Math.max(maximum, Math.abs(channel - b[index])), 0)
+        }, [before.toString('base64'), after.toString('base64')])
+        // Allow tiny gradient-dithering differences between browser repaints.
+        expect(difference, `${mode} background at ${width}px`).toBeLessThanOrEqual(4)
+      }
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+      await page.mouse.wheel(0, -300)
+      await expectSameBackground()
+      await page.getByRole('button', { name: 'Hide crafts for item set 6' }).click()
+      await expect(page.locator('.craft-categories--closing')).toHaveCount(0)
+      await expectSameBackground()
+    }
+  }
+  // Paint the document canvas, including any viewport space beyond a shrinking body.
+  await expect(page.locator('html')).toHaveCSS('background-image', /linear-gradient/)
+  await expect(page.locator('html')).toHaveCSS('background-attachment', 'fixed, fixed, fixed')
+  await expect(page.locator('body')).toHaveCSS('background-image', 'none')
+})
+
 async function expectFluidLayout(page: import('@playwright/test').Page) {
   const measurements = await page.locator('html').evaluate(() => {
     const elements = document.querySelectorAll<HTMLElement>([
