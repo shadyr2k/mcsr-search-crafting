@@ -482,6 +482,38 @@ test('keeps the complete menu bar visible while the page scrolls', async ({ page
   expect(geometry.top).toBeCloseTo(8, 0)
 })
 
+test('keeps long craft lists inside the panel and themed page background', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: /english.*search crafts/ }).waitFor()
+  await page.evaluate(() => {
+    const workspace = JSON.parse(localStorage.getItem('mcsr.target-workspace.v1')!)
+    const entry = workspace.entries[0]
+    workspace.entries = Array.from({ length: 45 }, (_, order) => ({
+      ...entry, id: `long-list-${order}`, order,
+    }))
+    localStorage.setItem('mcsr.target-workspace.v1', JSON.stringify(workspace))
+  })
+  await page.reload()
+  await page.getByRole('button', { name: 'Choose color theme' }).click()
+  await page.getByRole('menuitemradio', { name: 'Select plain white / black theme' }).click()
+  await page.getByRole('switch', { name: 'Switch to dark mode' }).click()
+  await expect(page.locator('.calculated-search-row')).toHaveCount(45)
+
+  for (const width of [1440, 375]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.locator('.calculated-search-row').last().scrollIntoViewIfNeeded()
+    await expect.poll(() => page.locator('.results-column').evaluate((panel) => {
+      const lastRow = panel.querySelector('.calculated-search-row:last-child')!
+      const bottom = lastRow.getBoundingClientRect().bottom
+      return {
+        panelContainsRows: panel.getBoundingClientRect().bottom >= bottom,
+        bodyContainsRows: document.body.getBoundingClientRect().bottom >= bottom,
+      }
+    })).toEqual({ panelContainsRows: true, bodyContainsRows: true })
+  }
+  await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(5, 5, 5)')
+})
+
 async function expectFluidLayout(page: import('@playwright/test').Page) {
   const measurements = await page.locator('html').evaluate(() => {
     const elements = document.querySelectorAll<HTMLElement>([
@@ -699,6 +731,7 @@ test('keeps the recipe book pager centered and its summary below the book', asyn
   expect(geometry.itemsWidth).toBeCloseTo(125 / 147, 2)
   expect(geometry.iconCenterOffset).toBeCloseTo(-geometry.iconSlotWidth * .02, 0)
   expect(geometry.iconWidth).toBeCloseTo(geometry.iconHeight, 2)
+  expect(geometry.iconWidth).toBeCloseTo(48, 1)
   expect(geometry.iconWidth).toBeLessThanOrEqual(geometry.itemsWidth * geometry.bookWidth / 5)
   expect(geometry.searchLeft).toBeCloseTo(22 / 147, 2)
   expect(geometry.searchTop).toBeCloseTo(7 / 147, 2)

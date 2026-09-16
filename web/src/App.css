@@ -1158,7 +1158,8 @@ h3 {
 .workspace-transition--home > .language-selector,
 .workspace-transition--language-info > .language-selector,
 .workspace-transition--site-info > .site-info-panel {
-  max-height: 200rem;
+  /* Visible panels must grow with expanded crafts and long item-set lists. */
+  max-height: none;
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
@@ -1646,6 +1647,8 @@ h3 {
 
 /* Color themes share one set of semantic surfaces so each dye has a matching pastel and dark palette. */
 :root[data-theme] {
+  color: var(--text);
+  background: var(--page);
   --control: color-mix(in srgb, white 76%, var(--panel));
   --control-hover: var(--panel-selected);
   --workspace-panel: color-mix(in srgb, var(--panel) 82%, var(--accent) 18%);
@@ -1808,15 +1811,6 @@ h3 {
 :root[data-theme] .theme-switch[aria-checked='true'] .theme-switch__thumb { background: var(--switch-active-thumb); }
 :root[data-theme] .grid-size-switch__control:disabled { background: color-mix(in srgb, var(--switch-bg) 60%, var(--muted)); }
 
-/* Long reference pages must grow with their content on narrow screens. The
-   desktop transition cap otherwise cuts off the panel once text wraps. */
-@media (max-width: 72rem) {
-  .workspace-transition--language-info > .language-info-panel,
-  .workspace-transition--site-info > .site-info-panel {
-    max-height: none;
-  }
-}
-
 /* Keep the recipe-book texture and every positioned child on one scale. */
 .recipe-book-sim__book {
   container-type: inline-size;
@@ -1915,8 +1909,9 @@ h3 {
   position: absolute;
   top: 48%;
   left: 48%;
-  width: min(3.2em, 72%);
-  height: min(3.2em, 72%);
+  /* 48px in the full-size book; scale down with the book on narrow screens. */
+  width: min(48px, 10cqw, 72%);
+  height: min(48px, 10cqw, 72%);
   object-position: center;
   /* Center on the slot texture's light-grey interior, not its full canvas. */
   transform: translate(-50%, -50%);
