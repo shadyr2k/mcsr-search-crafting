@@ -45,7 +45,7 @@ describe('CraftingSheet', () => {
     expect(screen.getByText('bed')).toBeVisible()
     expect(screen.getByText('anchor')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Expand item set 1' })).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.getByLabelText('Selected query for bed')).toHaveTextContent('[be]')
+    expect(screen.getByLabelText('Selected query for bed')).toHaveTextContent('be')
     expect(screen.queryByRole('button', { name: 'choose craft for item set 1' })).not.toBeInTheDocument()
   })
 

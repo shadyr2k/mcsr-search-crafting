@@ -138,7 +138,7 @@ function ItemSetCard({ entry, items, icons, onSelectCraft, onSetCraftMode, onSel
               ?? entry.selectedSearch?.steps.find((current) => current.coveredTargetIds.includes(itemId))
             return <span key={itemId} className="crafting-sheet__summary-item">
               <ItemLabels itemIds={[itemId]} items={items} icons={icons} />
-              {step && <span className="crafting-sheet__query-preview" aria-label={`Selected query for ${itemName(itemId, items)}`} dir="ltr">[<span className="crafting-sheet__query-text">{step.query.replaceAll(' ', '_')}</span>]</span>}
+              {step && <span className="craft-query crafting-sheet__query-preview" aria-label={`Selected query for ${itemName(itemId, items)}`} dir="ltr"><span className="crafting-sheet__query-text">{step.query.replaceAll(' ', '_')}</span></span>}
             </span>
           })}</span>
           {!isOpen && entry.status !== 'ready' && <span className="crafting-sheet__empty">{entry.status === 'pending' ? 'Calculating crafts…' : 'No available craft.'}</span>}
