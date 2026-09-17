@@ -9,7 +9,7 @@ for (const width of [1440, 375]) {
     await expect(page.getByRole('button', { name: 'site info' })).toHaveCount(0)
     await page.getByRole('button', { name: 'Help for search crafting' }).click()
     const tutorial = page.getByRole('dialog')
-    await expect(page.locator('.page-tutorial svg')).toHaveCount(0)
+    await expect(page.locator('.page-tutorial__arrow')).toHaveCount(0)
     await expect(tutorial.getByRole('heading', { name: 'Item sets' })).toBeVisible()
     await tutorial.getByRole('button', { name: 'next', exact: true }).click()
     await expect(tutorial.getByRole('heading', { name: 'Edit an item set' })).toBeVisible()
@@ -28,16 +28,13 @@ for (const width of [1440, 375]) {
     for (const [title, target] of targets) {
       await tutorial.getByRole('button', { name: 'next', exact: true }).click()
       await expect(tutorial.getByRole('heading', { name: title, exact: true })).toBeVisible()
-      await expect(page.locator('.page-tutorial__spotlight')).toHaveCSS('border-top-width', '3px')
       await expect.poll(() => page.locator('.page-tutorial__spotlight').evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(10)
       await expect.poll(() => page.locator('.page-tutorial__spotlight').evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThan(10)
       await expect.poll(() => page.evaluate((selector) => {
         const target = document.querySelector(selector)!.getBoundingClientRect()
         const highlight = document.querySelector('.page-tutorial__spotlight')!.getBoundingClientRect()
-        const card = document.querySelector('.page-tutorial__card')!.getBoundingClientRect()
         return highlight.left >= target.left - 5 && highlight.right <= target.right + 5
           && highlight.top >= target.top - 5 && highlight.bottom <= target.bottom + 5
-          && highlight.bottom < card.top
       }, target)).toBe(true)
       if (['Craft space', 'Retain item order', 'Your inventory', 'Custom inventories'].includes(title)) {
         await expect(page.locator('.item-set-editor')).toHaveAttribute('data-test-instance', 'kept-open')
@@ -100,7 +97,7 @@ test('scrolling keeps the highlight on its visible target without a sticky heade
   await expect.poll(() => page.evaluate(() => {
     const target = document.querySelector('.item-set-workspace')!.getBoundingClientRect()
     const highlight = document.querySelector('.page-tutorial__spotlight')!.getBoundingClientRect()
-    return Math.abs(highlight.top - Math.max(4, target.top - 4)) < 1
+    return Math.abs(highlight.top - (target.top - 4)) < 1
   })).toBe(true)
   await page.getByRole('button', { name: 'close tutorial' }).click()
   await expect(page.locator('.app-header')).toHaveCSS('position', 'sticky')
@@ -117,4 +114,38 @@ test('crafting sheet hides crafts until dismissed outside or with Escape', async
   await page.locator('.crafting-sheet__toggle').click()
   await page.keyboard.press('Escape')
   await expect(page.locator('.calculated-search-row').first()).toBeVisible()
+})
+
+test('highlight follows the full container for long sets and a wrapped inventory', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 650 })
+  await page.goto('/')
+  await expect(page.getByRole('button', { name: 'Help for search crafting' })).toBeEnabled()
+  await page.evaluate(() => {
+    const workspace = JSON.parse(localStorage.getItem('mcsr.target-workspace.v1')!)
+    const inventoryItemIds = [...new Set(workspace.entries.flatMap((entry: { inventoryItemIds: string[] }) => entry.inventoryItemIds))]
+    workspace.entries = Array.from({ length: 18 }, (_, order) => ({ ...workspace.entries[0], inventoryItemIds, id: `long-tour-${order}`, order }))
+    localStorage.setItem('mcsr.target-workspace.v1', JSON.stringify(workspace))
+  })
+  await page.reload()
+  await page.getByRole('button', { name: 'Choose color theme' }).click()
+  await page.getByRole('menuitemradio', { name: 'Select plain white / black theme' }).click()
+  await page.getByRole('switch', { name: 'Switch to dark mode' }).click()
+  await page.getByRole('button', { name: 'Help for search crafting' }).click()
+  const expectFullContainer = async (selector: string) => {
+    await expect.poll(() => page.evaluate((selector) => {
+      const target = document.querySelector(selector)!.getBoundingClientRect()
+      const highlight = document.querySelector('.page-tutorial__spotlight')!.getBoundingClientRect()
+      return Math.abs(highlight.top - target.top + 4) < 1
+        && Math.abs(highlight.bottom - target.bottom - 4) < 1
+        && Math.abs(highlight.left - target.left + 4) < 1
+        && Math.abs(highlight.right - target.right - 4) < 1
+    }, selector)).toBe(true)
+  }
+  await expectFullContainer('.item-set-workspace')
+  await page.screenshot({ path: 'test-results/tutorial-long-container.png' })
+  const tutorial = page.getByRole('dialog')
+  for (let step = 0; step < 4; step++) await tutorial.getByRole('button', { name: 'next', exact: true }).click()
+  await expect(tutorial.getByRole('heading', { name: 'Your inventory' })).toBeVisible()
+  await expectFullContainer('.item-set-editor__inventory')
+  await page.screenshot({ path: 'test-results/tutorial-wrapped-inventory.png' })
 })

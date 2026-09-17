@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 
 import './PageTutorial.css'
 
@@ -30,6 +30,10 @@ export const pageTutorials: Record<string, TutorialStep[]> = {
 export function PageTutorial({ steps, index, onChange, onClose }: { steps: TutorialStep[]; index: number; onChange: (index: number) => void; onClose: () => void }) {
   const step = steps[index]
   const [box, setBox] = useState({ left: 8, top: 8, width: 0, height: 0 })
+  const [clip, setClip] = useState({ left: 0, top: 0, width: 0, height: 0 })
+  const [radius, setRadius] = useState(10)
+  const maskId = useId()
+  const clipId = useId()
   const cardRef = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     let active = true
@@ -56,10 +60,10 @@ export function PageTutorial({ steps, index, onChange, onClose }: { steps: Tutor
       const target = findTarget()
       if (!target) { setBox({ left: 0, top: 0, width: 0, height: 0 }); return }
       const rect = target.getBoundingClientRect()
-      let left = Math.max(4, rect.left - 4)
-      let top = Math.max(4, rect.top - 4)
-      let right = Math.min(innerWidth - 4, rect.right + 4)
-      let bottom = Math.min((cardRef.current?.getBoundingClientRect().top ?? innerHeight) - 12, rect.bottom + 4)
+      let left = 0
+      let top = 0
+      let right = innerWidth
+      let bottom = innerHeight
       // A control inside a scrolling editor is visible only within that editor.
       for (let ancestor = target.parentElement; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
         const style = getComputedStyle(ancestor)
@@ -67,7 +71,11 @@ export function PageTutorial({ steps, index, onChange, onClose }: { steps: Tutor
         if (/(auto|scroll|hidden|clip)/.test(style.overflowX)) { left = Math.max(left, bounds.left); right = Math.min(right, bounds.right) }
         if (/(auto|scroll|hidden|clip)/.test(style.overflowY)) { top = Math.max(top, bounds.top); bottom = Math.min(bottom, bounds.bottom) }
       }
-      setBox({ left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) })
+      // Preserve the whole outline. Clipping its drawing, rather than shrinking
+      // the rectangle, avoids inventing an edge halfway through a container.
+      setBox({ left: rect.left - 4, top: rect.top - 4, width: rect.width + 8, height: rect.height + 8 })
+      setClip({ left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) })
+      setRadius(Math.max(6, (Number.parseFloat(getComputedStyle(target).borderTopLeftRadius) || 0) + 4))
     }
     function findTarget() {
       return step.target.split(',').map((selector) => document.querySelector(selector.trim())).find((target) => {
@@ -84,7 +92,7 @@ export function PageTutorial({ steps, index, onChange, onClose }: { steps: Tutor
     return () => { active = false; cancelAnimationFrame(frame); observer?.disconnect(); window.removeEventListener('scroll', measure, true); window.removeEventListener('resize', measure) }
   }, [step])
   useEffect(() => { cardRef.current?.focus({ preventScroll: true }) }, [index])
-  return <div className={`page-tutorial${box.width === 0 || box.height === 0 ? ' page-tutorial--offscreen' : ''}`} onKeyDown={(event) => {
+  return <div className="page-tutorial" onKeyDown={(event) => {
     if (event.key === 'Escape') { event.preventDefault(); onClose() }
     if (event.key === 'Tab') {
       const buttons = [...cardRef.current!.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')]
@@ -94,7 +102,17 @@ export function PageTutorial({ steps, index, onChange, onClose }: { steps: Tutor
       else if (!event.shiftKey && (document.activeElement === last || document.activeElement === cardRef.current)) { event.preventDefault(); first.focus() }
     }
   }}>
-    <div className="page-tutorial__spotlight" style={box} />
+    <svg className="page-tutorial__shade" width="100%" height="100%" aria-hidden="true">
+      <defs>
+        <clipPath id={clipId}><rect x={clip.left} y={clip.top} width={clip.width} height={clip.height} /></clipPath>
+        <mask id={maskId} maskUnits="userSpaceOnUse" x="0" y="0" width="100%" height="100%">
+          <rect width="100%" height="100%" fill="white" />
+          <rect x={box.left} y={box.top} width={box.width} height={box.height} rx={radius} fill="black" clipPath={`url(#${clipId})`} />
+        </mask>
+      </defs>
+      <rect className="page-tutorial__backdrop" width="100%" height="100%" mask={`url(#${maskId})`} />
+      <rect className="page-tutorial__spotlight" x={box.left} y={box.top} width={box.width} height={box.height} rx={radius} clipPath={`url(#${clipId})`} />
+    </svg>
     <div ref={cardRef} tabIndex={-1} className="page-tutorial__card" role="dialog" aria-modal="true" aria-labelledby="tutorial-title" aria-describedby="tutorial-description">
       <span className="page-tutorial__progress">{index + 1} of {steps.length}</span>
       <h2 id="tutorial-title">{step.title}</h2><p id="tutorial-description">{step.text}</p>
