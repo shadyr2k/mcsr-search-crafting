@@ -9,5 +9,5 @@
 .page-tutorial__actions { display: flex; flex-wrap: wrap; gap: .4rem; justify-content: flex-end; }
 .page-tutorial__actions button { font-size: .8rem; }
 .page-tutorial__actions button:first-child { margin-right: auto; }
-.app-header__help { font: 400 1.6rem 'Coiny', sans-serif; width: 3rem; padding: .15rem; }
+.app-header__help { font: 400 1.6rem 'Monocraft', monospace; width: 3rem; padding: .15rem; }
 .app-shell--tutorial .app-header { position: relative; top: auto; }
