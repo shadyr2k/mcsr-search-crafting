@@ -114,7 +114,7 @@ describe('ItemSetWorkspace', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'share' }))
     fireEvent.click(screen.getByRole('button', { name: 'export' }))
-    expect((screen.getByLabelText('Item set collection share code') as HTMLTextAreaElement).value).toMatch(/^mcsr-item-sets-v1\./)
+    expect((screen.getByLabelText('Item set collection share code') as HTMLTextAreaElement).value).toMatch(/^mcsr-item-sets-v2\./)
 
     const code = createItemSetWorkspaceShareCode([{
       targetIds: ['minecraft:stick'],

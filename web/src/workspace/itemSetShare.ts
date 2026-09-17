@@ -1,6 +1,7 @@
 import type { ItemSetDraft, TargetWorkspaceEntry } from '../domain/types'
 
-export const ITEM_SET_WORKSPACE_SHARE_PREFIX = 'mcsr-item-sets-v1.'
+export const ITEM_SET_WORKSPACE_SHARE_PREFIX = 'mcsr-item-sets-v2.'
+const LEGACY_SHARE_PREFIX = 'mcsr-item-sets-v1.'
 
 export type SharedItemSetDraft = Pick<ItemSetDraft, 'targetIds' | 'inventoryItemIds' | 'enabled' | 'gridSize' | 'retainCraftOrder'>
 
@@ -20,6 +21,16 @@ type SharePayload = {
 type WorkspaceSharePayload = {
   v: 1
   s: SharePayload[]
+}
+
+// Item names and identical inventories are stored once for the whole collection.
+// A set tuple contains goal references, an inventory reference, and three flags:
+// bit 0 = 2x2 grid, bit 1 = enabled, bit 2 = retain craft order.
+type CompactWorkspaceSharePayload = {
+  v: 2
+  d: string[]
+  i: number[][]
+  s: [number[], number, number][]
 }
 
 interface AvailableItems {
@@ -111,11 +122,52 @@ function isWorkspaceSharePayload(value: unknown): value is WorkspaceSharePayload
   return keys.join(',') === 's,v' && value.v === 1 && Array.isArray(value.s) && value.s.every(isSharePayload)
 }
 
+function expandCompactPayload(value: unknown): WorkspaceSharePayload | undefined {
+  if (!isRecord(value) || Object.keys(value).sort().join(',') !== 'd,i,s,v' || value.v !== 2 || !isStringArray(value.d)) return undefined
+  const dictionary = value.d.map((id) => id.includes(':') ? id : `minecraft:${id}`)
+  if (new Set(dictionary).size !== dictionary.length || !Array.isArray(value.i) || !Array.isArray(value.s)) return undefined
+  const isReference = (reference: unknown, length: number): reference is number => typeof reference === 'number' && Number.isInteger(reference) && reference >= 0 && reference < length
+  const expandReferences = (references: unknown): string[] | undefined => {
+    if (!Array.isArray(references) || !references.every((reference) => isReference(reference, dictionary.length))) return undefined
+    return references.map((reference) => dictionary[reference])
+  }
+  const inventories = value.i.map(expandReferences)
+  if (inventories.some((inventory) => inventory === undefined)) return undefined
+  const sets: SharePayload[] = []
+  for (const set of value.s) {
+    if (!Array.isArray(set) || set.length !== 3 || !isReference(set[1], inventories.length) || !isReference(set[2], 8)) return undefined
+    const targets = expandReferences(set[0])
+    if (!targets) return undefined
+    sets.push({ v: 1, t: targets, i: inventories[set[1]]!, g: set[2] & 1 ? 2 : 3, e: Boolean(set[2] & 2), r: Boolean(set[2] & 4) })
+  }
+  return { v: 1, s: sets }
+}
+
 /** Produces a compact, versioned code for the ordered collection of item sets. */
 export function createItemSetWorkspaceShareCode(entries: readonly Pick<TargetWorkspaceEntry, 'targetIds' | 'inventoryItemIds' | 'enabled' | 'gridSize' | 'retainCraftOrder'>[]): string {
-  const payload: WorkspaceSharePayload = {
-    v: 1,
-    s: entries.map(toSharePayload),
+  const payload: CompactWorkspaceSharePayload = { v: 2, d: [], i: [], s: [] }
+  const itemReferences = new Map<string, number>()
+  const inventoryReferences = new Map<string, number>()
+  const itemReference = (id: string): number => {
+    const existing = itemReferences.get(id)
+    if (existing !== undefined) return existing
+    const reference = payload.d.length
+    itemReferences.set(id, reference)
+    payload.d.push(id.startsWith('minecraft:') ? id.slice('minecraft:'.length) : id)
+    return reference
+  }
+  for (const entry of entries.map(toSharePayload)) {
+    const targets = entry.t.map(itemReference)
+    const inventory = entry.i.map(itemReference)
+    const inventoryKey = inventory.join(',')
+    let inventoryReference = inventoryReferences.get(inventoryKey)
+    if (inventoryReference === undefined) {
+      inventoryReference = payload.i.length
+      inventoryReferences.set(inventoryKey, inventoryReference)
+      payload.i.push(inventory)
+    }
+    const flags = (entry.g === 2 ? 1 : 0) | (entry.e ? 2 : 0) | (entry.r ? 4 : 0)
+    payload.s.push([targets, inventoryReference, flags])
   }
   return `${ITEM_SET_WORKSPACE_SHARE_PREFIX}${encodeBase64Url(JSON.stringify(payload))}`
 }
@@ -123,16 +175,18 @@ export function createItemSetWorkspaceShareCode(entries: readonly Pick<TargetWor
 /** Validates a complete item-set collection against the current game's available items. */
 export function parseItemSetWorkspaceShareCode(code: string, available: AvailableItems): ItemSetWorkspaceShareParseResult {
   const trimmed = code.trim()
-  if (!trimmed.startsWith(ITEM_SET_WORKSPACE_SHARE_PREFIX)) {
+  const prefix = [ITEM_SET_WORKSPACE_SHARE_PREFIX, LEGACY_SHARE_PREFIX].find((candidate) => trimmed.startsWith(candidate))
+  if (!prefix) {
     return { ok: false, error: 'That is not an item-set collection share code.' }
   }
 
   let payload: unknown
   try {
-    payload = JSON.parse(decodeBase64Url(trimmed.slice(ITEM_SET_WORKSPACE_SHARE_PREFIX.length)))
+    payload = JSON.parse(decodeBase64Url(trimmed.slice(prefix.length)))
   } catch {
     return { ok: false, error: 'This item-set collection share code is incomplete or corrupted.' }
   }
+  if (prefix === ITEM_SET_WORKSPACE_SHARE_PREFIX) payload = expandCompactPayload(payload)
   if (!isWorkspaceSharePayload(payload)) {
     return { ok: false, error: 'This item-set collection share code has an unsupported format.' }
   }
