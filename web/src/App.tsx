@@ -120,13 +120,13 @@ function App() {
   const craftingSheet = useCraftingSheet(selectedLocale, entries, states)
   const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (tutorialIndex === null) return
     const step = pageTutorials[page]?.[tutorialIndex]
     if (!step) return
     if (step.editor) {
       const entry = entries[0]
-      setEditor(tutorialPriorView.current?.editor ?? (entry
+      setEditor((current) => current ?? tutorialPriorView.current?.editor ?? (entry
         ? { kind: 'existing', entryId: entry.id, draft: draftFromEntry(entry) }
         : { kind: 'new', draft: newItemSetDraft() }))
     } else setEditor(null)
@@ -379,7 +379,7 @@ function App() {
   const editorNumber = editor?.entryId === undefined ? undefined : entries.findIndex((entry) => entry.id === editor.entryId) + 1
   const selectedLanguage = languages.find((language) => language.locale === selectedLocale)
   const selectedLanguageName = selectedLanguage ? englishLocaleName(selectedLanguage, languages) : 'english (us)'
-  return <main className="app-shell">
+  return <main className={`app-shell${tutorialIndex !== null ? ' app-shell--tutorial' : ''}`}>
     <header className="app-header">
       <div className="app-header__brand">
         {icons && <ItemIcon itemId="minecraft:smithing_table" name="smithing table" manifest={icons} size="detail" className="app-header__icon" />}
@@ -477,6 +477,7 @@ function App() {
       {editor && <div className="item-set-editor-overlay">
         <ItemSetEditor
           state={editor} entryNumber={editorNumber} data={data} pickerData={baseData} icons={icons} customSlots={customSlots}
+          cancelOnOutsidePointer={tutorialIndex === null}
           onDraftChange={updateDraft}
           onSave={(commit) => { setWorkspace((current) => commitDraft(current, commit)); setEditor(null) }}
           onCancel={() => setEditor(null)}

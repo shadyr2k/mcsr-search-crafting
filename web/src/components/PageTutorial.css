@@ -1,10 +1,8 @@
 .page-tutorial { position: fixed; inset: 0; z-index: 100; }
 .page-tutorial__spotlight { position: absolute; border: 3px solid var(--accent-strong); border-radius: .7rem; box-shadow: 0 0 0 200vmax #0009; pointer-events: none; }
-.page-tutorial__arrow { position: absolute; inset: 0; pointer-events: none; }
-.page-tutorial__arrow > path { fill: none; stroke: var(--accent-strong); stroke-width: 4; }
-.page-tutorial__arrow marker path { fill: var(--accent-strong); }
+.page-tutorial--offscreen { background: #0009; }
+.page-tutorial--offscreen .page-tutorial__spotlight { display: none; }
 .page-tutorial__card { position: absolute; bottom: 1rem; left: 50%; transform: translateX(-50%); width: min(32rem, calc(100% - 2rem)); max-height: calc(100dvh - 2rem); overflow: auto; padding: 1rem; border: 2px solid var(--accent-strong); border-radius: .9rem; background: var(--control); color: var(--text); box-shadow: 0 .5rem 2rem #0005; }
-.page-tutorial__card--top { top: 1rem; bottom: auto; }
 .page-tutorial__card h2 { margin: .25rem 0; font: 400 1.25rem 'Coiny', sans-serif; color: var(--accent-strong); }
 .page-tutorial__card p { margin: .5rem 0 1rem; line-height: 1.45; }
 .page-tutorial__progress { color: var(--muted); font-size: .8rem; }
@@ -12,3 +10,4 @@
 .page-tutorial__actions button { font-size: .8rem; }
 .page-tutorial__actions button:first-child { margin-right: auto; }
 .app-header__help { font: 400 1.6rem 'Coiny', sans-serif; width: 3rem; padding: .15rem; }
+.app-shell--tutorial .app-header { position: relative; top: auto; }

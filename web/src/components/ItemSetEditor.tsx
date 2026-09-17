@@ -142,7 +142,7 @@ export function ItemSetEditor({
       selectedIds={draft.targetIds}
       preserveSelectionOrder
       manifest={icons}
-      className={saveNextToGoals ? 'item-picker--main-goals' : undefined}
+      className={`item-set-editor__goals${saveNextToGoals ? ' item-picker--main-goals' : ''}`}
       trailingAction={saveNextToGoals ? saveAction : undefined}
       onOpenChange={(open) => setPickerOpen('goals', open)}
       onChange={(targetIds) => updateDraft({ ...draft, targetIds })}
@@ -187,6 +187,7 @@ export function ItemSetEditor({
     <ItemPicker
       items={pickerData?.inventoryItems ?? data.inventoryItems}
       label="Inventory"
+      className="item-set-editor__inventory"
       selectedIds={draft.inventoryItemIds}
       manifest={icons}
       onOpenChange={(open) => setPickerOpen('inventory', open)}
