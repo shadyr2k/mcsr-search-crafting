@@ -24,6 +24,8 @@ export interface CraftingSheetProps {
   isCalculating?: boolean
   warning?: string
   defaultOpen?: boolean
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
   onSelectItemCraft: (entryId: string, itemId: string, optionId: string) => void
   onMoveItemCraft: (entryId: string, itemId: string, direction: -1 | 1) => void
   onSetEntryDisabled: (entryId: string, disabled: boolean) => void
@@ -213,8 +215,10 @@ function UsageChart({ usages }: { usages: readonly CraftingSheetCharacterUsage[]
   </div>
 }
 
-export function CraftingSheet({ languageName, entries, characterSet, characterUsages, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, defaultOpen = false, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, onReset }: CraftingSheetProps) {
-  const [isOpen, setIsOpen] = useState(defaultOpen)
+export function CraftingSheet({ languageName, entries, characterSet, characterUsages, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, defaultOpen = false, open, onOpenChange, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, onReset }: CraftingSheetProps) {
+  const [localOpen, setLocalOpen] = useState(defaultOpen)
+  const isOpen = open ?? localOpen
+  function setIsOpen(next: boolean) { setLocalOpen(next); onOpenChange?.(next) }
   const panelId = useId()
   const readyCount = entries.filter((entry) => !entry.disabled && entry.status === 'ready').length
   const usages = useMemo(() => [...characterUsages].filter((usage) => usage.craftCount > 0).sort((left, right) => right.craftCount - left.craftCount || left.character.localeCompare(right.character)), [characterUsages])

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import type { IconManifest } from '../data/iconManifest'
@@ -45,9 +45,19 @@ const languages = [
 afterEach(() => {
   cleanup()
   localStorage.clear()
+  vi.unstubAllGlobals()
 })
 
 describe('RecipeBookSim', () => {
+  test('copies a special character from the selected language', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { clipboard: { writeText } })
+    const localizedData = { ...data, items: new Map([...data.items, ['minecraft:oak_planks', { ...data.items.get('minecraft:oak_planks')!, name: 'Planches de chêne', searchLines: [{ source: 'name' as const, text: 'Planches de chêne' }] }]]) }
+    render(<RecipeBookSim data={localizedData} icons={icons} customSlots={[]} languages={languages} selectedLocale="fr_fr" enabledBannedLocales={new Set()} onLocaleChange={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Copy ê' }))
+    expect(writeText).toHaveBeenCalledWith('ê')
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Copied ê'))
+  })
   test('filters selected-inventory craftable outputs and honors the crafting grid size', () => {
     render(<RecipeBookSim
       data={data}

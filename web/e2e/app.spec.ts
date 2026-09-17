@@ -248,18 +248,18 @@ test('uses a full-page fade when navigating to language info from another tab', 
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto('/')
   const pageTransition = page.locator('.page-transition')
-  await page.getByRole('button', { name: 'site info' }).click()
+  await page.getByRole('button', { name: 'recipe book sim' }).click()
   await expect(pageTransition).toHaveClass(/page-transition--exiting/)
-  await expect(page.locator('.workspace-transition--site-info')).toBeVisible()
+  await expect(page.locator('.recipe-book-sim')).toBeVisible()
   await expect(pageTransition).not.toHaveClass(/page-transition--exiting/)
   await page.getByRole('button', { name: 'language info' }).click()
   await expect(pageTransition).toHaveClass(/page-transition--exiting/)
   await expect(page.getByRole('heading', { name: /more language info/i })).toBeVisible()
   await expect(pageTransition).not.toHaveClass(/page-transition--exiting/)
 
-  await page.getByRole('button', { name: 'site info' }).click()
+  await page.getByRole('button', { name: 'recipe book sim' }).click()
   await expect(pageTransition).toHaveClass(/page-transition--exiting/)
-  await expect(page.locator('.workspace-transition--site-info')).toBeVisible()
+  await expect(page.locator('.recipe-book-sim')).toBeVisible()
   await expect(pageTransition).not.toHaveClass(/page-transition--exiting/)
 
   await page.getByRole('button', { name: 'search crafting' }).click()
@@ -579,7 +579,7 @@ async function expectFluidLayout(page: import('@playwright/test').Page) {
       '.language-selector',
       '.results-column',
       '.language-info-panel',
-      '.site-info-panel',
+
       '.recipe-book-sim',
       '.recipe-book-sim__layout',
       '.recipe-book-sim__book',
@@ -619,15 +619,6 @@ test('keeps every page fluid at each responsive breakpoint', async ({ page }) =>
     await expect(page.getByRole('heading', { name: /more language info/i })).toBeVisible()
     await expectFluidLayout(page)
 
-    await page.getByRole('button', { name: 'site info' }).click()
-    const siteInfo = page.locator('.site-info-panel')
-    await expect(siteInfo).toBeVisible()
-    const siteInfoHeight = await siteInfo.evaluate((element) => ({
-      clientHeight: element.clientHeight,
-      scrollHeight: element.scrollHeight,
-    }))
-    expect(siteInfoHeight.scrollHeight).toBeLessThanOrEqual(siteInfoHeight.clientHeight)
-    await expectFluidLayout(page)
 
     await page.getByRole('button', { name: 'recipe book sim' }).click()
     await expect(page.getByRole('region', { name: 'Recipe book results' })).toBeVisible()

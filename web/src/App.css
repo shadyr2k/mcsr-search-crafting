@@ -982,65 +982,6 @@ h3 {
   background: var(--workspace-panel);
 }
 
-.site-info-panel {
-  display: grid;
-  gap: 1.2rem;
-  min-width: 0;
-  padding: clamp(1rem, 3vw, 2rem);
-  border: 2px solid var(--border);
-  border-radius: .9rem;
-  background: var(--panel);
-}
-
-.site-info-panel > header {
-  display: grid;
-  gap: .45rem;
-  max-width: 58rem;
-}
-
-.site-info-panel h2,
-.site-info-panel h3 {
-  margin: 0;
-  font-family: 'Coiny', sans-serif;
-  font-weight: 400;
-  color: var(--accent-strong);
-}
-
-.site-info-panel h2 {
-  font-size: calc(1.35rem + 2pt);
-}
-
-.site-info-panel h3 {
-  font-size: calc(1rem + 2pt);
-}
-
-.site-info-panel p {
-  margin: 0;
-  line-height: 1.45;
-}
-
-.site-info-panel__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: .8rem;
-}
-
-.site-info-panel__grid > section {
-  display: grid;
-  align-content: start;
-  gap: .55rem;
-  padding: 1rem;
-  border: 1px solid var(--border);
-  border-radius: .65rem;
-  background: var(--panel-muted);
-}
-
-@media (max-width: 48rem) {
-  .site-info-panel__grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 /* Keep the subtitle in the same display face as the title stack. */
 .app-header__subtitle {
   font-family: 'Coiny', sans-serif;
@@ -1092,21 +1033,15 @@ h3 {
 }
 
 .workspace-transition > .results-column,
-.workspace-transition > .language-info-panel,
-.workspace-transition > .site-info-panel {
+.workspace-transition > .language-info-panel {
   grid-column: 3;
   grid-row: 1;
   min-width: 0;
 }
 
-.workspace-transition > .site-info-panel {
-  grid-column: 1 / -1;
-}
-
 .workspace-transition > .item-set-workspace,
 .workspace-transition > .results-column,
 .workspace-transition > .language-info-panel,
-.workspace-transition > .site-info-panel,
 .workspace-transition > .language-selector {
   transition: opacity 1s cubic-bezier(.4, 0, .2, 1), max-height 900ms cubic-bezier(.4, 0, .2, 1), padding 900ms cubic-bezier(.4, 0, .2, 1), border-width 900ms cubic-bezier(.4, 0, .2, 1), transform 900ms cubic-bezier(.4, 0, .2, 1), visibility 0s linear 900ms;
 }
@@ -1115,29 +1050,9 @@ h3 {
   grid-template-columns: 0 minmax(15rem, 19rem) minmax(0, 1fr);
 }
 
-.workspace-transition--site-info {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-/* Keep hidden columns from creating implicit tracks beside the full-width guide. */
-.workspace-transition--site-info > .item-set-workspace,
-.workspace-transition--site-info > .language-selector,
-.workspace-transition--site-info > .results-column,
-.workspace-transition--site-info > .language-info-panel,
-.workspace-transition--site-info > .site-info-panel {
-  grid-column: 1;
-  grid-row: 1;
-}
-
 .workspace-transition--language-info > .item-set-workspace,
 .workspace-transition--language-info > .results-column,
-.workspace-transition--home > .language-info-panel,
-.workspace-transition--home > .site-info-panel,
-.workspace-transition--language-info > .site-info-panel,
-.workspace-transition--site-info > .item-set-workspace,
-.workspace-transition--site-info > .language-selector,
-.workspace-transition--site-info > .results-column,
-.workspace-transition--site-info > .language-info-panel {
+.workspace-transition--home > .language-info-panel {
   min-height: 0;
   max-height: 0;
   padding: 0 !important;
@@ -1152,8 +1067,7 @@ h3 {
 .workspace-transition--home > .item-set-workspace,
 .workspace-transition--home > .results-column,
 .workspace-transition--home > .language-selector,
-.workspace-transition--language-info > .language-selector,
-.workspace-transition--site-info > .site-info-panel {
+.workspace-transition--language-info > .language-selector {
   /* Visible panels must grow with expanded crafts and long item-set lists. */
   max-height: none;
   opacity: 1;
@@ -1176,8 +1090,7 @@ h3 {
 .page-transition--entering .workspace-transition > .item-set-workspace,
 .page-transition--entering .workspace-transition > .language-selector,
 .page-transition--entering .workspace-transition > .results-column,
-.page-transition--entering .workspace-transition > .language-info-panel,
-.page-transition--entering .workspace-transition > .site-info-panel {
+.page-transition--entering .workspace-transition > .language-info-panel {
   transition: none !important;
   animation: none !important;
 }
@@ -1186,8 +1099,7 @@ h3 {
    out first, then bring the destination panel in while the list moves. */
 .workspace-transition--shared-language > .item-set-workspace,
 .workspace-transition--shared-language > .results-column,
-.workspace-transition--shared-language > .language-info-panel,
-.workspace-transition--shared-language > .site-info-panel {
+.workspace-transition--shared-language > .language-info-panel {
   transition-duration: 320ms, 320ms, 320ms, 320ms, 320ms, 0s;
   transition-delay: 0s, 0s, 0s, 0s, 0s, 320ms;
 }
@@ -2184,7 +2096,6 @@ h3 {
 .workspace-grid > .language-ranking,
 .language-info-grid > .language-selector,
 .language-info-panel,
-.site-info-panel,
 .recipe-book-sim__controls,
 .recipe-book-sim__detail {
   box-shadow: 0 .45rem 1.1rem color-mix(in srgb, var(--text) 16%, transparent);
@@ -2706,8 +2617,7 @@ h3 {
   }
 }
 
-.workspace-transition--language-info > .item-set-editor-overlay,
-.workspace-transition--site-info > .item-set-editor-overlay {
+.workspace-transition--language-info > .item-set-editor-overlay {
   display: none;
 }
 
@@ -3118,3 +3028,10 @@ h3 {
     display: flex;
   }
 }
+
+/* The sheet takes the crafts column; outside presses restore the craft rows. */
+.results-column--sheet-open > .calculated-search-row { display: none; }
+.results-column--editing { visibility: hidden; pointer-events: none; }
+.results-column--editing > * { visibility: hidden !important; }
+.recipe-book-sim__characters li { padding: 0; border: 0; background: transparent; }
+.recipe-book-sim__characters li button { min-width: 2rem; min-height: 2rem; padding: .15rem .3rem; font-family: 'Monocraft', monospace; }

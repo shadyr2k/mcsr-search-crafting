@@ -91,7 +91,6 @@ describe('App workspace composition', () => {
       'language-selector',
       'results-column',
       'language-info-panel',
-      'site-info-panel',
     ])
     expect(within(screen.getByRole('region', { name: 'Selected language' })).getByRole('button', { name: 'english - english (united states)' }).getAttribute('aria-pressed')).toBe('true')
     expect(screen.getByAltText('Stick')).toBeTruthy()
@@ -195,8 +194,8 @@ describe('App workspace composition', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Stick' }))
     expect(screen.getByRole('button', { name: 'Remove Stick' })).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('button', { name: 'site info' }))
-    await screen.findByRole('heading', { name: 'site info' })
+    fireEvent.click(screen.getByRole('button', { name: 'recipe book sim' }))
+    await screen.findByRole('heading', { name: 'recipe book simulator' })
     fireEvent.click(screen.getByRole('button', { name: 'craft lookup' }))
 
     expect(await screen.findByRole('button', { name: 'Remove Stick' })).toBeTruthy()
@@ -327,16 +326,20 @@ describe('App workspace composition', () => {
     expect(document.querySelector('.workspace-transition')?.getAttribute('dir')).toBeNull()
   })
 
-  test('opens the site-info draft from the main navigation', async () => {
+  test('replaces site info with page-specific guided help', async () => {
     stubData()
     render(<App />)
     await screen.findByRole('region', { name: 'Languages' })
-    fireEvent.click(screen.getByRole('button', { name: 'site info' }))
-
-    await waitFor(() => expect(screen.getByRole('button', { name: 'site info' }).getAttribute('aria-current')).toBe('page'))
-    expect(screen.getByRole('heading', { name: 'site info' })).toBeTruthy()
-    expect(screen.getByRole('heading', { name: 'regular and overlap crafts' })).toBeTruthy()
-    expect(screen.getByRole('heading', { name: 'craft order' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'site info' }).getAttribute('aria-current')).toBe('page')
+    expect(screen.queryByRole('button', { name: 'site info' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Help for search crafting' }))
+    expect(await screen.findByRole('dialog')).toBeTruthy()
+    expect(within(screen.getByRole('dialog')).getByRole('heading', { name: 'Item sets' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'next' }))
+    expect(await screen.findByRole('heading', { name: 'Edit an item set' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'close tutorial' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'language info' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'language info' }).getAttribute('aria-current')).toBe('page'))
+    expect(screen.queryByRole('button', { name: /Help for/ })).toBeNull()
   })
 })

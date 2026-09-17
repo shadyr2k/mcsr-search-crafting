@@ -139,6 +139,11 @@ export function RecipeBookSim({
   const [page, setPage] = useState(0)
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null)
   const [languageMenuOpen, setLanguageMenuOpen] = useState(false)
+  const [copyStatus, setCopyStatus] = useState('')
+  async function copyCharacter(character: string) {
+    try { await navigator.clipboard.writeText(character); setCopyStatus(`Copied ${character}`) }
+    catch { setCopyStatus('Could not copy. Select the character and copy it manually.') }
+  }
   // Match Minecraft's localized tooltip text literally. In particular, a
   // space is a searchable character rather than formatting to discard.
   const normalizedQuery = normalizeSearchText(query)
@@ -309,7 +314,8 @@ export function RecipeBookSim({
         </div>
         {specialCharacters.length > 0 && <div className="recipe-book-sim__characters" role="region" aria-label="Special characters">
           <span>special characters</span>
-          <ul>{specialCharacters.map((character) => <li key={character}>{character}</li>)}</ul>
+          <ul>{specialCharacters.map((character) => <li key={character}><button type="button" aria-label={`Copy ${character}`} onClick={() => { void copyCharacter(character) }}>{character}</button></li>)}</ul>
+          {copyStatus && <span role="status">{copyStatus}</span>}
         </div>}
         <div className="recipe-book-sim__presets" role="group" aria-label="Inventory presets">
           <span>inventory preset</span>

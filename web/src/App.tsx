@@ -9,7 +9,7 @@ import { ItemSetEditor, type ItemSetEditorCommit, type ItemSetEditorState } from
 import { ItemSetWorkspace } from './components/ItemSetWorkspace'
 import { LanguageInfoPanel } from './components/LanguageInfoPanel'
 import { RecipeBookSim } from './components/RecipeBookSim'
-import { SiteInfoPanel } from './components/SiteInfoPanel'
+import { PageTutorial, pageTutorials } from './components/PageTutorial'
 import { englishLocaleName, isBannedLocale, isRtlLocale, LanguageSelector } from './components/LanguageSelector'
 import { assertIconCoverage, loadIconManifest, type IconManifest } from './data/iconManifest'
 import { loadGeneratedData, loadLanguageMetadata, loadLocalizedGeneratedData } from './data/schema'
@@ -24,7 +24,7 @@ import type { SharedItemSetDraft } from './workspace/itemSetShare'
 import { starterWorkspace } from './workspace/starterWorkspace'
 
 type OpenEditor = (ItemSetEditorState & { entryId?: string }) | null
-type AppPage = 'home' | 'language-info' | 'craft-lookup' | 'site-info' | 'recipe-book-sim'
+type AppPage = 'home' | 'language-info' | 'craft-lookup' | 'recipe-book-sim'
 type PageTransitionPhase = 'idle' | 'exiting' | 'entering'
 
 const PAGE_EXIT_DURATION_MS = 320
@@ -103,6 +103,11 @@ function App() {
   const [customSlots, setCustomSlots] = useState<Array<CustomInventoryPreset | null>>([null, null, null])
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false)
   const [editor, setEditor] = useState<OpenEditor>(null)
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [tutorialIndex, setTutorialIndex] = useState<number | null>(null)
+  const tutorialPriorView = useRef<{ editor: OpenEditor; sheetOpen: boolean } | undefined>(undefined)
+  const helpRef = useRef<HTMLButtonElement>(null)
+  const resultsRef = useRef<HTMLElement>(null)
   const [craftLookupSession, setCraftLookupSession] = useState<CraftLookupSession>(newCraftLookupSession)
   const languageSelectorRef = useRef<HTMLElement>(null)
   const workspaceTransitionRef = useRef<HTMLDivElement>(null)
@@ -114,6 +119,39 @@ function App() {
   const { states, retry } = useRowOptimizations(data, workspace.entries)
   const craftingSheet = useCraftingSheet(selectedLocale, entries, states)
   const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales)
+
+  useEffect(() => {
+    if (tutorialIndex === null) return
+    const step = pageTutorials[page]?.[tutorialIndex]
+    if (!step) return
+    if (step.editor) {
+      const entry = entries[0]
+      setEditor(tutorialPriorView.current?.editor ?? (entry
+        ? { kind: 'existing', entryId: entry.id, draft: draftFromEntry(entry) }
+        : { kind: 'new', draft: newItemSetDraft() }))
+    } else setEditor(null)
+    setSheetOpen(step.sheet === true)
+  }, [tutorialIndex, page])
+
+  useEffect(() => {
+    if (!sheetOpen || tutorialIndex !== null) return
+    function dismiss(event: PointerEvent) {
+      if (event.target instanceof Node && !resultsRef.current?.querySelector('.crafting-sheet')?.contains(event.target)) setSheetOpen(false)
+    }
+    function escape(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !event.defaultPrevented) { setSheetOpen(false); resultsRef.current?.querySelector<HTMLButtonElement>('.crafting-sheet__toggle')?.focus() }
+    }
+    document.addEventListener('pointerdown', dismiss)
+    document.addEventListener('keydown', escape)
+    return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape) }
+  }, [sheetOpen, tutorialIndex])
+
+  function closeTutorial() {
+    setTutorialIndex(null)
+    if (tutorialPriorView.current) { setEditor(tutorialPriorView.current.editor); setSheetOpen(tutorialPriorView.current.sheetOpen) }
+    tutorialPriorView.current = undefined
+    helpRef.current?.focus()
+  }
 
   useEffect(() => {
     const slots = loadCustomInventorySlots()
@@ -284,6 +322,8 @@ function App() {
   }
 
   function selectPage(nextPage: AppPage) {
+    if (tutorialIndex !== null) closeTutorial()
+    setSheetOpen(false)
     const clearPageTransitionTimer = () => {
       if (pageTransitionTimeoutRef.current === undefined) return
       clearTimeout(pageTransitionTimeoutRef.current)
@@ -352,10 +392,10 @@ function App() {
           <button type="button" aria-current={page === 'language-info' ? 'page' : undefined} onClick={() => selectPage('language-info')}>language info</button>
           <button type="button" aria-current={page === 'craft-lookup' ? 'page' : undefined} onClick={() => selectPage('craft-lookup')}>craft lookup</button>
           <button type="button" aria-current={page === 'recipe-book-sim' ? 'page' : undefined} onClick={() => selectPage('recipe-book-sim')}>recipe book sim</button>
-          <button type="button" aria-current={page === 'site-info' ? 'page' : undefined} onClick={() => selectPage('site-info')}>site info</button>
         </nav>
       </div>
       <div className="app-header__menu">
+        {pageTutorials[page] && <button ref={helpRef} type="button" className="app-header__help" aria-label={`Help for ${page === 'home' ? 'search crafting' : page.replaceAll('-', ' ')}`} disabled={!data || !icons || pageTransitionPhase !== 'idle'} onClick={() => { tutorialPriorView.current = { editor, sheetOpen }; setTutorialIndex(0) }}>?</button>}
         {icons && <ThemePicker theme={theme} icons={icons} onThemeColorChange={selectThemeColor} />}
         <button
           type="button"
@@ -409,8 +449,10 @@ function App() {
         onAdd={openAdd}
       />
       <LanguageSelector containerRef={languageSelectorRef} languages={languages} selectedLocale={selectedLocale} enabledBannedLocales={enabledBannedLocales} scores={languageScores} loadingLocale={loadingLocale} onSelect={selectLocale} onBannedLocaleEnabledChange={setBannedLocaleEnabled} />
-      <section className="results-column" dir={isRtlLocale(selectedLocale) ? 'rtl' : 'ltr'} aria-label="Calculated searches">
+      <section ref={resultsRef} inert={!!editor} aria-hidden={!!editor} className={`results-column${sheetOpen ? ' results-column--sheet-open' : ''}${editor ? ' results-column--editing' : ''}`} dir={isRtlLocale(selectedLocale) ? 'rtl' : 'ltr'} aria-label="Calculated searches">
         <CraftingSheet
+          open={sheetOpen}
+          onOpenChange={(open) => { setSheetOpen(open); if (open) setEditor(null) }}
           languageName={selectedLanguageName}
           entries={craftingSheet.entries}
           disabledEntries={craftingSheet.disabledEntries}
@@ -443,9 +485,9 @@ function App() {
         />
       </div>}
       {languages.length > 0 && <LanguageInfoPanel locale={selectedLocale} languageName={selectedLanguageName} />}
-      <SiteInfoPanel />
     </div>}
     </div>
+    {tutorialIndex !== null && pageTutorials[page] && <PageTutorial steps={pageTutorials[page]} index={tutorialIndex} onChange={setTutorialIndex} onClose={closeTutorial} />}
   </main>
 }
 
