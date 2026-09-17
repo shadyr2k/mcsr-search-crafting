@@ -2555,8 +2555,18 @@ h3 {
 
 @media (max-width: 56rem) {
   .app-header__menu {
+    position: relative;
     grid-column: 1 / -1;
     justify-self: center;
+  }
+
+  .theme-picker { position: static; }
+  .theme-picker__menu {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    max-width: calc(100vw - 2rem);
+    grid-template-columns: repeat(5, minmax(0, 2.7rem));
   }
 }
 
@@ -2668,6 +2678,10 @@ h3 {
 
 .craft-result__junk-sizers {
   position: absolute;
+  /* Hidden measurement copies must not widen the mobile visual viewport. */
+  width: 0;
+  height: 0;
+  overflow: hidden;
   visibility: hidden;
   pointer-events: none;
   white-space: nowrap;

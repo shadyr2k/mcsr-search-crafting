@@ -58,6 +58,18 @@ describe('ItemPicker', () => {
     expect(screen.queryByRole('list', { name: 'Inventory results' })).toBeNull()
   })
 
+  test('keeps search focus while pressing a suggestion so blur cannot dismiss it before selection', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    render(<ItemPicker items={items} selectedIds={[]} manifest={icons} onChange={onChange} label="Goals" />)
+    const search = screen.getByRole('searchbox', { name: 'Search Goals' })
+    await user.click(search)
+    await user.pointer({ keys: '[MouseLeft>]', target: screen.getByRole('button', { name: 'Stick' }) })
+    expect(document.activeElement).toBe(search)
+    await user.pointer({ keys: '[/MouseLeft]' })
+    expect(onChange).toHaveBeenCalledWith(['minecraft:stick'])
+  })
+
   test('keeps selected items in a separate row and out of the suggestions', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()

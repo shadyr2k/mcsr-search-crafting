@@ -95,6 +95,9 @@ export function ItemPicker({
         className="item-picker__option"
         aria-label={item.name}
         disabled={!selectable}
+        // Keep focus in the search field until click selects the item. Touch
+        // browsers may otherwise blur with no relatedTarget and close the list.
+        onPointerDown={(event) => event.preventDefault()}
         onClick={() => toggleItem(item.id)}
       >
         {manifest && <ItemIcon itemId={item.id} name={item.name} manifest={manifest} size="compact" />}
