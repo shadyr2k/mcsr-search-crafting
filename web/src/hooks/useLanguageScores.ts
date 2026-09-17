@@ -18,6 +18,7 @@ export function useLanguageScores(
   languages: readonly LanguageMetadata[],
   entries: readonly TargetWorkspaceEntry[],
   enabledBannedLocales: ReadonlySet<string>,
+  dataBaseUrl = import.meta.env.BASE_URL,
 ): ReadonlyMap<string, LanguageScoreState> {
   const [scores, setScores] = useState<ReadonlyMap<string, LanguageScoreState>>(new Map())
   const enabledBannedLocalesRef = useRef(enabledBannedLocales)
@@ -71,7 +72,7 @@ export function useLanguageScores(
       if (controller.signal.aborted) return
       let payload: unknown
       try {
-        payload = await loadLocalizedSearchPayload()
+        payload = await loadLocalizedSearchPayload(dataBaseUrl)
       } catch (error) {
         if (!controller.signal.aborted && !isAbortError(error)) {
           eligibleLanguages.filter((language) => language.locale !== 'en_us').forEach((language) => publish(language.locale, { status: 'unavailable' }))
@@ -89,7 +90,7 @@ export function useLanguageScores(
     })()
 
     return () => controller.abort()
-  }, [baseData, entries, inputFingerprint, languages])
+  }, [baseData, dataBaseUrl, entries, inputFingerprint, languages])
 
   useEffect(() => {
     const previous = previouslyEnabledBannedLocalesRef.current
@@ -112,7 +113,7 @@ export function useLanguageScores(
     void (async () => {
       let payload: unknown
       try {
-        payload = await loadLocalizedSearchPayload()
+        payload = await loadLocalizedSearchPayload(dataBaseUrl)
       } catch (error) {
         if (!controller.signal.aborted && !isAbortError(error)) {
           setScores((current) => {
@@ -148,7 +149,7 @@ export function useLanguageScores(
     })()
 
     return () => controller.abort()
-  }, [baseData, enabledBannedLocales, entries, inputFingerprint, languages])
+  }, [baseData, dataBaseUrl, enabledBannedLocales, entries, inputFingerprint, languages])
 
   return scores
 }

@@ -4,12 +4,14 @@ import {
   clearCustomInventorySlot,
   loadCraftingSheetPreferences,
   loadCustomInventorySlots,
+  loadGameVersionPreference,
   loadLanguagePreferences,
   loadRecipeBookInventory,
   loadThemePreference,
   loadTargetWorkspace,
   saveCustomInventorySlot,
   saveCraftingSheetPreferences,
+  saveGameVersionPreference,
   saveLanguagePreferences,
   saveRecipeBookInventory,
   saveThemePreference,
@@ -496,6 +498,21 @@ describe('theme preference persistence', () => {
     expect(loadThemePreference(storage)).toEqual({
       value: { mode: 'light', color: 'pink' },
       warning: expect.stringMatching(/theme-preference.*reset/i),
+    })
+  })
+})
+
+describe('Minecraft version preference persistence', () => {
+  test('restores an available selected version and resets one that is unavailable', () => {
+    const storage = new MemoryStorage()
+    const versions = new Set(['1.16.1', '26.1.2'])
+
+    saveGameVersionPreference('26.1.2', storage)
+    expect(loadGameVersionPreference(versions, '1.16.1', storage)).toEqual({ value: '26.1.2', warning: undefined })
+
+    expect(loadGameVersionPreference(new Set(['1.16.1']), '1.16.1', storage)).toEqual({
+      value: '1.16.1',
+      warning: expect.stringMatching(/version.*unavailable/i),
     })
   })
 })

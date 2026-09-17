@@ -34,6 +34,7 @@ export function useCraftLookupLanguages(
   languages: readonly LanguageMetadata[],
   entry: TargetWorkspaceEntry | undefined,
   enabledBannedLocales: ReadonlySet<string>,
+  dataBaseUrl = import.meta.env.BASE_URL,
 ): ReadonlyMap<string, CraftLookupLanguageState> {
   const [states, setStates] = useState<ReadonlyMap<string, CraftLookupLanguageState>>(new Map())
   const fingerprint = useMemo(() => entry ? entryOptimizationFingerprint(entry) : '', [entry])
@@ -73,7 +74,7 @@ export function useCraftLookupLanguages(
       if (controller.signal.aborted) return
       let payload: unknown
       try {
-        payload = await loadLocalizedSearchPayload()
+        payload = await loadLocalizedSearchPayload(dataBaseUrl)
       } catch (error) {
         if (!isAbortError(error)) {
           eligibleLanguages.filter((language) => language.locale !== 'en_us').forEach((language) => publish(language.locale, { status: 'unavailable' }))
@@ -92,7 +93,7 @@ export function useCraftLookupLanguages(
     })()
 
     return () => controller.abort()
-  }, [baseData, enabledBannedLocales, entry, fingerprint, languages])
+  }, [baseData, dataBaseUrl, enabledBannedLocales, entry, fingerprint, languages])
 
   return states
 }

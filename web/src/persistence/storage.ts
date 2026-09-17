@@ -6,6 +6,7 @@ const LANGUAGE_PREFERENCES_KEY = 'mcsr.language-preferences.v1'
 const THEME_PREFERENCE_KEY = 'mcsr.theme-preference.v1'
 const RECIPE_BOOK_INVENTORY_KEY = 'mcsr.recipe-book-inventory.v1'
 const CRAFTING_SHEET_PREFERENCES_KEY = 'mcsr.crafting-sheet.v1'
+const GAME_VERSION_PREFERENCE_KEY = 'mcsr.game-version.v1'
 const SLOT_COUNT = 3
 
 export interface PersistenceLoadResult<T> {
@@ -67,6 +68,11 @@ interface VersionedThemePreferenceV1 {
 
 interface VersionedThemePreference extends ThemePreference {
   schemaVersion: 2
+}
+
+interface VersionedGameVersionPreference {
+  schemaVersion: 1
+  versionId: string
 }
 
 interface VersionedRecipeBookInventory {
@@ -630,6 +636,47 @@ export function saveThemePreference(theme: ThemePreference, storage?: Storage): 
   }
   const target = storageOrDefault(storage)
   saveThemePreferenceRecord(theme, target)
+  return { warning: target.warning }
+}
+
+function isGameVersionPreference(value: unknown): value is VersionedGameVersionPreference {
+  return isRecord(value)
+    && value.schemaVersion === 1
+    && typeof value.versionId === 'string'
+    && value.versionId.length > 0
+    && Object.keys(value).every((key) => key === 'schemaVersion' || key === 'versionId')
+}
+
+export function loadGameVersionPreference(
+  availableVersionIds: ReadonlySet<string>,
+  fallbackVersionId: string,
+  storage?: Storage,
+): PersistenceLoadResult<string> {
+  const target = storageOrDefault(storage)
+  const raw = target.getItem(GAME_VERSION_PREFERENCE_KEY)
+  if (raw === null) return { value: fallbackVersionId, warning: target.warning }
+  try {
+    const parsed = parseJson(target, GAME_VERSION_PREFERENCE_KEY)
+    if (!isGameVersionPreference(parsed)) {
+      return recover(target, GAME_VERSION_PREFERENCE_KEY, 'game-version', raw, fallbackVersionId)
+    }
+    if (!availableVersionIds.has(parsed.versionId)) {
+      target.setItem(GAME_VERSION_PREFERENCE_KEY, JSON.stringify({ schemaVersion: 1, versionId: fallbackVersionId } satisfies VersionedGameVersionPreference))
+      return {
+        value: fallbackVersionId,
+        warning: combineWarnings('Saved Minecraft version is unavailable and was reset.', target.warning),
+      }
+    }
+    return { value: parsed.versionId, warning: target.warning }
+  } catch {
+    return recover(target, GAME_VERSION_PREFERENCE_KEY, 'game-version', raw, fallbackVersionId)
+  }
+}
+
+export function saveGameVersionPreference(versionId: string, storage?: Storage): PersistenceSaveResult {
+  if (versionId.length === 0) throw new TypeError('Minecraft version IDs must be non-empty.')
+  const target = storageOrDefault(storage)
+  target.setItem(GAME_VERSION_PREFERENCE_KEY, JSON.stringify({ schemaVersion: 1, versionId } satisfies VersionedGameVersionPreference))
   return { warning: target.warning }
 }
 

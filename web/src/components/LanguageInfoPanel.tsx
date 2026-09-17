@@ -26,6 +26,7 @@ const SECTION_ORDER = [
 interface LanguageInfoPanelProps {
   locale: string
   languageName: string
+  dataBaseUrl?: string
 }
 
 function displayTranslation(entryId: string, translation: string): string {
@@ -33,7 +34,7 @@ function displayTranslation(entryId: string, translation: string): string {
   return translation.replace(/\s*(?:\.\s*){3,}$|\s*…\s*$/u, '')
 }
 
-export function LanguageInfoPanel({ locale, languageName }: LanguageInfoPanelProps) {
+export function LanguageInfoPanel({ locale, languageName, dataBaseUrl = import.meta.env.BASE_URL }: LanguageInfoPanelProps) {
   const [info, setInfo] = useState<LocalizedLanguageInfo>()
   const [error, setError] = useState<string>()
   const [hoveredAdvancement, setHoveredAdvancement] = useState<string>()
@@ -41,11 +42,11 @@ export function LanguageInfoPanel({ locale, languageName }: LanguageInfoPanelPro
 
   useEffect(() => {
     let active = true
-    loadLocalizedLanguageInfo()
+    loadLocalizedLanguageInfo(dataBaseUrl)
       .then((loadedInfo) => { if (active) setInfo(loadedInfo) })
       .catch(() => { if (active) setError('could not load language information') })
     return () => { active = false }
-  }, [])
+  }, [dataBaseUrl])
 
   const sections = useMemo(() => {
     if (!info) return []

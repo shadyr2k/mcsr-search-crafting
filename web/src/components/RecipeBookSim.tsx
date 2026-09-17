@@ -139,6 +139,7 @@ export function RecipeBookSim({
   const [page, setPage] = useState(0)
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null)
   const [languageMenuOpen, setLanguageMenuOpen] = useState(false)
+  const [languageSearch, setLanguageSearch] = useState('')
   const [copyStatus, setCopyStatus] = useState('')
   async function copyCharacter(character: string) {
     try { await navigator.clipboard.writeText(character); setCopyStatus(`Copied ${character}`) }
@@ -154,6 +155,17 @@ export function RecipeBookSim({
     englishLocaleName(left, languages).localeCompare(englishLocaleName(right, languages))
   )), [enabledBannedLocales, languages])
   const selectedLanguage = languages.find((language) => language.locale === selectedLocale)
+  const matchingLanguages = useMemo(() => {
+    const normalizedSearch = languageSearch.normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLocaleLowerCase().trim()
+    if (normalizedSearch === '') return selectableLanguages
+    return selectableLanguages.filter((language) => (
+      `${language.locale} ${englishLocaleName(language, languages)} ${languageDisplayName(language)}`
+        .normalize('NFKD')
+        .replace(/\p{Diacritic}/gu, '')
+        .toLocaleLowerCase()
+        .includes(normalizedSearch)
+    ))
+  }, [languageSearch, languages, selectableLanguages])
   const selectedLanguageScore = scores.get(selectedLocale)
   const scorePositionByLocale = useMemo(() => scorePositions(scores), [scores])
   const specialCharacters = useMemo(() => (
@@ -278,7 +290,10 @@ export function RecipeBookSim({
               aria-label="Simulator language"
               aria-haspopup="listbox"
               aria-expanded={languageMenuOpen}
-              onClick={() => setLanguageMenuOpen((open) => !open)}
+              onClick={() => {
+                setLanguageMenuOpen((open) => !open)
+                setLanguageSearch('')
+              }}
             >
               <span>{selectedLanguage ? `${englishLanguageName(selectedLanguage)} - ${languageDisplayName(selectedLanguage)}` : 'english'}</span>
               {selectedLanguageScore?.status === 'ready' && <strong
@@ -287,8 +302,16 @@ export function RecipeBookSim({
               >{scoreText(selectedLanguageScore.score)}</strong>}
               {selectedLanguageScore?.status === 'pending' && <span className="recipe-book-sim__language-score">…</span>}
             </button>
-            {languageMenuOpen && <ul role="listbox" aria-label="Simulator language choices">
-              {selectableLanguages.map((language) => {
+            {languageMenuOpen && <div className="recipe-book-sim__language-menu-popover">
+              <input
+                type="search"
+                aria-label="Search simulator languages"
+                placeholder="search languages"
+                value={languageSearch}
+                onChange={(event) => setLanguageSearch(event.target.value)}
+              />
+              <ul role="listbox" aria-label="Simulator language choices">
+              {matchingLanguages.map((language) => {
                 const score = scores.get(language.locale)
                 return <li key={language.locale}>
                   <button
@@ -297,6 +320,7 @@ export function RecipeBookSim({
                     aria-selected={language.locale === selectedLocale}
                     onClick={() => {
                       setLanguageMenuOpen(false)
+                      setLanguageSearch('')
                       onLocaleChange(language.locale)
                     }}
                   >
@@ -309,7 +333,9 @@ export function RecipeBookSim({
                   </button>
                 </li>
               })}
-            </ul>}
+              {matchingLanguages.length === 0 && <li className="recipe-book-sim__language-empty">no matching languages</li>}
+              </ul>
+            </div>}
           </div>
         </div>
         {specialCharacters.length > 0 && <div className="recipe-book-sim__characters" role="region" aria-label="Special characters">

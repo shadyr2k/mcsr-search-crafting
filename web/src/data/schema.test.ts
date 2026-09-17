@@ -468,6 +468,20 @@ describe('localized generated data', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  test('keeps concurrent localized payload requests separate by data package', async () => {
+    const base = parseGeneratedData(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, collections, presetPayload(['minecraft:oak_log']))
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => localized }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await Promise.all([
+      loadLocalizedGeneratedData('de_de', base, '/versions/1.16.1'),
+      loadLocalizedGeneratedData('de_de', base, '/versions/26.1.2'),
+    ])
+
+    expect(fetchMock).toHaveBeenCalledWith('/versions/1.16.1/data/localized-search-data.json')
+    expect(fetchMock).toHaveBeenCalledWith('/versions/26.1.2/data/localized-search-data.json')
+  })
+
   test('rejects a missing locale entry safely', () => {
     const base = parseGeneratedData(items, inventoryItems, { schema_version: 3, recipes: [recipe] }, collections, presetPayload(['minecraft:oak_log']))
 

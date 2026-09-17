@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import type { CraftLookupLanguageState } from '../hooks/useCraftLookupLanguages'
+import type { CraftLookupLanguageCategory, CraftLookupLanguageState } from '../hooks/useCraftLookupLanguages'
 
 const languageStates = vi.hoisted(() => new Map<string, CraftLookupLanguageState>())
 
@@ -30,7 +30,7 @@ afterEach(() => {
 const locales = ['en_us', 'de_de', 'fr_fr', 'es_es', 'it_it', 'pt_br', 'nl_nl', 'pl_pl', 'ru_ru', 'ja_jp', 'ko_kr']
 const languages = locales.map((locale, index) => ({ locale, name: `Language ${index + 1}`, region: 'Test', script: 'latin' as const }))
 
-function readyState(): CraftLookupLanguageState {
+function readyState(): Extract<CraftLookupLanguageState, { status: 'ready' }> {
   return {
     status: 'ready',
     category: 'junkless-single',
@@ -43,9 +43,13 @@ function readyState(): CraftLookupLanguageState {
   }
 }
 
+function readyStateFor(category: CraftLookupLanguageCategory): CraftLookupLanguageState {
+  return { ...readyState(), category }
+}
+
 describe('CraftLookup', () => {
-  test('keeps every matching language in a scrollable category list without a show-all control', () => {
-    locales.forEach((locale) => languageStates.set(locale, readyState()))
+  test('shows one category at a time and disables categories without matching languages', () => {
+    locales.forEach((locale, index) => languageStates.set(locale, readyStateFor(index < 6 ? 'junkless-single' : 'requires-junk')))
 
     render(<CraftLookup
       data={{} as never}
@@ -64,11 +68,18 @@ describe('CraftLookup', () => {
 
     const list = screen.getByRole('list', { name: 'junkless, no overlap languages' })
     expect(list.className).toContain('craft-lookup__language-list')
-    expect(within(list).getAllByRole('listitem')).toHaveLength(11)
+    expect(within(list).getAllByRole('listitem')).toHaveLength(6)
     expect(screen.queryByRole('button', { name: /Show all|Show first/ })).toBeNull()
+    expect(screen.getByRole('button', { name: 'junkless overlap' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: 'no viable craft' }).hasAttribute('disabled')).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'cannot be junkless' }))
+    expect(screen.queryByRole('list', { name: 'junkless, no overlap languages' })).toBeNull()
+    expect(within(screen.getByRole('list', { name: 'cannot be junkless languages' })).getAllByRole('listitem')).toHaveLength(5)
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'find a language' }), { target: { value: 'language 7' } })
-    expect(within(screen.getByRole('list', { name: 'junkless, no overlap languages' })).getAllByRole('listitem')).toHaveLength(1)
+    expect(within(screen.getByRole('list', { name: 'cannot be junkless languages' })).getAllByRole('listitem')).toHaveLength(1)
     expect(screen.getByText(/found 1 matching language/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'junkless, no overlap' }).hasAttribute('disabled')).toBe(true)
   })
 })

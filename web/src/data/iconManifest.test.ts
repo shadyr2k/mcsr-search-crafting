@@ -60,7 +60,7 @@ describe('parseIconManifest', () => {
   it.each([
     ['schema_version', 2, 'schema_version'],
     ['schema_version', true, 'schema_version'],
-    ['minecraft_version', '1.16.2', 'minecraft_version'],
+    ['minecraft_version', '', 'minecraft_version'],
     ['icon_width', 32, 'icon_width'],
     ['icon_height', 8, 'icon_height'],
   ])('rejects invalid %s', (field, value, message) => {
@@ -137,7 +137,12 @@ describe('loadIconManifest', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('/mcsr/item-icons/manifest.json')
     expect(manifest.icons.size).toBe(2)
+    expect(manifest.assetBaseUrl).toBe('/mcsr/')
     vi.unstubAllGlobals()
+  })
+
+  it('rejects an icon package for a different Minecraft version', () => {
+    expect(() => parseIconManifest({ ...validPayload, minecraft_version: '1.16.2' }, '1.16.1')).toThrow('expected 1.16.1')
   })
 
   it('wraps fetch and JSON failures', async () => {

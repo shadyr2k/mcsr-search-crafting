@@ -19,10 +19,11 @@ const WINDOWS_RESERVED_NAMES = new Set([
 
 export interface IconManifest {
   schemaVersion: 1
-  minecraftVersion: '1.16.1'
+  minecraftVersion: string
   width: 16
   height: 16
   icons: Map<string, string>
+  assetBaseUrl?: string
 }
 
 export class IconManifestError extends Error {
@@ -63,7 +64,7 @@ function isSafeIconPath(path: string): boolean {
   })
 }
 
-export function parseIconManifest(payload: unknown): IconManifest {
+export function parseIconManifest(payload: unknown, expectedMinecraftVersion?: string): IconManifest {
   if (!isRecord(payload)) throw new IconManifestError('expected an object')
   for (const field of Object.keys(payload)) {
     if (!TOP_LEVEL_FIELDS.has(field)) throw new IconManifestError(`unknown field ${field}`)
@@ -72,8 +73,11 @@ export function parseIconManifest(payload: unknown): IconManifest {
     if (!(field in payload)) throw new IconManifestError(`missing field ${field}`)
   }
   if (payload.schema_version !== 1) throw new IconManifestError('schema_version: expected 1')
-  if (payload.minecraft_version !== '1.16.1') {
-    throw new IconManifestError('minecraft_version: expected 1.16.1')
+  if (typeof payload.minecraft_version !== 'string' || payload.minecraft_version.length === 0) {
+    throw new IconManifestError('minecraft_version: expected a version string')
+  }
+  if (expectedMinecraftVersion !== undefined && payload.minecraft_version !== expectedMinecraftVersion) {
+    throw new IconManifestError(`minecraft_version: expected ${expectedMinecraftVersion}`)
   }
   if (payload.icon_width !== 16) throw new IconManifestError('icon_width: expected 16')
   if (payload.icon_height !== 16) throw new IconManifestError('icon_height: expected 16')
@@ -93,7 +97,7 @@ export function parseIconManifest(payload: unknown): IconManifest {
 
   return {
     schemaVersion: 1,
-    minecraftVersion: '1.16.1',
+    minecraftVersion: payload.minecraft_version,
     width: 16,
     height: 16,
     icons,
@@ -117,13 +121,13 @@ function normalizeBaseUrl(baseUrl: string): string {
 export function iconUrl(
   manifest: IconManifest,
   itemId: string,
-  baseUrl = import.meta.env.BASE_URL,
+  baseUrl = manifest.assetBaseUrl ?? import.meta.env.BASE_URL,
 ): string | undefined {
   const path = manifest.icons.get(itemId)
   return path === undefined ? undefined : `${normalizeBaseUrl(baseUrl)}item-icons/${path}`
 }
 
-export async function loadIconManifest(baseUrl = import.meta.env.BASE_URL): Promise<IconManifest> {
+export async function loadIconManifest(baseUrl = import.meta.env.BASE_URL, expectedMinecraftVersion?: string): Promise<IconManifest> {
   const url = `${normalizeBaseUrl(baseUrl)}item-icons/manifest.json`
   let response: Response
   try {
@@ -140,5 +144,5 @@ export async function loadIconManifest(baseUrl = import.meta.env.BASE_URL): Prom
   } catch {
     throw new IconManifestError(`${url}: response is not valid JSON`)
   }
-  return parseIconManifest(payload)
+  return { ...parseIconManifest(payload, expectedMinecraftVersion), assetBaseUrl: normalizeBaseUrl(baseUrl) }
 }

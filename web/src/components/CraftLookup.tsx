@@ -18,6 +18,7 @@ interface CraftLookupProps {
   onSessionChange: (session: CraftLookupSession) => void
   onSaveCustomSlot: (index: number, preset: CustomInventoryPreset) => void
   onClearCustomSlot: (index: number) => void
+  dataBaseUrl?: string
 }
 
 export interface CraftLookupSession {
@@ -99,10 +100,12 @@ export function CraftLookup({
   onSessionChange,
   onSaveCustomSlot,
   onClearCustomSlot,
+  dataBaseUrl,
 }: CraftLookupProps) {
   const { draft, entry } = session
   const [languageSearch, setLanguageSearch] = useState('')
-  const languageStates = useCraftLookupLanguages(data, languages, entry, enabledBannedLocales)
+  const [selectedCategory, setSelectedCategory] = useState<CraftLookupLanguageCategory>('junkless-single')
+  const languageStates = useCraftLookupLanguages(data, languages, entry, enabledBannedLocales, dataBaseUrl)
   const languagesByLocale = useMemo(() => new Map(languages.map((language) => [language.locale, language])), [languages])
   const readyLanguages = useMemo<ReadyLookupLanguage[]>(() => [...languageStates.entries()].flatMap(([locale, state]) => (
     state.status === 'ready' ? [{ locale, state }] : []
@@ -114,6 +117,13 @@ export function CraftLookup({
   }), [languages, languagesByLocale, normalizedLanguageSearch, readyLanguages])
   const pending = entry !== undefined && [...languageStates.values()].some((state) => state.status === 'pending')
   const unavailableCount = [...languageStates.values()].filter((state) => state.status === 'unavailable').length
+  const categories = CATEGORY_DETAILS.map((detail) => ({
+    ...detail,
+    allMatches: readyLanguages.filter((language) => language.state.category === detail.category),
+    matches: matchedLanguages.filter((language) => language.state.category === detail.category),
+  }))
+  const visibleCategory = categories.find(({ category, matches }) => category === selectedCategory && matches.length > 0)
+    ?? categories.find(({ matches }) => matches.length > 0)
 
   return <section className="craft-lookup" aria-label="Craft lookup">
     <header className="craft-lookup__header">
@@ -164,15 +174,20 @@ export function CraftLookup({
                   onChange={(event) => setLanguageSearch(event.target.value)}
                 />
               </div>
-              <div className="craft-lookup__language-groups">
-                {CATEGORY_DETAILS.flatMap(({ category, title, description }) => {
-                  const allMatches = readyLanguages.filter((language) => language.state.category === category)
-                  const matches = matchedLanguages.filter((language) => language.state.category === category)
-                  if (matches.length === 0) return []
-                  return <section key={category} className={`craft-lookup__language-group craft-lookup__language-group--${category}`} aria-label={title}>
-                    <h3>{title}</h3>
-                    <p>{description} - found {normalizedLanguageSearch === '' ? allMatches.length : matches.length} {normalizedLanguageSearch === '' ? 'language' : 'matching language'}{(normalizedLanguageSearch === '' ? allMatches.length : matches.length) === 1 ? '' : 's'}</p>
-                    <ol className="craft-lookup__language-list" aria-label={`${title} languages`}>{matches.map(({ locale, state }) => {
+              <div className="craft-lookup__category-picker" role="group" aria-label="Craft categories">
+                {categories.map(({ category, title, matches }) => <button
+                  key={category}
+                  type="button"
+                  aria-pressed={visibleCategory?.category === category}
+                  disabled={matches.length === 0}
+                  onClick={() => setSelectedCategory(category)}
+                >{title}</button>)}
+              </div>
+              {visibleCategory && <div className="craft-lookup__language-groups">
+                <section className={`craft-lookup__language-group craft-lookup__language-group--${visibleCategory.category}`} aria-label={visibleCategory.title}>
+                  <h3>{visibleCategory.title}</h3>
+                  <p>{visibleCategory.description} - found {normalizedLanguageSearch === '' ? visibleCategory.allMatches.length : visibleCategory.matches.length} {normalizedLanguageSearch === '' ? 'language' : 'matching language'}{(normalizedLanguageSearch === '' ? visibleCategory.allMatches.length : visibleCategory.matches.length) === 1 ? '' : 's'}</p>
+                  <ol className="craft-lookup__language-list" aria-label={`${visibleCategory.title} languages`}>{visibleCategory.matches.map(({ locale, state }) => {
                         const language = languagesByLocale.get(locale)!
                         const languageName = `${englishLocaleName(language, languages)} - ${languageDisplayName(language)}`
                         return <li key={locale}><CalculatedSearchRow
@@ -187,13 +202,12 @@ export function CraftLookup({
                           hidePreviewDecorations
                           hideOutcomeScore
                           hideOverflowingPreviews
-                          previewMode={previewMode(category)}
+                          previewMode={previewMode(visibleCategory.category)}
                           className="calculated-search-row--craft-lookup"
                         /></li>
                       })}</ol>
-                  </section>
-                })}
-              </div>
+                </section>
+              </div>}
               {normalizedLanguageSearch !== '' && matchedLanguages.length === 0 && !pending && <p className="craft-lookup__no-language-match">No calculated language matches “{languageSearch.trim()}”.</p>}
               {unavailableCount > 0 && <p className="craft-lookup__unavailable">{unavailableCount} language{unavailableCount === 1 ? '' : 's'} unavailable.</p>}
             </section>

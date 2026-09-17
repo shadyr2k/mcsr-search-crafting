@@ -12,13 +12,15 @@ import { RecipeBookSim } from './components/RecipeBookSim'
 import { PageTutorial, pageTutorials } from './components/PageTutorial'
 import { englishLocaleName, isBannedLocale, isRtlLocale, LanguageSelector } from './components/LanguageSelector'
 import { assertIconCoverage, loadIconManifest, type IconManifest } from './data/iconManifest'
+import { gameVersionForId, supportedGameVersions } from './data/gameVersions'
 import { loadGeneratedData, loadLanguageMetadata, loadLocalizedGeneratedData } from './data/schema'
 import type { CustomInventoryPreset, GeneratedData, ItemSetDraft, LanguageMetadata, TargetWorkspace, TargetWorkspaceEntry } from './domain/types'
 import { useRowOptimizations } from './hooks/useRowOptimizations'
 import { useCraftingSheet } from './hooks/useCraftingSheet'
 import { useLanguageScores } from './hooks/useLanguageScores'
-import { clearCustomInventorySlot, loadCustomInventorySlots, loadLanguagePreferences, loadTargetWorkspace, loadThemePreference, saveCustomInventorySlot, saveLanguagePreferences, saveTargetWorkspace, saveThemePreference, type ThemeColor, type ThemePreference } from './persistence/storage'
+import { clearCustomInventorySlot, loadCustomInventorySlots, loadGameVersionPreference, loadLanguagePreferences, loadTargetWorkspace, loadThemePreference, saveCustomInventorySlot, saveGameVersionPreference, saveLanguagePreferences, saveTargetWorkspace, saveThemePreference, type ThemeColor, type ThemePreference } from './persistence/storage'
 import { ThemePicker } from './components/ThemePicker'
+import { VersionPicker } from './components/VersionPicker'
 import { draftFromEntry, newItemSetDraft } from './workspace/entryDraft'
 import type { SharedItemSetDraft } from './workspace/itemSetShare'
 import { starterWorkspace } from './workspace/starterWorkspace'
@@ -86,6 +88,10 @@ function combineWarnings(current: string | undefined, next: string | undefined):
 }
 
 function App() {
+  const [gameVersionId, setGameVersionId] = useState(() => loadGameVersionPreference(
+    new Set(supportedGameVersions.map((version) => version.id)),
+    supportedGameVersions[0].id,
+  ).value)
   const [baseData, setBaseData] = useState<GeneratedData>()
   const [data, setData] = useState<GeneratedData>()
   const [icons, setIcons] = useState<IconManifest>()
@@ -116,9 +122,10 @@ function App() {
   const pendingPageRef = useRef<AppPage | undefined>(undefined)
   const pageTransitionTimeoutRef = useRef<number | undefined>(undefined)
   const entries = useMemo(() => orderedEntries(workspace.entries), [workspace.entries])
+  const gameVersion = gameVersionForId(gameVersionId)
   const { states, retry } = useRowOptimizations(data, workspace.entries)
   const craftingSheet = useCraftingSheet(selectedLocale, entries, states)
-  const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales)
+  const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.packageBaseUrl)
 
   useLayoutEffect(() => {
     if (tutorialIndex === null) return
@@ -154,6 +161,7 @@ function App() {
   }
 
   useEffect(() => {
+    let active = true
     const slots = loadCustomInventorySlots()
     const saved = loadTargetWorkspace()
     const savedTheme = loadThemePreference()
@@ -161,7 +169,21 @@ function App() {
     setWorkspace(saved.value)
     setTheme(savedTheme.value)
     setWarning([slots.warning, saved.warning, savedTheme.warning].filter(Boolean).join(' ') || undefined)
-    Promise.all([loadGeneratedData(), loadIconManifest(), loadLanguageMetadata()]).then(([loadedData, loadedIcons, loadedLanguages]) => {
+    setError(undefined)
+    setWorkspaceLoaded(false)
+    setBaseData(undefined)
+    setData(undefined)
+    setIcons(undefined)
+    setLanguages([])
+    setEditor(null)
+    setSheetOpen(false)
+    setCraftLookupSession(newCraftLookupSession())
+    Promise.all([
+      loadGeneratedData(gameVersion.packageBaseUrl),
+      loadIconManifest(gameVersion.packageBaseUrl, gameVersion.id),
+      loadLanguageMetadata(gameVersion.packageBaseUrl),
+    ]).then(([loadedData, loadedIcons, loadedLanguages]) => {
+      if (!active) return
       assertIconCoverage(loadedIcons, loadedData)
       const availableLocales = new Set(loadedLanguages.map((language) => language.locale))
       const languagePreferences = loadLanguagePreferences(availableLocales)
@@ -181,15 +203,19 @@ function App() {
       setWarning([slots.warning, saved.warning, savedTheme.warning, languagePreferences.warning].filter(Boolean).join(' ') || undefined)
       if (locale !== 'en_us') {
         setLoadingLocale(locale)
-        loadLocalizedGeneratedData(locale, loadedData).then((localizedData) => {
-          setData(localizedData)
+        loadLocalizedGeneratedData(locale, loadedData, gameVersion.packageBaseUrl).then((localizedData) => {
+          if (active) setData(localizedData)
         }).catch((loadError: unknown) => {
+          if (!active) return
           setSelectedLocale('en_us')
           setWarning((current) => combineWarnings(current, `Could not load ${locale}; English (US) was selected instead.`))
-        }).finally(() => setLoadingLocale(undefined))
+        }).finally(() => { if (active) setLoadingLocale(undefined) })
       }
-    }).catch((loadError: unknown) => setError(loadError instanceof Error ? loadError.message : 'The crafting data could not be loaded.'))
-  }, [])
+    }).catch((loadError: unknown) => {
+      if (active) setError(loadError instanceof Error ? loadError.message : 'The crafting data could not be loaded.')
+    })
+    return () => { active = false }
+  }, [gameVersion])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme.mode
@@ -277,7 +303,7 @@ function App() {
       return
     }
     setLoadingLocale(locale)
-    loadLocalizedGeneratedData(locale, baseData).then((localizedData) => {
+    loadLocalizedGeneratedData(locale, baseData, gameVersion.packageBaseUrl).then((localizedData) => {
       setData(localizedData)
       setSelectedLocale(locale)
       const result = saveLanguagePreferences({ selectedLocale: locale, enabledBannedLocales: [...enabledBannedLocales] })
@@ -311,6 +337,13 @@ function App() {
     const nextTheme: ThemePreference = { ...theme, mode: theme.mode === 'light' ? 'dark' : 'light' }
     setTheme(nextTheme)
     const result = saveThemePreference(nextTheme)
+    setWarning((current) => combineWarnings(current, result.warning))
+  }
+
+  function selectGameVersion(versionId: string) {
+    if (versionId === gameVersion.id) return
+    setGameVersionId(versionId)
+    const result = saveGameVersionPreference(versionId)
     setWarning((current) => combineWarnings(current, result.warning))
   }
 
@@ -396,6 +429,7 @@ function App() {
       </div>
       <div className="app-header__menu">
         {pageTutorials[page] && <button ref={helpRef} type="button" className="app-header__help" aria-label={`Help for ${page === 'home' ? 'search crafting' : page.replaceAll('-', ' ')}`} disabled={!data || !icons || pageTransitionPhase !== 'idle'} onClick={() => { tutorialPriorView.current = { editor, sheetOpen }; setTutorialIndex(0) }}>?</button>}
+        <VersionPicker versions={supportedGameVersions} selectedVersionId={gameVersion.id} onVersionChange={selectGameVersion} />
         {icons && <ThemePicker theme={theme} icons={icons} onThemeColorChange={selectThemeColor} />}
         <button
           type="button"
@@ -435,6 +469,7 @@ function App() {
       onSessionChange={setCraftLookupSession}
       onSaveCustomSlot={saveSlot}
       onClearCustomSlot={clearSlot}
+      dataBaseUrl={gameVersion.packageBaseUrl}
     />}
     {data && icons && page !== 'recipe-book-sim' && page !== 'craft-lookup' && <div ref={workspaceTransitionRef} className={`workspace-grid workspace-transition workspace-transition--${page}${usesSharedLanguageTransition ? ' workspace-transition--shared-language' : ''}`}>
       <ItemSetWorkspace
@@ -485,7 +520,7 @@ function App() {
           onSaveCustomSlot={saveSlot} onClearCustomSlot={clearSlot}
         />
       </div>}
-      {languages.length > 0 && <LanguageInfoPanel locale={selectedLocale} languageName={selectedLanguageName} />}
+      {languages.length > 0 && <LanguageInfoPanel locale={selectedLocale} languageName={selectedLanguageName} dataBaseUrl={gameVersion.packageBaseUrl} />}
     </div>}
     </div>
     {tutorialIndex !== null && pageTutorials[page] && <PageTutorial steps={pageTutorials[page]} index={tutorialIndex} onChange={setTutorialIndex} onClose={closeTutorial} />}

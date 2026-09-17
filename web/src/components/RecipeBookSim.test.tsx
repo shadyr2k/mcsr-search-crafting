@@ -251,6 +251,25 @@ describe('RecipeBookSim', () => {
     expect(onLocaleChange).toHaveBeenCalledWith('en_us')
   })
 
+  test('filters the simulator language menu', () => {
+    const simulatorLanguages = [...languages, { locale: 'de_de', name: 'Deutsch', region: 'Deutschland', script: 'latin' as const }]
+    render(<RecipeBookSim
+      data={data}
+      icons={icons}
+      customSlots={[]}
+      languages={simulatorLanguages}
+      selectedLocale="fr_fr"
+      enabledBannedLocales={new Set()}
+      onLocaleChange={vi.fn()}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Simulator language' }))
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search simulator languages' }), { target: { value: 'german' } })
+    const languageChoices = within(screen.getByRole('listbox', { name: 'Simulator language choices' }))
+    expect(languageChoices.getAllByRole('option')).toHaveLength(1)
+    expect(languageChoices.getByRole('option', { name: /german/i })).toBeTruthy()
+  })
+
   test('shows craftable members of a result group when another member matches the search', () => {
     const groupedData: GeneratedData = {
       ...data,

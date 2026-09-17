@@ -770,16 +770,18 @@ export async function loadGeneratedData(baseUrl = import.meta.env.BASE_URL): Pro
   )
 }
 
-let localizedPayloadPromise: Promise<unknown> | undefined
-let localizedLanguageInfoPayloadPromise: Promise<unknown> | undefined
+const localizedPayloadPromises = new Map<string, Promise<unknown>>()
+const localizedLanguageInfoPayloadPromises = new Map<string, Promise<unknown>>()
 
 export async function loadLocalizedSearchPayload(baseUrl = import.meta.env.BASE_URL): Promise<unknown> {
-  if (localizedPayloadPromise === undefined) {
-    const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
-    localizedPayloadPromise = fetchJson(`${base}data/localized-search-data.json`)
-      .finally(() => { localizedPayloadPromise = undefined })
+  const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
+  let promise = localizedPayloadPromises.get(base)
+  if (promise === undefined) {
+    promise = fetchJson(`${base}data/localized-search-data.json`)
+      .finally(() => { localizedPayloadPromises.delete(base) })
+    localizedPayloadPromises.set(base, promise)
   }
-  return localizedPayloadPromise
+  return promise
 }
 
 export async function loadLanguageMetadata(baseUrl = import.meta.env.BASE_URL): Promise<LanguageMetadata[]> {
@@ -788,12 +790,14 @@ export async function loadLanguageMetadata(baseUrl = import.meta.env.BASE_URL): 
 }
 
 export async function loadLocalizedLanguageInfo(baseUrl = import.meta.env.BASE_URL): Promise<LocalizedLanguageInfo> {
-  if (localizedLanguageInfoPayloadPromise === undefined) {
-    const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
-    localizedLanguageInfoPayloadPromise = fetchJson(`${base}data/localized-language-info.json`)
-      .finally(() => { localizedLanguageInfoPayloadPromise = undefined })
+  const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
+  let promise = localizedLanguageInfoPayloadPromises.get(base)
+  if (promise === undefined) {
+    promise = fetchJson(`${base}data/localized-language-info.json`)
+      .finally(() => { localizedLanguageInfoPayloadPromises.delete(base) })
+    localizedLanguageInfoPayloadPromises.set(base, promise)
   }
-  return parseLocalizedLanguageInfo(await localizedLanguageInfoPayloadPromise)
+  return parseLocalizedLanguageInfo(await promise)
 }
 
 export async function loadLocalizedGeneratedData(
