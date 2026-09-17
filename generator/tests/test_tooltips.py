@@ -168,6 +168,18 @@ def test_unknown_item_is_not_silently_marked_source_reproduced():
         build_search_item("minecraft:turtle_boots", "Turtle Boots", None)
 
 
+def test_newer_version_items_can_use_their_translated_name_while_tooltips_are_unavailable():
+    item = build_search_item(
+        "minecraft:mace",
+        "Mace",
+        None,
+        allow_unclassified_name_only=True,
+    )
+
+    assert [(line.source, line.text) for line in item.search_lines] == [("name", "Mace")]
+    assert item.generation_method == "name_only"
+
+
 def test_all_scoped_recipe_outputs_have_an_explicit_tooltip_classification():
     recipes = load_crafting_recipes(MINECRAFT_DATA_ROOT / "recipes")
     catalog = TranslationCatalog.load(MINECRAFT_DATA_ROOT / "lang" / "en_us.json")

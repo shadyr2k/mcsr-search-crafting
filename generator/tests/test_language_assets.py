@@ -51,6 +51,14 @@ def test_resolves_mojang_asset_hash_to_the_object_cache_layout(tmp_path):
     )
 
 
+def test_resolves_a_direct_copy_of_the_launcher_objects_directory(tmp_path):
+    asset_hash = "ab" + "c" * 38
+    objects = tmp_path / "objects"
+    (objects / "ab").mkdir(parents=True)
+
+    assert resolve_asset_path(objects, asset_hash) == objects / "ab" / asset_hash
+
+
 def test_reports_an_indexed_language_asset_that_is_missing_from_the_cache(tmp_path):
     asset_root = tmp_path / "assets"
     asset_hash = "d" * 40

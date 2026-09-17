@@ -1,16 +1,16 @@
 # MCSR Search Crafting
 
-MCSR Search Crafting is a static React application that ranks Minecraft Java Edition 1.16.1 recipe-book searches for an explicit, infinite inventory. It loads deterministic JSON produced by the repository's Python generator, determines which crafting outputs are visible in a selected 2x2 or 3x3 grid, and compares complete single-query and overlapping-query routes for each enabled target set.
+MCSR Search Crafting is a static React application that ranks Minecraft Java Edition recipe-book searches for an explicit, infinite inventory. It ships independently generated 1.16.1 and 26.1.2 packages, and the header selector switches the item catalog, recipes, translations, language metadata, and icons together.
 
 The workspace is English-only and organized as three responsive columns: the combined English score, saved item sets, and their calculated searches. Each item set owns an independent infinite inventory and grid size. Draft edits are isolated until **Save**; Cancel leaves the saved calculation and browser data unchanged. Rows show the best three unified single/overlap routes by default, with up to ten on expansion. Native 16×16 Minecraft item icons are imported from the pinned client; see [the exporter workflow](docs/icon-exporter.md).
 
-Version 1 is intentionally English-only (`en_us`) and Minecraft 1.16.1-only. It includes shaped and shapeless crafting-table recipes; it does not infer materials recursively, track quantities, simulate recipe unlocks, or include furnace, blasting, smoking, campfire, stonecutting, or smithing recipes.
+Each package includes shaped and shapeless crafting-table recipes; it does not infer materials recursively, track quantities, simulate recipe unlocks, or include furnace, blasting, smoking, campfire, stonecutting, or smithing recipes. The 26.1.2 package loads all supplied language translations. Its newer item tooltip lines use the existing audited rules when available and otherwise search the translated item name.
 
 ## Prerequisites
 
 - Python 3.11 or newer.
 - Node.js 20.19+ or 22.12+ and pnpm 11.19+ (the verified bundled runtime is Node.js 24.19.0 with pnpm 11.19.0; matching requirements are recorded in `web/package.json`).
-- An extracted Minecraft 1.16.1 source tree at `minecraft-data/` containing `recipes/`, `tags/items/`, and `lang/en_us.json`. This local source tree is intentionally Git-ignored.
+- An extracted Minecraft source tree containing `recipes/`, `tags/items/`, and `lang/en_us.json`. This local source tree is intentionally Git-ignored. Versioned sources may live below `minecraft-data/`, such as `minecraft-data/26.1.2/`.
 
 From the repository root, create the Python environment and install both toolchains:
 
@@ -40,7 +40,7 @@ Generate the browser data from the pinned source tree:
 .\.venv\Scripts\python.exe -m mcsr_data.generate --source minecraft-data --output web/public/data
 ```
 
-The production command requires `recipes/`, `tags/items/`, and `lang/en_us.json`, then enforces the clean Minecraft 1.16.1 English baseline of exactly 634 recipes, 562 output items, 283 selectable inventory items, 354 recipe-result collections, and 0 validation errors. It atomically writes six mutually consistent schema-version-3 artifacts:
+The production command requires `recipes/`, `tags/items/`, and `lang/en_us.json`, then enforces the registered baseline for its Minecraft version. 1.16.1 contains 634 recipes, 562 output items, 283 selectable inventory items, and 354 recipe-result collections; 26.1.2 contains 1,030 recipes, 887 output items, 508 selectable inventory items, and 541 recipe-result collections. It atomically writes mutually consistent schema-version-3 artifacts:
 
 - `web/public/data/search-items.json`: output item names, line-bounded searchable text, provenance, and confidence.
 - `web/public/data/inventory-items.json`: every concrete recipe ingredient plus approved preset-only IDs and their English names for the inventory picker.
@@ -56,6 +56,13 @@ If validation fails, the generator prints every diagnostic and atomically writes
 ```
 
 Do not use `--allow-non-baseline` for production browser data.
+
+The versioned 26.1.2 package is generated with the supplied launcher language assets and index, then placed under `web/public/versions/26.1.2/`:
+
+```powershell
+.\.venv\Scripts\mcsr-generate.exe --source minecraft-data/26.1.2 --output web/public/versions/26.1.2/data --minecraft-version 26.1.2 --language-asset-root <copied-assets-objects-directory> --language-asset-index <26.1.2-asset-index.json>
+.\.venv\Scripts\mcsr-import-raw-icons.exe --archive <item-icon-archive.zip> --search-items web/public/versions/26.1.2/data/search-items.json --inventory-items web/public/versions/26.1.2/data/inventory-items.json --output web/public/versions/26.1.2/item-icons --minecraft-version 26.1.2
+```
 
 Run the development server:
 
@@ -82,7 +89,7 @@ The production build is emitted to the ignored `web/dist/` directory. Its files 
 
 ## Architecture
 
-The build-time generator under `generator/src/mcsr_data/` parses the extracted 1.16.1 recipes, resolves item tags, applies English translations and source-reproduced tooltip rules, constructs recipe-result collections, validates cross-references, and publishes deterministic JSON. Generator tests live in `generator/tests/`; source provenance is recorded in `generator/references/minecraft-1.16.1-tooltip-sources.md` and `generator/references/minecraft-1.16.1-recipe-collection-sources.md`.
+The build-time generator under `generator/src/mcsr_data/` parses extracted recipes, resolves item tags, applies English translations and source-reproduced tooltip rules where audited, constructs recipe-result collections, validates cross-references, and publishes deterministic JSON. Generator tests live in `generator/tests/`; 1.16.1 source provenance is recorded in `generator/references/minecraft-1.16.1-tooltip-sources.md` and `generator/references/minecraft-1.16.1-recipe-collection-sources.md`.
 
 The runtime application under `web/src/` has explicit module boundaries:
 

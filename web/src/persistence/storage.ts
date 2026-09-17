@@ -8,6 +8,7 @@ const RECIPE_BOOK_INVENTORY_KEY = 'mcsr.recipe-book-inventory.v1'
 const CRAFTING_SHEET_PREFERENCES_KEY = 'mcsr.crafting-sheet.v1'
 const GAME_VERSION_PREFERENCE_KEY = 'mcsr.game-version.v1'
 const SLOT_COUNT = 3
+export const LEGACY_GAME_VERSION_ID = '1.16.1'
 
 export interface PersistenceLoadResult<T> {
   value: T
@@ -99,6 +100,7 @@ class ResilientStorage {
     private readonly nativeStorage: Storage | undefined,
     private readonly volatileRecords: Map<string, string | null>,
     initialWarning?: string,
+    private readonly keyPrefix = '',
   ) {
     if (initialWarning) this.warnings.add(initialWarning)
   }
@@ -108,13 +110,14 @@ class ResilientStorage {
   }
 
   getItem(key: string): string | null {
-    if (this.volatileRecords.has(key)) return this.volatileRecords.get(key) ?? null
+    const scopedKey = `${this.keyPrefix}${key}`
+    if (this.volatileRecords.has(scopedKey)) return this.volatileRecords.get(scopedKey) ?? null
     if (!this.nativeStorage) {
       this.warnings.add(storageWarning('read'))
       return null
     }
     try {
-      return this.nativeStorage.getItem(key)
+      return this.nativeStorage.getItem(scopedKey)
     } catch {
       this.warnings.add(storageWarning('read'))
       return null
@@ -122,42 +125,45 @@ class ResilientStorage {
   }
 
   setItem(key: string, value: string): void {
-    this.volatileRecords.set(key, value)
+    const scopedKey = `${this.keyPrefix}${key}`
+    this.volatileRecords.set(scopedKey, value)
     if (!this.nativeStorage) {
       this.warnings.add(storageWarning('write'))
       return
     }
     try {
-      this.nativeStorage.setItem(key, value)
-      this.volatileRecords.delete(key)
+      this.nativeStorage.setItem(scopedKey, value)
+      this.volatileRecords.delete(scopedKey)
     } catch {
       this.warnings.add(storageWarning('write'))
     }
   }
 
   removeItem(key: string): void {
-    this.volatileRecords.set(key, null)
+    const scopedKey = `${this.keyPrefix}${key}`
+    this.volatileRecords.set(scopedKey, null)
     if (!this.nativeStorage) {
       this.warnings.add(storageWarning('write'))
       return
     }
     try {
-      this.nativeStorage.removeItem(key)
-      this.volatileRecords.delete(key)
+      this.nativeStorage.removeItem(scopedKey)
+      this.volatileRecords.delete(scopedKey)
     } catch {
       this.warnings.add(storageWarning('write'))
     }
   }
 }
 
-function storageOrDefault(storage: Storage | undefined): ResilientStorage {
+function storageOrDefault(storage: Storage | undefined, minecraftVersion = LEGACY_GAME_VERSION_ID): ResilientStorage {
+  const keyPrefix = minecraftVersion === LEGACY_GAME_VERSION_ID ? '' : `mcsr.game.${minecraftVersion}.`
   if (storage) {
     let volatileRecords = volatileRecordsByStorage.get(storage)
     if (!volatileRecords) {
       volatileRecords = new Map()
       volatileRecordsByStorage.set(storage, volatileRecords)
     }
-    return new ResilientStorage(storage, volatileRecords)
+    return new ResilientStorage(storage, volatileRecords, undefined, keyPrefix)
   }
 
   try {
@@ -167,9 +173,9 @@ function storageOrDefault(storage: Storage | undefined): ResilientStorage {
       volatileRecords = new Map()
       volatileRecordsByStorage.set(localStorage, volatileRecords)
     }
-    return new ResilientStorage(localStorage, volatileRecords)
+    return new ResilientStorage(localStorage, volatileRecords, undefined, keyPrefix)
   } catch {
-    return new ResilientStorage(undefined, unavailableStorageRecords, storageWarning('access'))
+    return new ResilientStorage(undefined, unavailableStorageRecords, storageWarning('access'), keyPrefix)
   }
 }
 
@@ -319,20 +325,21 @@ function loadSlots(target: ResilientStorage): PersistenceLoadResult<Array<Custom
   }
 }
 
-export function loadCustomInventorySlots(storage?: Storage): PersistenceLoadResult<Array<CustomInventoryPreset | null>> {
-  return loadSlots(storageOrDefault(storage))
+export function loadCustomInventorySlots(storage?: Storage, minecraftVersion = LEGACY_GAME_VERSION_ID): PersistenceLoadResult<Array<CustomInventoryPreset | null>> {
+  return loadSlots(storageOrDefault(storage, minecraftVersion))
 }
 
 export function saveCustomInventorySlot(
   index: number,
   preset: CustomInventoryPreset,
   storage?: Storage,
+  minecraftVersion = LEGACY_GAME_VERSION_ID,
 ): PersistenceSaveResult {
   assertSlotIndex(index)
   if (!isCustomInventoryPreset(preset)) {
     throw new TypeError('Custom inventory presets must contain only a name and item IDs.')
   }
-  const target = storageOrDefault(storage)
+  const target = storageOrDefault(storage, minecraftVersion)
   const loaded = loadSlots(target)
   const slots = loaded.value
   slots[index] = { name: preset.name, itemIds: [...preset.itemIds] }
@@ -340,9 +347,13 @@ export function saveCustomInventorySlot(
   return { warning: combineWarnings(loaded.warning, target.warning) }
 }
 
-export function clearCustomInventorySlot(index: number, storage?: Storage): PersistenceSaveResult {
+export function clearCustomInventorySlot(
+  index: number,
+  storage?: Storage,
+  minecraftVersion = LEGACY_GAME_VERSION_ID,
+): PersistenceSaveResult {
   assertSlotIndex(index)
-  const target = storageOrDefault(storage)
+  const target = storageOrDefault(storage, minecraftVersion)
   const loaded = loadSlots(target)
   const slots = loaded.value
   slots[index] = null
@@ -410,17 +421,21 @@ function loadWorkspace(target: ResilientStorage): PersistenceLoadResult<TargetWo
   }
 }
 
-export function loadTargetWorkspace(storage?: Storage): TargetWorkspaceLoadResult {
-  const target = storageOrDefault(storage)
+export function loadTargetWorkspace(storage?: Storage, minecraftVersion = LEGACY_GAME_VERSION_ID): TargetWorkspaceLoadResult {
+  const target = storageOrDefault(storage, minecraftVersion)
   const isFirstVisit = target.getItem(TARGET_WORKSPACE_KEY) === null && target.warning === undefined
   return { ...loadWorkspace(target), isFirstVisit }
 }
 
-export function saveTargetWorkspace(workspace: TargetWorkspace, storage?: Storage): PersistenceSaveResult {
+export function saveTargetWorkspace(
+  workspace: TargetWorkspace,
+  storage?: Storage,
+  minecraftVersion = LEGACY_GAME_VERSION_ID,
+): PersistenceSaveResult {
   if (!isRecord(workspace) || !Array.isArray(workspace.entries) || !workspace.entries.every(isTargetWorkspaceEntry)) {
     throw new TypeError('Target workspaces must contain valid target entries.')
   }
-  const target = storageOrDefault(storage)
+  const target = storageOrDefault(storage, minecraftVersion)
   saveWorkspace(workspace, target)
   return { warning: target.warning }
 }
@@ -447,8 +462,9 @@ function saveLanguagePreferencesRecord(preferences: LanguagePreferences, storage
 export function loadLanguagePreferences(
   availableLocales: ReadonlySet<string>,
   storage?: Storage,
+  minecraftVersion = LEGACY_GAME_VERSION_ID,
 ): PersistenceLoadResult<LanguagePreferences> {
-  const target = storageOrDefault(storage)
+  const target = storageOrDefault(storage, minecraftVersion)
   const raw = target.getItem(LANGUAGE_PREFERENCES_KEY)
   if (raw === null) return { value: defaultLanguagePreferences(), warning: target.warning }
   try {
@@ -475,11 +491,12 @@ export function loadLanguagePreferences(
 export function saveLanguagePreferences(
   preferences: LanguagePreferences,
   storage?: Storage,
+  minecraftVersion = LEGACY_GAME_VERSION_ID,
 ): PersistenceSaveResult {
   if (!isLanguagePreferencesValue(preferences)) {
     throw new TypeError('Language preferences must contain a locale and enabled banned locale IDs.')
   }
-  const target = storageOrDefault(storage)
+  const target = storageOrDefault(storage, minecraftVersion)
   saveLanguagePreferencesRecord(preferences, target)
   return { warning: target.warning }
 }
@@ -558,8 +575,11 @@ function saveCraftingSheetPreferencesRecord(preferences: CraftingSheetPreference
   storage.setItem(CRAFTING_SHEET_PREFERENCES_KEY, JSON.stringify(encodeCraftingSheetPreferences(preferences)))
 }
 
-export function loadCraftingSheetPreferences(storage?: Storage): PersistenceLoadResult<CraftingSheetPreferences> {
-  const target = storageOrDefault(storage)
+export function loadCraftingSheetPreferences(
+  storage?: Storage,
+  minecraftVersion = LEGACY_GAME_VERSION_ID,
+): PersistenceLoadResult<CraftingSheetPreferences> {
+  const target = storageOrDefault(storage, minecraftVersion)
   const fallback = defaultCraftingSheetPreferences()
   const raw = target.getItem(CRAFTING_SHEET_PREFERENCES_KEY)
   if (raw === null) return { value: fallback, warning: target.warning }
@@ -579,12 +599,13 @@ export function loadCraftingSheetPreferences(storage?: Storage): PersistenceLoad
 export function saveCraftingSheetPreferences(
   preferences: CraftingSheetPreferences,
   storage?: Storage,
+  minecraftVersion = LEGACY_GAME_VERSION_ID,
 ): PersistenceSaveResult {
   const normalized = normalizeCraftingSheetPreferences({ schemaVersion: 1, ...preferences })
   if (!normalized || normalized.hasInvalidMember) {
     throw new TypeError('Crafting sheet preferences must contain language-specific craft selections.')
   }
-  const target = storageOrDefault(storage)
+  const target = storageOrDefault(storage, minecraftVersion)
   saveCraftingSheetPreferencesRecord(normalized.value, target)
   return { warning: target.warning }
 }
@@ -701,8 +722,9 @@ function saveRecipeBookInventoryRecord(itemIds: readonly string[], storage: Resi
 export function loadRecipeBookInventory(
   fallbackItemIds: readonly string[] = [],
   storage?: Storage,
+  minecraftVersion = LEGACY_GAME_VERSION_ID,
 ): PersistenceLoadResult<string[]> {
-  const target = storageOrDefault(storage)
+  const target = storageOrDefault(storage, minecraftVersion)
   const fallback = normalizeRecipeBookInventory(fallbackItemIds)
   const raw = target.getItem(RECIPE_BOOK_INVENTORY_KEY)
   if (raw === null) return { value: fallback, warning: target.warning }
@@ -719,9 +741,13 @@ export function loadRecipeBookInventory(
   }
 }
 
-export function saveRecipeBookInventory(itemIds: readonly string[], storage?: Storage): PersistenceSaveResult {
+export function saveRecipeBookInventory(
+  itemIds: readonly string[],
+  storage?: Storage,
+  minecraftVersion = LEGACY_GAME_VERSION_ID,
+): PersistenceSaveResult {
   if (!isStringArray(itemIds)) throw new TypeError('Recipe book inventories must contain only item IDs.')
-  const target = storageOrDefault(storage)
+  const target = storageOrDefault(storage, minecraftVersion)
   saveRecipeBookInventoryRecord(itemIds, target)
   return { warning: target.warning }
 }

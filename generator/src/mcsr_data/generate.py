@@ -58,6 +58,18 @@ MINECRAFT_1_16_1_BASELINE = GenerationBaseline(
     collection_count=354,
 )
 
+MINECRAFT_26_1_2_BASELINE = GenerationBaseline(
+    recipe_count=1030,
+    output_item_count=887,
+    inventory_item_count=508,
+    collection_count=541,
+)
+
+BASELINES_BY_MINECRAFT_VERSION = {
+    "1.16.1": MINECRAFT_1_16_1_BASELINE,
+    "26.1.2": MINECRAFT_26_1_2_BASELINE,
+}
+
 
 @dataclass(frozen=True)
 class GenerationSummary:
@@ -93,10 +105,11 @@ def generate(
     recipe_book_categories: Mapping[str, RecipeBookCategory] | None = None,
     language_asset_root: Path | None = None,
     language_asset_index: Path | None = None,
+    minecraft_version: str = MINECRAFT_VERSION,
 ) -> GenerationSummary:
     """Validate source data and atomically publish browser artifacts."""
     report = ValidationReport()
-    _validate_source_paths(source_root, report)
+    _validate_source_paths(source_root, report, minecraft_version)
     recipes = _load_recipes(source_root, report)
     tags = _load_tags(source_root, report)
     catalog = _load_translations(source_root, report)
@@ -114,7 +127,13 @@ def generate(
         categories,
         report,
     )
-    items = _build_items(enriched_recipes, catalog, overrides, report)
+    items = _build_items(
+        enriched_recipes,
+        catalog,
+        overrides,
+        report,
+        allow_unclassified_name_only=minecraft_version != MINECRAFT_VERSION,
+    )
     inventory_items = _build_inventory_items(enriched_recipes, presets, catalog, report)
     localized_catalogs = _load_language_catalogs(
         language_asset_root,
@@ -127,6 +146,7 @@ def generate(
         language_asset_index,
         catalog,
         report,
+        minecraft_version,
     )
     localized_search_data = _build_localized_search_data(
         enriched_recipes,
@@ -136,11 +156,13 @@ def generate(
         localized_catalogs,
         overrides,
         report,
+        minecraft_version,
     )
     localized_language_info = _build_localized_language_info(
         catalog,
         localized_catalogs,
         report,
+        minecraft_version,
     )
     _validate_cross_references(
         enriched_recipes,
@@ -190,7 +212,7 @@ def generate(
         },
         "recipe-result-collections.json": {
             "schema_version": SCHEMA_VERSION,
-            "minecraft_version": MINECRAFT_VERSION,
+            "minecraft_version": minecraft_version,
             "language": LANGUAGE,
             "collections": [_serialize_collection(collection) for collection in collections],
         },
@@ -203,10 +225,11 @@ def generate(
     if language_metadata is not None:
         payloads["language-metadata.json"] = language_metadata
     _atomic_write_all(output_root, payloads)
+    (output_root / FAILURE_REPORT_FILENAME).unlink(missing_ok=True)
     return summary
 
 
-def _validate_source_paths(source_root: Path, report: ValidationReport) -> None:
+def _validate_source_paths(source_root: Path, report: ValidationReport, minecraft_version: str) -> None:
     required_paths = (
         ("recipes", True),
         ("tags/items", True),
@@ -222,7 +245,7 @@ def _validate_source_paths(source_root: Path, report: ValidationReport) -> None:
             report.error(
                 "missing_source_path",
                 relative_path,
-                f"required Minecraft 1.16.1 source {expected} is missing: {source_path}",
+                f"required Minecraft {minecraft_version} source {expected} is missing: {source_path}",
             )
 
 
@@ -279,6 +302,7 @@ def _load_language_metadata(
     asset_index: Path | None,
     source_catalog: TranslationCatalog | None,
     report: ValidationReport,
+    minecraft_version: str,
 ) -> dict[str, object] | None:
     if asset_root is None and asset_index is None:
         return None
@@ -304,7 +328,7 @@ def _load_language_metadata(
     metadata = {**cached_metadata, LANGUAGE: source_metadata}
     return {
         "schema_version": LOCALIZED_SEARCH_SCHEMA_VERSION,
-        "minecraft_version": MINECRAFT_VERSION,
+        "minecraft_version": minecraft_version,
         "locales": {
             locale: {
                 "name": definition.name,
@@ -377,6 +401,7 @@ def _build_items(
     report: ValidationReport,
     *,
     subject_prefix: str = "",
+    allow_unclassified_name_only: bool = False,
 ) -> dict[str, SearchItem]:
     if catalog is None:
         return {}
@@ -389,6 +414,7 @@ def _build_items(
                 None,
                 overrides=overrides,
                 catalog=catalog,
+                allow_unclassified_name_only=allow_unclassified_name_only,
             )
         except KeyError as error:
             report.error("missing_translation", f"{subject_prefix}{item_id}", str(error))
@@ -439,6 +465,7 @@ def _build_localized_search_data(
     catalogs: dict[str, TranslationCatalog] | None,
     overrides: dict[str, object],
     report: ValidationReport,
+    minecraft_version: str,
 ) -> dict[str, object] | None:
     if catalogs is None:
         return None
@@ -455,6 +482,7 @@ def _build_localized_search_data(
             overrides,
             report,
             subject_prefix=f"{locale}:",
+            allow_unclassified_name_only=minecraft_version != MINECRAFT_VERSION,
         )
         inventory_items = _build_inventory_items(
             recipes,
@@ -466,7 +494,7 @@ def _build_localized_search_data(
         locales[locale] = _serialize_localized_catalog(items, inventory_items)
     return {
         "schema_version": LOCALIZED_SEARCH_SCHEMA_VERSION,
-        "minecraft_version": MINECRAFT_VERSION,
+        "minecraft_version": minecraft_version,
         "locales": locales,
     }
 
@@ -475,11 +503,12 @@ def _build_localized_language_info(
     base_catalog: TranslationCatalog | None,
     catalogs: dict[str, TranslationCatalog] | None,
     report: ValidationReport,
+    minecraft_version: str,
 ) -> dict[str, object] | None:
     if base_catalog is None or catalogs is None:
         return None
     try:
-        return build_localized_language_info(base_catalog, catalogs)
+        return build_localized_language_info(base_catalog, catalogs, minecraft_version=minecraft_version)
     except KeyError as error:
         report.error("missing_language_info_translation", "language-info", str(error))
         return None
@@ -829,6 +858,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, default=Path("minecraft-data"))
     parser.add_argument("--output", type=Path, default=Path("web/public/data"))
+    parser.add_argument("--minecraft-version", default=MINECRAFT_VERSION)
     parser.add_argument(
         "--language-asset-root",
         type=Path,
@@ -848,7 +878,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
     arguments = parser.parse_args(argv)
-    baseline = None if arguments.allow_non_baseline else MINECRAFT_1_16_1_BASELINE
+    baseline = None if arguments.allow_non_baseline else BASELINES_BY_MINECRAFT_VERSION.get(arguments.minecraft_version)
+    if baseline is None and not arguments.allow_non_baseline:
+        parser.error(
+            f"no validated generation baseline is registered for Minecraft {arguments.minecraft_version}; "
+            "add one before publishing data"
+        )
     try:
         summary = generate(
             arguments.source,
@@ -856,6 +891,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             baseline=baseline,
             language_asset_root=arguments.language_asset_root,
             language_asset_index=arguments.language_asset_index,
+            minecraft_version=arguments.minecraft_version,
         )
     except GenerationFailed as error:
         for diagnostic in error.report.diagnostics:

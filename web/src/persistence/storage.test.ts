@@ -516,3 +516,22 @@ describe('Minecraft version preference persistence', () => {
     })
   })
 })
+
+describe('version-scoped crafting records', () => {
+  test('keeps each Minecraft version’s saved inventory and workspace independent', () => {
+    const storage = new MemoryStorage()
+    const oldWorkspace = workspace()
+    const newWorkspace = { entries: [] }
+
+    saveCustomInventorySlot(0, inventory('old wood', ['minecraft:oak_log']), storage, '1.16.1')
+    saveCustomInventorySlot(0, inventory('new wood', ['minecraft:pale_oak_log']), storage, '26.1.2')
+    saveTargetWorkspace(oldWorkspace, storage, '1.16.1')
+    saveTargetWorkspace(newWorkspace, storage, '26.1.2')
+
+    expect(loadCustomInventorySlots(storage, '1.16.1').value[0]).toEqual(inventory('old wood', ['minecraft:oak_log']))
+    expect(loadCustomInventorySlots(storage, '26.1.2').value[0]).toEqual(inventory('new wood', ['minecraft:pale_oak_log']))
+    expect(loadTargetWorkspace(storage, '1.16.1').value).toEqual(oldWorkspace)
+    expect(loadTargetWorkspace(storage, '26.1.2').value).toEqual(newWorkspace)
+    expect(storage.getItem('mcsr.game.26.1.2.mcsr.inventory-slots.v1')).not.toBeNull()
+  })
+})

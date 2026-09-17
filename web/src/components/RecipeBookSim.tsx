@@ -28,6 +28,7 @@ interface RecipeBookSimProps {
   enabledBannedLocales: ReadonlySet<string>
   scores?: ReadonlyMap<string, LanguageScoreState>
   onLocaleChange: (locale: string) => void
+  minecraftVersion?: string
 }
 
 interface InventoryChoice extends InventoryPreset {
@@ -129,10 +130,11 @@ export function RecipeBookSim({
   enabledBannedLocales,
   scores = new Map(),
   onLocaleChange,
+  minecraftVersion = '1.16.1',
 }: RecipeBookSimProps) {
   const defaultInventory = data.presets.get('overworld')?.itemIds ?? []
   const [inventoryItemIds, setInventoryItemIds] = useState<string[]>(() => (
-    loadRecipeBookInventory(defaultInventory).value.filter((itemId) => data.inventoryItems.has(itemId) || data.items.has(itemId))
+    loadRecipeBookInventory(defaultInventory, undefined, minecraftVersion).value.filter((itemId) => data.inventoryItems.has(itemId) || data.items.has(itemId))
   ))
   const [gridSize, setGridSize] = useState<2 | 3>(3)
   const [query, setQuery] = useState('')
@@ -267,7 +269,7 @@ export function RecipeBookSim({
   function updateInventory(itemIds: readonly string[]) {
     const nextItemIds = [...new Set(itemIds)].sort()
     setInventoryItemIds(nextItemIds)
-    saveRecipeBookInventory(nextItemIds)
+    saveRecipeBookInventory(nextItemIds, undefined, minecraftVersion)
     setPage(0)
   }
 

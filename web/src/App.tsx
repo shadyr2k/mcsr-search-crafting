@@ -124,7 +124,7 @@ function App() {
   const entries = useMemo(() => orderedEntries(workspace.entries), [workspace.entries])
   const gameVersion = gameVersionForId(gameVersionId)
   const { states, retry } = useRowOptimizations(data, workspace.entries)
-  const craftingSheet = useCraftingSheet(selectedLocale, entries, states)
+  const craftingSheet = useCraftingSheet(selectedLocale, entries, states, gameVersion.id)
   const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.packageBaseUrl)
 
   useLayoutEffect(() => {
@@ -162,8 +162,8 @@ function App() {
 
   useEffect(() => {
     let active = true
-    const slots = loadCustomInventorySlots()
-    const saved = loadTargetWorkspace()
+    const slots = loadCustomInventorySlots(undefined, gameVersion.id)
+    const saved = loadTargetWorkspace(undefined, gameVersion.id)
     const savedTheme = loadThemePreference()
     setCustomSlots(slots.value)
     setWorkspace(saved.value)
@@ -186,7 +186,7 @@ function App() {
       if (!active) return
       assertIconCoverage(loadedIcons, loadedData)
       const availableLocales = new Set(loadedLanguages.map((language) => language.locale))
-      const languagePreferences = loadLanguagePreferences(availableLocales)
+      const languagePreferences = loadLanguagePreferences(availableLocales, undefined, gameVersion.id)
       const enabledLocales = new Set(languagePreferences.value.enabledBannedLocales)
       const locale = isBannedLocale(languagePreferences.value.selectedLocale) && !enabledLocales.has(languagePreferences.value.selectedLocale)
         ? 'en_us'
@@ -228,9 +228,9 @@ function App() {
 
   useEffect(() => {
     if (!workspaceLoaded || !data) return
-    const result = saveTargetWorkspace(workspace)
+    const result = saveTargetWorkspace(workspace, undefined, gameVersion.id)
     setWarning((current) => combineWarnings(current, result.warning))
-  }, [data, workspace, workspaceLoaded])
+  }, [data, gameVersion.id, workspace, workspaceLoaded])
 
   useLayoutEffect(() => {
     const selector = languageSelectorRef.current
@@ -283,12 +283,12 @@ function App() {
   function openAdd() { if (!editor) setEditor({ kind: 'new', draft: newItemSetDraft() }) }
   function updateDraft(draft: ItemSetDraft) { setEditor((current) => current ? { ...current, draft } : null) }
   function saveSlot(index: number, preset: CustomInventoryPreset) {
-    const result = saveCustomInventorySlot(index, preset)
+    const result = saveCustomInventorySlot(index, preset, undefined, gameVersion.id)
     setCustomSlots((current) => current.map((slot, slotIndex) => slotIndex === index ? preset : slot))
     setWarning((current) => combineWarnings(current, result.warning))
   }
   function clearSlot(index: number) {
-    const result = clearCustomInventorySlot(index)
+    const result = clearCustomInventorySlot(index, undefined, gameVersion.id)
     setCustomSlots((current) => current.map((slot, slotIndex) => slotIndex === index ? null : slot))
     setWarning((current) => combineWarnings(current, result.warning))
   }
@@ -298,7 +298,7 @@ function App() {
     if (locale === 'en_us') {
       setData(baseData)
       setSelectedLocale(locale)
-      const result = saveLanguagePreferences({ selectedLocale: locale, enabledBannedLocales: [...enabledBannedLocales] })
+      const result = saveLanguagePreferences({ selectedLocale: locale, enabledBannedLocales: [...enabledBannedLocales] }, undefined, gameVersion.id)
       setWarning((current) => combineWarnings(current, result.warning))
       return
     }
@@ -306,12 +306,12 @@ function App() {
     loadLocalizedGeneratedData(locale, baseData, gameVersion.packageBaseUrl).then((localizedData) => {
       setData(localizedData)
       setSelectedLocale(locale)
-      const result = saveLanguagePreferences({ selectedLocale: locale, enabledBannedLocales: [...enabledBannedLocales] })
+      const result = saveLanguagePreferences({ selectedLocale: locale, enabledBannedLocales: [...enabledBannedLocales] }, undefined, gameVersion.id)
       setWarning((current) => combineWarnings(current, result.warning))
     }).catch(() => {
       setData(baseData)
       setSelectedLocale('en_us')
-      const result = saveLanguagePreferences({ selectedLocale: 'en_us', enabledBannedLocales: [...enabledBannedLocales] })
+      const result = saveLanguagePreferences({ selectedLocale: 'en_us', enabledBannedLocales: [...enabledBannedLocales] }, undefined, gameVersion.id)
       setWarning((current) => combineWarnings(
         combineWarnings(current, `Could not load ${locale}; English (US) was selected instead.`),
         result.warning,
@@ -329,7 +329,7 @@ function App() {
       setSelectedLocale(nextLocale)
       setData(baseData)
     }
-    const result = saveLanguagePreferences({ selectedLocale: nextLocale, enabledBannedLocales: [...next] })
+    const result = saveLanguagePreferences({ selectedLocale: nextLocale, enabledBannedLocales: [...next] }, undefined, gameVersion.id)
     setWarning((current) => combineWarnings(current, result.warning))
   }
 
@@ -448,6 +448,7 @@ function App() {
     {warning && <p role="alert">{warning}</p>}{error && <p role="alert">{error}</p>}
     <div className={`page-transition${pageTransitionPhase === 'idle' ? '' : ` page-transition--${pageTransitionPhase}`}`}>
     {data && icons && page === 'recipe-book-sim' && <RecipeBookSim
+      key={gameVersion.id}
       data={data}
       englishItems={baseData?.items ?? data.items}
       englishInventoryItems={baseData?.inventoryItems ?? data.inventoryItems}
@@ -458,6 +459,7 @@ function App() {
       enabledBannedLocales={enabledBannedLocales}
       scores={languageScores}
       onLocaleChange={selectLocale}
+      minecraftVersion={gameVersion.id}
     />}
     {baseData && icons && page === 'craft-lookup' && <CraftLookup
       data={baseData}

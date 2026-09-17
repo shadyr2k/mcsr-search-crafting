@@ -14,6 +14,7 @@ const appBaseUrl = import.meta.env.BASE_URL.endsWith('/')
 // packages means the picker can never select a partially installed version.
 export const supportedGameVersions: readonly GameVersion[] = [
   { id: '1.16.1', label: 'Minecraft 1.16.1', packageBaseUrl: appBaseUrl },
+  { id: '26.1.2', label: 'Minecraft 26.1.2', packageBaseUrl: `${appBaseUrl}versions/26.1.2/` },
 ]
 
 export const defaultGameVersion = supportedGameVersions[0]

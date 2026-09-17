@@ -116,6 +116,37 @@ def test_generate_writes_stable_versioned_files(fixture_data, tmp_path):
     assert not (output / "validation-failure-report.json").exists()
 
 
+def test_generate_writes_the_selected_minecraft_version(fixture_data, tmp_path):
+    output = tmp_path / "output"
+
+    generate(
+        fixture_data,
+        output,
+        baseline=None,
+        minecraft_version="26.1.2",
+        recipe_book_categories={"minecraft:crafting_table": "crafting_building_blocks"},
+    )
+
+    collections = json.loads((output / "recipe-result-collections.json").read_text(encoding="utf-8"))
+    assert collections["minecraft_version"] == "26.1.2"
+
+
+def test_successful_generation_removes_a_prior_failure_report(fixture_data, tmp_path):
+    output = tmp_path / "output"
+    output.mkdir()
+    stale_report = output / "validation-failure-report.json"
+    stale_report.write_text("stale", encoding="utf-8")
+
+    generate(
+        fixture_data,
+        output,
+        baseline=None,
+        recipe_book_categories={"minecraft:crafting_table": "crafting_building_blocks"},
+    )
+
+    assert not stale_report.exists()
+
+
 def test_generate_is_byte_deterministic_for_all_success_artifacts(fixture_data, tmp_path):
     first = tmp_path / "first"
     second = tmp_path / "second"

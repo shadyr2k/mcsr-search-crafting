@@ -14,6 +14,7 @@ test = ["pytest>=8,<10"]
 [project.scripts]
 mcsr-generate = "mcsr_data.generate:main"
 mcsr-import-icons = "mcsr_data.icon_import:main"
+mcsr-import-raw-icons = "mcsr_data.raw_icon_import:main"
 
 [tool.setuptools]
 package-dir = {"" = "generator/src"}

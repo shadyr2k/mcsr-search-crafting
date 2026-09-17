@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { CraftingSheetPreferences, CraftingSheetSelection, RowOptimizationState, TargetWorkspaceEntry } from '../domain/types'
 import { createCraftingSheetModel, type CraftingSheetModel } from '../engine/craftingSheet'
@@ -59,8 +59,9 @@ export function useCraftingSheet(
   locale: string,
   entries: readonly TargetWorkspaceEntry[],
   states: ReadonlyMap<string, RowOptimizationState>,
+  minecraftVersion = '1.16.1',
 ): CraftingSheetState {
-  const [initial] = useState(() => loadCraftingSheetPreferences())
+  const [initial] = useState(() => loadCraftingSheetPreferences(undefined, minecraftVersion))
   const [preferences, setPreferences] = useState<CraftingSheetPreferences>(initial.value)
   const preferencesRef = useRef(preferences)
   const [warning, setWarning] = useState<string | undefined>(initial.warning)
@@ -68,9 +69,16 @@ export function useCraftingSheet(
   const persist = useCallback((next: CraftingSheetPreferences) => {
     preferencesRef.current = next
     setPreferences(next)
-    const result = saveCraftingSheetPreferences(next)
+    const result = saveCraftingSheetPreferences(next, undefined, minecraftVersion)
     setWarning((current) => combineWarnings(current, result.warning))
-  }, [])
+  }, [minecraftVersion])
+
+  useEffect(() => {
+    const loaded = loadCraftingSheetPreferences(undefined, minecraftVersion)
+    preferencesRef.current = loaded.value
+    setPreferences(loaded.value)
+    setWarning(loaded.warning)
+  }, [minecraftVersion])
 
   const setEntryDisabled = useCallback((entryId: string, disabled: boolean) => {
     persist(updateLocaleSelection(preferencesRef.current, locale, entryId, (selection) => {

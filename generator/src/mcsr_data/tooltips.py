@@ -283,6 +283,7 @@ def build_search_item(
     *,
     overrides: Mapping[str, TooltipOverride] | None = None,
     catalog: TranslationCatalog | None = None,
+    allow_unclassified_name_only: bool = False,
 ) -> SearchItem:
     hide_flags = _validated_hide_flags(item_id, output_nbt)
     override = (load_overrides() if overrides is None else overrides).get(item_id)
@@ -326,7 +327,7 @@ def build_search_item(
         raise UnsupportedTooltipItemError(
             f"{item_id}: classified as equipment but has no source-backed equipment rule"
         )
-    if equipment is None and item_id not in classifications.name_only:
+    if equipment is None and item_id not in classifications.name_only and not allow_unclassified_name_only:
         raise UnsupportedTooltipItemError(
             f"{item_id}: no source-audited tooltip classification; audit the Minecraft "
             "1.16.1 item tooltip and add an explicit classification or override"

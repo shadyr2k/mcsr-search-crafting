@@ -11,6 +11,15 @@ class RecipeParseError(ValueError):
     """Raised when a crafting recipe cannot be normalized."""
 
 
+_MODERN_CATEGORY_MAP = {
+    "building": "crafting_building_blocks",
+    "equipment": "crafting_equipment",
+    "redstone": "crafting_redstone",
+    "food": "crafting_misc",
+    "misc": "crafting_misc",
+}
+
+
 def parse_recipe(recipe_id: str, raw: dict[str, object]) -> NormalizedRecipe | None:
     recipe_type = raw.get("type")
     if recipe_type not in {"minecraft:crafting_shaped", "minecraft:crafting_shapeless"}:
@@ -40,6 +49,7 @@ def parse_recipe(recipe_id: str, raw: dict[str, object]) -> NormalizedRecipe | N
         fits_2x2=fits_2x2,
         fits_3x3=fits_3x3,
         ingredient_layout=tuple(layout),
+        recipe_book_category=_parse_category(recipe_id, raw),
     )
 
 
@@ -50,6 +60,15 @@ def _parse_group(recipe_id: str, raw: Mapping[str, object]) -> str | None:
     if not isinstance(raw_group, str):
         raise RecipeParseError(f"{recipe_id}: group must be a string")
     return raw_group
+
+
+def _parse_category(recipe_id: str, raw: Mapping[str, object]) -> str | None:
+    if "category" not in raw:
+        return None
+    raw_category = raw["category"]
+    if not isinstance(raw_category, str) or raw_category not in _MODERN_CATEGORY_MAP:
+        raise RecipeParseError(f"{recipe_id}: unsupported crafting category {raw_category!r}")
+    return _MODERN_CATEGORY_MAP[raw_category]
 
 
 def load_crafting_recipes(path: Path) -> list[NormalizedRecipe]:
@@ -89,7 +108,7 @@ def _parse_result(recipe_id: str, raw_result: object) -> tuple[str, int]:
         return raw_result, 1
     if not isinstance(raw_result, dict):
         raise RecipeParseError(f"{recipe_id}: result must be an item string or object")
-    item = raw_result.get("item")
+    item = raw_result.get("item", raw_result.get("id"))
     count = raw_result.get("count", 1)
     if not isinstance(item, str) or not item:
         raise RecipeParseError(f"{recipe_id}: result item is required")
@@ -160,6 +179,10 @@ def _parse_slot(recipe_id: str, raw_slot: object) -> IngredientSlot:
 
 
 def _parse_ref(recipe_id: str, raw_ref: object) -> IngredientRef:
+    if isinstance(raw_ref, str) and raw_ref:
+        if raw_ref.startswith("#"):
+            return IngredientRef(kind="tag", value=raw_ref[1:])
+        return IngredientRef(kind="item", value=raw_ref)
     if not isinstance(raw_ref, dict):
         raise RecipeParseError(f"{recipe_id}: ingredient must be an object")
     item = raw_ref.get("item")

@@ -63,3 +63,12 @@ Its `manifest.json` SHA-256 is
 
 This exporter currently covers item PNGs only. Live tooltip and language export
 remain future work.
+
+## 26.1.2 archive import
+
+The 26.1.2 package uses a supplied flat archive of item PNGs rather than the
+1.16.1 exporter. `mcsr-import-raw-icons` selects only the exact generated
+search/inventory union, checks every image is RGBA, and converts the archive's
+128×128 pixel-art exports to 16×16 with nearest-neighbor resampling. Extra
+26.2 icons are ignored. The importer fails if a required 26.1.2 item has no
+matching filename.

@@ -100,13 +100,15 @@ def required_fixed_language_info_keys() -> tuple[str, ...]:
 def build_localized_language_info(
     base_catalog: TranslationCatalog,
     localized_catalogs: dict[str, TranslationCatalog],
+    *,
+    minecraft_version: str = "1.16.1",
 ) -> dict[str, object]:
     """Return deterministic definitions plus locale-keyed Minecraft translations."""
     sections = _sections(base_catalog)
     catalogs = {"en_us": base_catalog, **localized_catalogs}
     return {
         "schema_version": LANGUAGE_INFO_SCHEMA_VERSION,
-        "minecraft_version": "1.16.1",
+        "minecraft_version": minecraft_version,
         "sections": {
             section_id: [_serialize_definition(base_catalog, entry) for entry in entries]
             for section_id, entries in sections

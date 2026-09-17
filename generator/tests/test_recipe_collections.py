@@ -128,6 +128,18 @@ def test_missing_output_category_is_rejected():
         )
 
 
+def test_source_recipe_category_takes_precedence_over_the_legacy_output_mapping():
+    source_categorized = recipe("minecraft:modern", "minecraft:unknown", group=None)
+    source_categorized = source_categorized.__class__(
+        **{**source_categorized.__dict__, "recipe_book_category": "crafting_equipment"}
+    )
+
+    enriched, collections = assign_recipe_result_collections([source_categorized], {})
+
+    assert enriched[0].recipe_book_category == "crafting_equipment"
+    assert collections[0].recipe_book_category == "crafting_equipment"
+
+
 def test_duplicate_recipe_ids_are_rejected():
     recipes = [
         recipe("minecraft:duplicate", "minecraft:first", group=None),

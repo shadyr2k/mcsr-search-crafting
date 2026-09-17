@@ -71,7 +71,12 @@ def resolve_asset_path(asset_root: Path, asset_hash: str) -> Path:
     """Resolve an asset object using Mojang's SHA-1 object-cache layout."""
     if _SHA1_PATTERN.fullmatch(asset_hash) is None:
         raise LanguageAssetError(f"invalid Minecraft asset SHA-1 hash: {asset_hash!r}")
-    return asset_root / "objects" / asset_hash[:2] / asset_hash
+    # Launchers store the cache under assets/objects/, while supplied source
+    # bundles often contain that objects directory itself.
+    object_root = asset_root / "objects"
+    if not object_root.is_dir() and (asset_root / asset_hash[:2]).is_dir():
+        object_root = asset_root
+    return object_root / asset_hash[:2] / asset_hash
 
 
 def load_language_catalogs(

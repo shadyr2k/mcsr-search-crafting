@@ -121,7 +121,7 @@ def assign_recipe_result_collections(
             raise RecipeCollectionError(f"duplicate recipe ID: {recipe.recipe_id}")
         seen_recipe_ids.add(recipe.recipe_id)
 
-        category = categories.get(recipe.output_item)
+        category = recipe.recipe_book_category or categories.get(recipe.output_item)
         if category is None:
             raise RecipeCollectionError(
                 f"{recipe.recipe_id}: no recipe-book category for output "
@@ -178,7 +178,7 @@ def assign_recipe_result_collections(
     enriched = [
         replace(
             recipe,
-            recipe_book_category=categories[recipe.output_item],
+            recipe_book_category=recipe.recipe_book_category or categories[recipe.output_item],
             result_collection_id=collection_ids_by_recipe[recipe.recipe_id],
         )
         for recipe in ordered_recipes

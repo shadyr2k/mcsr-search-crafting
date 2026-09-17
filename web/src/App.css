@@ -1703,7 +1703,7 @@ h3 {
 .theme-picker__menu button[aria-checked='true'] { border-color: var(--accent-strong); background: var(--panel-selected); }
 .theme-picker__menu .item-icon { width: 1.8rem; height: 1.8rem; }
 .version-picker { position: relative; }
-.version-picker__trigger { min-width: 5.5rem; min-height: 3rem; padding: .3rem .55rem; font-size: .82rem; white-space: nowrap; }
+.version-picker__trigger { min-width: 5.5rem; min-height: 3rem; padding: .3rem .55rem; font-size: 1.05rem; white-space: nowrap; }
 .version-picker__menu { position: absolute; z-index: 50; top: calc(100% + .5rem); right: 0; display: grid; gap: .35rem; min-width: 11rem; padding: .55rem; border: 2px solid var(--border); border-radius: .7rem; background: var(--control); box-shadow: 0 .5rem 1.2rem color-mix(in srgb, var(--text) 24%, transparent); }
 .version-picker__menu button { min-height: 2.45rem; padding: .35rem .55rem; text-align: left; white-space: nowrap; }
 .version-picker__menu button[aria-checked='true'] { border-color: var(--accent-strong); background: var(--panel-selected); }
@@ -2753,32 +2753,37 @@ h3 {
   .craft-result__junk-divider { height: clamp(20px, 10vw, 32px); }
 }
 
-/* A two-column category can make an individual card narrow even on a wide
-   screen. Keep its selected targets intact by giving them their own wrapped
-   line before any target icon would be clipped. Junk then yields normally. */
+/* Even in a narrow category, craft rows preserve the left-to-right sequence
+   query, targets, junk, disclosure. The item strip reduces its junk preview
+   before it ever needs a second row. */
 @container (max-width: 25rem) {
   .craft-result__toggle,
-  .craft-result__bar,
-  .craft-result__step-bar {
-    grid-template-columns: minmax(0, 1fr) auto;
+  .craft-result__bar {
+    grid-template-columns: fit-content(52%) minmax(0, 1fr) auto;
   }
 
-  .craft-result__item-preview,
+  .craft-result__item-preview {
+    grid-column: 2;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .craft-result__item-preview .craft-result__items {
+    flex-wrap: nowrap;
+  }
+
+  /* Overlap steps use the same ordered-row rule. */
+  .craft-result__step-bar {
+    grid-template-columns: fit-content(52%) minmax(0, 1fr);
+  }
+
   .craft-result__step-bar .craft-result__items {
-    grid-column: 1 / -1;
+    grid-column: auto;
     width: 100%;
     min-width: 0;
-    overflow: visible;
+    overflow: hidden;
+    flex-wrap: nowrap;
   }
-
-  .craft-result__item-preview .craft-result__items,
-  .craft-result__step-bar .craft-result__items,
-  .craft-result__targets {
-    flex: 0 1 auto;
-    flex-wrap: wrap;
-  }
-
-  .craft-result__item-preview { overflow: visible; }
 }
 
 /* Craft lookup promotes the item-set controls into a permanent page-level

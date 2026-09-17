@@ -14,6 +14,22 @@ async function addStickSet(page: import('@playwright/test').Page, inventoryItem?
   await page.getByRole('button', { name: 'Save item set' }).click()
 }
 
+test('switches to the complete 26.1.2 data package', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Choose Minecraft version' }).click()
+
+  const dataResponse = page.waitForResponse((response) => (
+    response.url().includes('/versions/26.1.2/data/search-items.json') && response.ok()
+  ))
+  await page.getByRole('menuitemradio', { name: 'Select Minecraft 26.1.2' }).click()
+  await dataResponse
+  await expect(page.getByRole('button', { name: 'Choose Minecraft version' })).toHaveText('26.1.2')
+
+  await page.getByRole('button', { name: 'Add item set' }).click()
+  await page.getByRole('searchbox', { name: 'Search Goals' }).fill('pale oak planks')
+  await expect(page.getByRole('button', { name: 'Pale Oak Planks', exact: true })).toBeVisible()
+})
+
 test('keeps craft-row targets and junk counts ordered at every responsive breakpoint', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto('/')

@@ -112,6 +112,33 @@ def test_shapeless_recipe_preserves_repeated_slots_and_counts_them():
     assert recipe.ingredient_slots[1].options[1].kind == "tag"
 
 
+def test_modern_recipe_format_uses_string_ingredients_result_ids_and_source_category():
+    recipe = parse_recipe("minecraft:wooden_axe", {
+        "type": "minecraft:crafting_shaped",
+        "category": "equipment",
+        "key": {"#": "minecraft:stick", "X": "#minecraft:wooden_tool_materials"},
+        "pattern": ["XX", "X#", " #"],
+        "result": {"id": "minecraft:wooden_axe"},
+    })
+
+    assert recipe.output_item == "minecraft:wooden_axe"
+    assert recipe.output_count == 1
+    assert recipe.recipe_book_category == "crafting_equipment"
+    assert recipe.ingredient_slots[0].options[0].value == "minecraft:wooden_tool_materials"
+    assert recipe.ingredient_slots[0].options[0].kind == "tag"
+
+
+def test_modern_recipe_food_category_uses_the_crafting_misc_tab():
+    recipe = parse_recipe("minecraft:test", {
+        "type": "minecraft:crafting_shapeless",
+        "category": "food",
+        "ingredients": ["minecraft:wheat"],
+        "result": {"id": "minecraft:bread"},
+    })
+
+    assert recipe.recipe_book_category == "crafting_misc"
+
+
 def test_shaped_recipe_with_unknown_pattern_symbol_is_rejected():
     with pytest.raises(RecipeParseError, match="missing key"):
         parse_recipe("minecraft:bad", {
