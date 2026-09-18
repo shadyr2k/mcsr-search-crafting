@@ -1016,6 +1016,11 @@ h3 {
     min-height: 0;
   }
 
+  .app-shell--crafting-sheet .app-header {
+    position: relative;
+    top: auto;
+  }
+
   .app-shell--crafting-sheet .crafting-sheet--page,
   .app-shell--crafting-sheet .crafting-sheet__panel--page {
     height: 100%;

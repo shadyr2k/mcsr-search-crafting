@@ -139,13 +139,17 @@ function ItemLabels({ itemIds, items, icons }: { itemIds: readonly string[]; ite
   </span>)}</span>
 }
 
-function ItemSetCard({ entry, items, icons, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled }: Pick<CraftingSheetProps, 'items' | 'icons' | 'onSelectItemCraft' | 'onMoveItemCraft' | 'onSetEntryDisabled'> & { entry: CraftingSheetEntry }) {
+function ItemSetCard({ entry, items, icons, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, onOpenChange }: Pick<CraftingSheetProps, 'items' | 'icons' | 'onSelectItemCraft' | 'onMoveItemCraft' | 'onSetEntryDisabled'> & { entry: CraftingSheetEntry; onOpenChange?: (open: boolean) => void }) {
   const [isOpen, setIsOpen] = useState(false)
   const headingId = useId()
   const detailsId = useId()
   return <section className={`crafting-sheet__entry${entry.disabled ? ' crafting-sheet__entry--disabled' : ''}`} aria-labelledby={headingId}>
     <header className="crafting-sheet__entry-heading">
-      <button type="button" className="crafting-sheet__entry-toggle" aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${entry.label}`} aria-expanded={isOpen} aria-controls={detailsId} onClick={() => setIsOpen(!isOpen)}>
+      <button type="button" className="crafting-sheet__entry-toggle" aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${entry.label}`} aria-expanded={isOpen} aria-controls={detailsId} onClick={() => {
+        const nextOpen = !isOpen
+        setIsOpen(nextOpen)
+        onOpenChange?.(nextOpen)
+      }}>
         <span className="crafting-sheet__entry-summary">
           <span id={headingId} className="crafting-sheet__entry-label">{entry.label}</span>
           <span className="crafting-sheet__summary-items">{entry.itemIds.map((itemId) => {
@@ -270,9 +274,27 @@ function SheetSummary({
 }
 
 function ItemSetList({ entries, items, icons, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, columns = false }: Pick<CraftingSheetProps, 'entries' | 'items' | 'icons' | 'onSelectItemCraft' | 'onMoveItemCraft' | 'onSetEntryDisabled'> & { columns?: boolean }) {
+  const columnsRef = useRef<HTMLDivElement>(null)
+  const [openEntryIds, setOpenEntryIds] = useState<readonly string[]>([])
+  const [expandedRowCount, setExpandedRowCount] = useState(1)
+  const openEntries = openEntryIds.filter((entryId) => entries.some((entry) => entry.id === entryId))
+
+  function setEntryOpen(entryId: string, open: boolean) {
+    if (open && columnsRef.current) {
+      const firstEntry = columnsRef.current.querySelector<HTMLElement>('.crafting-sheet__entry')
+      const rowGap = Number.parseFloat(getComputedStyle(columnsRef.current).rowGap) || 0
+      const rowHeight = firstEntry?.getBoundingClientRect().height ?? 0
+      if (rowHeight > 0) setExpandedRowCount(Math.max(1, Math.round((columnsRef.current.clientHeight + rowGap) / (rowHeight + rowGap))))
+    }
+    setOpenEntryIds((current) => open
+      ? current.includes(entryId) ? current : [...current, entryId]
+      : current.filter((currentEntryId) => currentEntryId !== entryId))
+  }
+
+  const hasExpandedEntries = columns && openEntries.length > 0
   return <section className={`crafting-sheet__sets${columns ? ' crafting-sheet__sets--columns' : ''}`} aria-label="Selected item sets"><h3>item sets</h3>
     {entries.length === 0 && <p className="crafting-sheet__empty">Add an item set with available crafts to build a crafting sheet.</p>}
-    {entries.length > 0 && <div className="crafting-sheet__set-columns">{entries.map((entry) => <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />)}</div>}
+    {entries.length > 0 && <div ref={columnsRef} className={`crafting-sheet__set-columns${hasExpandedEntries ? ' crafting-sheet__set-columns--expanded' : ''}`} style={hasExpandedEntries ? { '--crafting-sheet-entry-row-count': String(expandedRowCount) } as CSSProperties : undefined}>{entries.map((entry) => <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} onOpenChange={columns ? (open) => setEntryOpen(entry.id, open) : undefined} />)}</div>}
   </section>
 }
 

@@ -136,7 +136,7 @@ export function useCraftingSheet(
       const { disabled: _disabled, entryFingerprint: _entryFingerprint, ...enabledSelection } = selection
       return Object.keys(enabledSelection).length > 0 ? enabledSelection : undefined
     }))
-  }, [locale, persist])
+  }, [entries, locale, persist])
 
   const selectItemCraft = useCallback((entryId: string, itemId: string, optionId: string) => {
     if (optionId.length === 0) return

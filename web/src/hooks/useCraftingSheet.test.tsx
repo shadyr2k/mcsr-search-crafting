@@ -152,4 +152,19 @@ describe('useCraftingSheet', () => {
       selectionsByLocale: {},
     })
   })
+
+  test('updates the sheet after item sets finish loading', () => {
+    const itemSet = entry('tools')
+    const states = statesFor(itemSet.id, [search('a')])
+    const hook = renderHook(({ itemSets }) => useCraftingSheet('en_us', itemSets, states), {
+      initialProps: { itemSets: [] as TargetWorkspaceEntry[] },
+    })
+
+    hook.rerender({ itemSets: [itemSet] })
+    act(() => hook.result.current.setEntryDisabled(itemSet.id, true))
+
+    expect(hook.result.current.entries).toHaveLength(1)
+    expect(hook.result.current.entries[0]).toMatchObject({ disabled: true })
+    expect(hook.result.current.disabledEntries).toHaveLength(1)
+  })
 })

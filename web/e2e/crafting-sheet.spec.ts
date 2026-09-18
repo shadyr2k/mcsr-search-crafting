@@ -1,5 +1,37 @@
 import { expect, test } from '@playwright/test'
 
+test('keeps the header fixed while the crafting sheet opens and closes', async ({ page }) => {
+  await page.goto('/')
+  const header = page.locator('.app-header')
+  const initialTop = await header.evaluate((element) => element.getBoundingClientRect().top)
+
+  await page.getByRole('button', { name: /english.*search crafts/ }).click()
+  await expect(page.getByRole('button', { name: 'Back to english (us) crafts' })).toBeVisible()
+  expect(await header.evaluate((element) => element.getBoundingClientRect().top)).toBeCloseTo(initialTop, 0)
+
+  await page.getByRole('button', { name: 'Back to english (us) crafts' }).click()
+  await expect(page.getByRole('region', { name: 'Languages' })).toBeVisible()
+  expect(await header.evaluate((element) => element.getBoundingClientRect().top)).toBeCloseTo(initialTop, 0)
+})
+
+test('expands a sheet item set without clipping its controls inside a compact row', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: /english.*search crafts/ }).waitFor()
+  await page.evaluate(() => {
+    const workspace = JSON.parse(localStorage.getItem('mcsr.target-workspace.v1')!)
+    const source = workspace.entries[0]
+    workspace.entries = Array.from({ length: 18 }, (_, index) => ({ ...source, id: `expanded-${index}`, order: index }))
+    localStorage.setItem('mcsr.target-workspace.v1', JSON.stringify(workspace))
+  })
+  await page.reload()
+  await page.getByRole('button', { name: /english.*search crafts/ }).click()
+  const entry = page.getByRole('region', { name: 'item set 1', exact: true })
+
+  await entry.getByRole('button', { name: 'Expand item set 1' }).click()
+  await expect(entry.getByRole('button', { name: /choose craft for/ }).first()).toBeVisible()
+  expect(await entry.evaluate((element) => element.scrollHeight <= element.clientHeight + 1)).toBe(true)
+})
+
 test('crafting sheet customizes bed and anchor, persists choices, and fits narrow screens', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: /english.*search crafts/ }).waitFor()
@@ -31,7 +63,7 @@ test('crafting sheet customizes bed and anchor, persists choices, and fits narro
   const anchorChoices = card.getByRole('region', { name: 'Calculated crafts for Respawn Anchor' })
   await anchorChoices.getByRole('searchbox').fill('aw')
   await anchorChoices.getByRole('button', { name: /^aw 2 chars/ }).click()
-  await expect(card.locator('.crafting-sheet__plan')).toHaveText(/your sequencebedShift\+Homeaw/)
+  await expect(card.locator('.crafting-sheet__plan')).toHaveText(/your sequencebedSHaw/)
   await expect(sheet.getByLabel('Total characters')).toHaveText('5')
   await expect(sheet.getByLabel('Selected characters')).toHaveText('abdew')
   await expect(card.locator('.crafting-sheet__entry-metrics')).toContainText('+1 score')
@@ -39,7 +71,7 @@ test('crafting sheet customizes bed and anchor, persists choices, and fits narro
   await page.getByRole('button', { name: /english.*search crafts/ }).click()
   await expect(card.getByLabel('Selected query for White Bed')).toHaveText('bed')
   await card.getByRole('button', { name: 'Expand item set 1' }).click()
-  await expect(card.locator('.crafting-sheet__plan')).toHaveText(/your sequencebedShift\+Homeaw/)
+  await expect(card.locator('.crafting-sheet__plan')).toHaveText(/your sequencebedSHaw/)
 
   await page.evaluate(() => document.fonts.ready)
   const fonts = await sheet.evaluate((element) => ({
