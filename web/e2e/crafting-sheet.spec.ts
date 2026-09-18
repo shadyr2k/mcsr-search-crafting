@@ -58,6 +58,8 @@ test('packs excluded sheet rows at their natural height', async ({ page }) => {
   })
   expect(verticalGap).toBeGreaterThan(0)
   expect(verticalGap).toBeLessThan(8)
+  await page.setViewportSize({ width: 375, height: 1000 })
+  expect(await entry.evaluate((element) => element.getBoundingClientRect().width)).toBeCloseTo(await nextEntry.evaluate((element) => element.getBoundingClientRect().width), 0)
 })
 
 test('crafting sheet customizes bed and anchor, persists choices, and fits narrow screens', async ({ page }) => {
