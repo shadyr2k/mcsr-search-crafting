@@ -143,6 +143,14 @@ function ItemSetCard({ entry, items, icons, onSelectItemCraft, onMoveItemCraft, 
   const [isOpen, setIsOpen] = useState(false)
   const headingId = useId()
   const detailsId = useId()
+  const summaryGroups = entry.itemIds.reduce<{ itemIds: string[]; step?: RankedSearch['steps'][number] }[]>((groups, itemId) => {
+    const step = entry.selectedSearch?.steps.find((current) => current.newTargetIds.includes(itemId))
+      ?? entry.selectedSearch?.steps.find((current) => current.coveredTargetIds.includes(itemId))
+    const group = step === undefined ? undefined : groups.find((current) => current.step?.query === step.query)
+    if (group) group.itemIds.push(itemId)
+    else groups.push({ itemIds: [itemId], step })
+    return groups
+  }, [])
   if (entry.disabled) return <section className="crafting-sheet__entry crafting-sheet__entry--disabled" aria-labelledby={headingId}>
     <header className="crafting-sheet__entry-heading">
       <span id={headingId} className="crafting-sheet__entry-label">{entry.label}</span>
@@ -158,12 +166,12 @@ function ItemSetCard({ entry, items, icons, onSelectItemCraft, onMoveItemCraft, 
       }}>
         <span className="crafting-sheet__entry-summary">
           <span id={headingId} className="crafting-sheet__entry-label">{entry.label}</span>
-          <span className="crafting-sheet__summary-items">{entry.itemIds.map((itemId) => {
-            const step = entry.selectedSearch?.steps.find((current) => current.newTargetIds.includes(itemId))
-              ?? entry.selectedSearch?.steps.find((current) => current.coveredTargetIds.includes(itemId))
-            return <span key={itemId} className="crafting-sheet__summary-item">
-              <ItemLabels itemIds={[itemId]} items={items} icons={icons} />
-              {step && <span className="craft-query crafting-sheet__query-preview" aria-label={`Selected query for ${itemName(itemId, items)}`} dir="ltr"><span className="crafting-sheet__query-text">{step.query.replaceAll(' ', '_')}</span></span>}
+          <span className="crafting-sheet__summary-items">{summaryGroups.map(({ itemIds, step }) => {
+            const itemNames = itemIds.map((itemId) => itemName(itemId, items))
+            const itemLabel = itemNames.length < 3 ? itemNames.join(' and ') : `${itemNames.slice(0, -1).join(', ')}, and ${itemNames.at(-1)}`
+            return <span key={itemIds.join('|')} className="crafting-sheet__summary-item">
+              <ItemLabels itemIds={itemIds} items={items} icons={icons} />
+              {step && <span className="craft-query crafting-sheet__query-preview" aria-label={`Selected query for ${itemLabel}`} dir="ltr"><span className="crafting-sheet__query-text">{step.query.replaceAll(' ', '_')}</span></span>}
             </span>
           })}</span>
           {!isOpen && entry.status !== 'ready' && <span className="crafting-sheet__empty">{entry.status === 'pending' ? 'Calculating crafts…' : 'No available craft.'}</span>}

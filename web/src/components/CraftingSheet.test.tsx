@@ -51,6 +51,23 @@ describe('CraftingSheet', () => {
     expect(screen.queryByRole('button', { name: 'choose craft for bed' })).not.toBeInTheDocument()
   })
 
+  test('groups items with the same selected craft in the compact summary', () => {
+    const input = props()
+    const shared = search('er')
+    const sharedSearch: RankedSearch = {
+      ...shared,
+      kind: 'overlap',
+      coveredTargetIds: ['bed', 'anchor'],
+      steps: [{ ...shared.steps[0], coveredTargetIds: ['bed', 'anchor'], newTargetIds: ['bed', 'anchor'] }],
+    }
+    const { container } = render(<CraftingSheet {...input} entries={[{ ...input.entries[0], selectedSearch: sharedSearch }]} />)
+
+    const summary = container.querySelector<HTMLElement>('.crafting-sheet__summary-items')!
+    expect(summary.querySelectorAll('.crafting-sheet__summary-item')).toHaveLength(1)
+    expect(within(summary).getByLabelText('Selected query for bed and anchor')).toHaveTextContent('er')
+    expect(within(summary).getAllByRole('img')).toHaveLength(2)
+  })
+
   test('uses a character-details column, chart column, and item-set columns on its dedicated page', () => {
     const input = { ...props(), onBack: vi.fn() }
 
