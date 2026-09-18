@@ -85,6 +85,7 @@
 .crafting-sheet__entry-label { color: var(--accent-strong); font-size: .78rem; }
 .crafting-sheet__summary-items { display: flex; flex-wrap: wrap; gap: .35rem .75rem; min-width: 0; }
 .crafting-sheet__summary-item { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .3rem; min-width: 0; }
+.crafting-sheet__summary-item .crafting-sheet__items { gap: .25rem; }
 .crafting-sheet__query-preview { display: inline-flex; align-items: center; gap: .15rem; color: var(--accent-strong); font-size: .8rem; }
 .crafting-sheet__query-preview .crafting-sheet__query-text { font-size: .75rem; }
 .crafting-sheet__entry-body { display: grid; gap: .7rem; padding-top: .7rem; }
