@@ -44,14 +44,20 @@ test('packs excluded sheet rows at their natural height', async ({ page }) => {
   await page.reload()
   await page.getByRole('button', { name: /english.*search crafts/ }).click()
   const columns = page.locator('.crafting-sheet__set-columns')
-  const entry = page.getByRole('region', { name: 'item set 1', exact: true })
+  const entry = page.getByRole('region', { name: 'item set 4', exact: true })
+  const nextEntry = page.getByRole('region', { name: 'item set 5', exact: true })
 
-  await entry.getByRole('checkbox', { name: 'Include item set 1' }).uncheck()
+  await entry.getByRole('checkbox', { name: 'Include item set 4' }).uncheck()
   await expect(entry).toHaveClass(/crafting-sheet__entry--disabled/)
   await expect(columns).toHaveClass(/crafting-sheet__set-columns--compact-rows/)
   await expect(columns).toHaveCSS('align-content', 'start')
-  const heights = await columns.locator('.crafting-sheet__entry').evaluateAll((entries) => entries.map((element) => element.getBoundingClientRect().height))
-  expect(heights[0]).toBeLessThan(Math.max(...heights.slice(1)))
+  expect(await entry.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(await nextEntry.evaluate((element) => element.getBoundingClientRect().height))
+  const verticalGap = await entry.evaluate((element) => {
+    const next = element.nextElementSibling
+    return next ? next.getBoundingClientRect().top - element.getBoundingClientRect().bottom : Number.NaN
+  })
+  expect(verticalGap).toBeGreaterThan(0)
+  expect(verticalGap).toBeLessThan(8)
 })
 
 test('crafting sheet customizes bed and anchor, persists choices, and fits narrow screens', async ({ page }) => {

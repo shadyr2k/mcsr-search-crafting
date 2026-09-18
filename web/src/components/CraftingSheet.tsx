@@ -286,7 +286,11 @@ function ItemSetList({ entries, items, icons, onSelectItemCraft, onMoveItemCraft
   const openEntries = openEntryIds.filter((entryId) => entries.some((entry) => entry.id === entryId && !entry.disabled))
   const hasExcludedEntries = columns && entries.some((entry) => entry.disabled)
   const hasExpandedEntries = columns && openEntries.length > 0
-  const usesCompactRows = (hasExcludedEntries || hasExpandedEntries) && rowCount !== undefined
+  const usesNaturalRows = (hasExcludedEntries || hasExpandedEntries) && rowCount !== undefined
+  const usesIndependentColumns = hasExcludedEntries && rowCount !== undefined
+  const compactColumns = usesIndependentColumns && rowCount
+    ? Array.from({ length: Math.ceil(entries.length / rowCount) }, (_, columnIndex) => entries.slice(columnIndex * rowCount, (columnIndex + 1) * rowCount))
+    : []
 
   function measureRowCount() {
     if (!columnsRef.current) return
@@ -320,9 +324,13 @@ function ItemSetList({ entries, items, icons, onSelectItemCraft, onMoveItemCraft
     onSetEntryDisabled(entryId, disabled)
   }
 
+  function renderEntry(entry: CraftingSheetEntry) {
+    return <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={setEntryDisabled} onOpenChange={columns ? (open) => setEntryOpen(entry.id, open) : undefined} />
+  }
+
   return <section className={`crafting-sheet__sets${columns ? ' crafting-sheet__sets--columns' : ''}`} aria-label="Selected item sets"><h3>item sets</h3>
     {entries.length === 0 && <p className="crafting-sheet__empty">Add an item set with available crafts to build a crafting sheet.</p>}
-    {entries.length > 0 && <div ref={columnsRef} className={`crafting-sheet__set-columns${usesCompactRows ? ' crafting-sheet__set-columns--compact-rows' : ''}`} style={usesCompactRows ? { '--crafting-sheet-entry-row-count': String(rowCount) } as CSSProperties : undefined}>{entries.map((entry) => <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={setEntryDisabled} onOpenChange={columns ? (open) => setEntryOpen(entry.id, open) : undefined} />)}</div>}
+    {entries.length > 0 && <div ref={columnsRef} className={`crafting-sheet__set-columns${usesIndependentColumns ? ' crafting-sheet__set-columns--compact-rows' : usesNaturalRows ? ' crafting-sheet__set-columns--expanded' : ''}`}>{usesIndependentColumns ? compactColumns.map((entryColumn, columnIndex) => <div className="crafting-sheet__set-column" key={columnIndex}>{entryColumn.map(renderEntry)}</div>) : entries.map(renderEntry)}</div>}
   </section>
 }
 
