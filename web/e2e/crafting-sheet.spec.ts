@@ -30,6 +30,7 @@ test('expands a sheet item set without clipping its controls inside a compact ro
 
   await entry.getByRole('button', { name: 'Expand item set 1' }).click()
   await expect(entry.getByRole('button', { name: /choose craft for/ }).first()).toBeVisible()
+  expect(await entry.evaluate((element) => element.getBoundingClientRect().width)).toBeCloseTo(collapsedWidth, 0)
   expect(await entry.evaluate((element) => element.scrollHeight <= element.clientHeight + 1)).toBe(true)
   await entry.getByRole('button', { name: 'Collapse item set 1' }).click()
   await expect.poll(async () => (await entry.locator('.crafting-sheet__details').boundingBox())!.height).toBe(0)
@@ -153,7 +154,7 @@ test('crafting sheet has compact rows and animates open and closed like calculat
   await expect(card.locator('.crafting-sheet__query-preview')).toHaveCSS('border-top-width', '1px')
   await expect(card.locator('.item-icon').first()).toHaveCSS('width', '24px')
   await expect(card.locator('.item-icon').first()).toHaveCSS('height', '24px')
-  await expect(sheet.locator('.crafting-sheet__entry-body')).toHaveCount(0)
+  await expect(sheet.locator('.crafting-sheet__entry-body')).toHaveCount(1)
   await expect(sheet.getByText('Updating crafting sheet… Totals include ready crafts.')).toHaveCount(0)
   await page.evaluate(() => document.fonts.ready)
   await sheet.screenshot({ path: 'test-results/crafting-sheet-compact-desktop.png', style: '.app-header { visibility: hidden !important; }' })

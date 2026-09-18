@@ -188,7 +188,7 @@ describe('CraftingSheet', () => {
   test('shows pending and unavailable sets with clear status messages', () => {
     const input = props()
     render(<CraftingSheet {...input} entries={[{ ...input.entries[0], status: 'pending', selectedSearch: undefined }]} isCalculating warning="Unable to save choices." />)
-    expect(screen.getByText('Calculating crafts…')).toBeVisible()
+    expect(within(screen.getByRole('button', { name: 'Expand item set 1' })).getByText('Calculating crafts…')).toBeVisible()
     expect(screen.getByText('Unable to save choices.')).toHaveAttribute('role', 'status')
   })
 

@@ -54,10 +54,10 @@ function totalScoreHue(entries: readonly CraftingSheetEntry[], scoreDelta: numbe
   return Math.round(132 * (1 - severity))
 }
 
-function SheetDisclosure({ id, open, children }: { id: string; open: boolean; children: ReactNode }) {
+function SheetDisclosure({ id, open, children, sizeWhileCollapsed = false }: { id: string; open: boolean; children: ReactNode; sizeWhileCollapsed?: boolean }) {
   const [hasOpened, setHasOpened] = useState(open)
   useEffect(() => { if (open) setHasOpened(true) }, [open])
-  if (!open && !hasOpened) return null
+  if (!open && !hasOpened && !sizeWhileCollapsed) return null
 
   return <div id={id} className={`crafting-sheet__details${open ? ' crafting-sheet__details--open' : ''}`} aria-hidden={!open} inert={!open}>
     <div className="crafting-sheet__details-clip">{children}</div>
@@ -172,7 +172,7 @@ function ItemSetCard({ entry, items, icons, onSelectItemCraft, onMoveItemCraft, 
       </button>
       <label className="crafting-sheet__include"><input type="checkbox" checked={!entry.disabled} aria-label={`Include ${entry.label}`} onChange={(event) => onSetEntryDisabled(entry.id, !event.target.checked)} />{entry.disabled ? 'excluded' : 'included'}</label>
     </header>
-    <SheetDisclosure id={detailsId} open={isOpen}>
+    <SheetDisclosure id={detailsId} open={isOpen} sizeWhileCollapsed>
     <div className="crafting-sheet__entry-body">
     {entry.status !== 'ready'
       ? <p className="crafting-sheet__empty">{entry.status === 'pending' ? 'Calculating crafts…' : 'No available craft for this item set. Check its inventory and targets.'}</p>

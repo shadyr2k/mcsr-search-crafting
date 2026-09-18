@@ -17,7 +17,6 @@
   display: grid;
   grid-template-rows: 0fr;
   min-width: 0;
-  max-width: 0;
   opacity: 0;
   pointer-events: none;
   transition: grid-template-rows 420ms cubic-bezier(.4, 0, .2, 1), opacity 220ms ease;
@@ -25,7 +24,6 @@
 }
 .crafting-sheet__details--open {
   grid-template-rows: 1fr;
-  max-width: none;
   opacity: 1;
   pointer-events: auto;
   animation-name: craft-disclosure-open;
