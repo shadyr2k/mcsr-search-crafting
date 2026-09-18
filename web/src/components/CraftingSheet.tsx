@@ -143,6 +143,12 @@ function ItemSetCard({ entry, items, icons, onSelectItemCraft, onMoveItemCraft, 
   const [isOpen, setIsOpen] = useState(false)
   const headingId = useId()
   const detailsId = useId()
+  if (entry.disabled) return <section className="crafting-sheet__entry crafting-sheet__entry--disabled" aria-labelledby={headingId}>
+    <header className="crafting-sheet__entry-heading">
+      <span id={headingId} className="crafting-sheet__entry-label">{entry.label}</span>
+      <label className="crafting-sheet__include"><input type="checkbox" checked={false} aria-label={`Include ${entry.label}`} onChange={(event) => onSetEntryDisabled(entry.id, !event.target.checked)} />excluded</label>
+    </header>
+  </section>
   return <section className={`crafting-sheet__entry${entry.disabled ? ' crafting-sheet__entry--disabled' : ''}`} aria-labelledby={headingId}>
     <header className="crafting-sheet__entry-heading">
       <button type="button" className="crafting-sheet__entry-toggle" aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${entry.label}`} aria-expanded={isOpen} aria-controls={detailsId} onClick={() => {
@@ -277,7 +283,7 @@ function ItemSetList({ entries, items, icons, onSelectItemCraft, onMoveItemCraft
   const columnsRef = useRef<HTMLDivElement>(null)
   const [openEntryIds, setOpenEntryIds] = useState<readonly string[]>([])
   const [expandedRowCount, setExpandedRowCount] = useState(1)
-  const openEntries = openEntryIds.filter((entryId) => entries.some((entry) => entry.id === entryId))
+  const openEntries = openEntryIds.filter((entryId) => entries.some((entry) => entry.id === entryId && !entry.disabled))
 
   function setEntryOpen(entryId: string, open: boolean) {
     if (open && columnsRef.current) {

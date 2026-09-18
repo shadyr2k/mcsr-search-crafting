@@ -72,7 +72,9 @@
 .crafting-sheet__sets { display: grid; gap: .65rem; min-width: 0; }
 .crafting-sheet__set-columns { display: grid; gap: .65rem; min-width: 0; }
 .crafting-sheet__entry { min-width: 0; padding: .65rem .85rem; border: 1px solid var(--border); border-radius: .6rem; background: var(--page); }
-.crafting-sheet__entry--disabled { background: color-mix(in srgb, var(--page) 50%, var(--panel)); border-style: dashed; }
+.crafting-sheet__entry--disabled { align-self: start; background: color-mix(in srgb, var(--page) 50%, var(--panel)); border-style: dashed; }
+.crafting-sheet__entry--disabled .crafting-sheet__entry-heading { min-height: 1.5rem; justify-content: space-between; }
+.crafting-sheet__entry--disabled .crafting-sheet__entry-label { flex: 1; }
 .crafting-sheet__entry--disabled .crafting-sheet__plan, .crafting-sheet__entry--disabled .crafting-sheet__entry-metrics { opacity: .55; }
 .crafting-sheet__entry-heading { display: flex; align-items: center; gap: .6rem; }
 .crafting-sheet__entry-toggle { display: flex; flex: 1; min-width: 0; align-items: center; justify-content: space-between; gap: .5rem; padding: .2rem; border: 0; background: transparent; text-align: start; }

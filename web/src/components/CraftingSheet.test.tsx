@@ -165,12 +165,22 @@ describe('CraftingSheet', () => {
     expect(input.onSelectItemCraft).toHaveBeenCalledWith('bed-anchor', 'bed', input.entries[0].itemChoices[0].options.find((value) => value.label === 'bed')!.id)
   })
 
-  test('keeps disabled sets in place and reports include and reset actions', () => {
+  test('collapses disabled sets to a compact row until they are re-enabled', () => {
     const input = props()
+    const { rerender } = render(<CraftingSheet {...input} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Expand item set 1' }))
     const disabled = { ...input.entries[0], disabled: true }
-    render(<CraftingSheet {...input} entries={[disabled]} disabledEntries={[disabled]} />)
+    rerender(<CraftingSheet {...input} entries={[disabled]} disabledEntries={[disabled]} />)
+
+    const row = screen.getByRole('region', { name: 'item set 1' })
+    expect(row).toHaveClass('crafting-sheet__entry--disabled')
+    expect(screen.queryByRole('button', { name: /item set 1/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'choose craft for bed' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('checkbox', { name: 'Include item set 1' }))
     expect(input.onSetEntryDisabled).toHaveBeenCalledWith('bed-anchor', false)
+
+    rerender(<CraftingSheet {...input} />)
+    expect(screen.getByRole('button', { name: 'Collapse item set 1' })).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: 'reset sheet' }))
     expect(input.onReset).toHaveBeenCalledOnce()
   })

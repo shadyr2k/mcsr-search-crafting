@@ -98,6 +98,7 @@ test('crafting sheet customizes bed and anchor, persists choices, and fits narro
   await page.setViewportSize({ width: 375, height: 1000 })
   await sheet.screenshot({ path: 'test-results/crafting-sheet-mobile.png', style: '.app-header { visibility: hidden !important; }' })
   await card.getByRole('checkbox', { name: 'Include item set 1' }).uncheck()
+  await expect(card.getByRole('button', { name: /item set 1/ })).toHaveCount(0)
   await expect(sheet.getByLabel('Total characters')).toHaveText('0')
   await sheet.getByRole('button', { name: 'reset sheet' }).click()
   await expect(card.getByRole('checkbox', { name: 'Include item set 1' })).toBeChecked()
