@@ -180,6 +180,22 @@ def test_newer_version_items_can_use_their_translated_name_while_tooltips_are_un
     assert item.generation_method == "name_only"
 
 
+@pytest.mark.parametrize(("item_id", "name", "expected_lines"), [
+    ("minecraft:wooden_spear", "Wooden Spear", ["Wooden Spear", "When in main hand:", "-2.46 Attack Speed"]),
+    ("minecraft:stone_spear", "Stone Spear", ["Stone Spear", "When in main hand:", "+1 Attack Damage", "-2.67 Attack Speed"]),
+    ("minecraft:copper_spear", "Copper Spear", ["Copper Spear", "When in main hand:", "+1 Attack Damage", "-2.82 Attack Speed"]),
+    ("minecraft:iron_spear", "Iron Spear", ["Iron Spear", "When in main hand:", "+2 Attack Damage", "-2.95 Attack Speed"]),
+    ("minecraft:golden_spear", "Golden Spear", ["Golden Spear", "When in main hand:", "-2.95 Attack Speed"]),
+    ("minecraft:diamond_spear", "Diamond Spear", ["Diamond Spear", "When in main hand:", "+3 Attack Damage", "-3.05 Attack Speed"]),
+    ("minecraft:netherite_spear", "Netherite Spear", ["Netherite Spear", "When in main hand:", "+4 Attack Damage", "-3.13 Attack Speed"]),
+])
+def test_26_1_2_spears_include_their_source_defined_attributes(item_id, name, expected_lines):
+    item = build_search_item(item_id, name, None, minecraft_version="26.1.2")
+
+    assert [line.text for line in item.search_lines] == expected_lines
+    assert item.generation_method == "derived_attribute_logic"
+
+
 def test_all_scoped_recipe_outputs_have_an_explicit_tooltip_classification():
     recipes = load_crafting_recipes(MINECRAFT_DATA_ROOT / "recipes")
     catalog = TranslationCatalog.load(MINECRAFT_DATA_ROOT / "lang" / "en_us.json")

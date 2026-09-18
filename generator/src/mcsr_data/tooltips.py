@@ -118,6 +118,28 @@ TOOL_TYPES: Mapping[str, ToolTypeDefinition] = {
     ),
 }
 
+# Minecraft 26.1.2's Item.Properties.spear builder assigns these material
+# damage bonuses and derives attack speed as (1 / swing duration) - 4. The
+# values were read from the supplied 26.1.2 client JAR.
+SPEAR_26_1_2_ATTACK_DAMAGE: Mapping[str, Decimal] = {
+    "wooden": Decimal("0"),
+    "stone": Decimal("1"),
+    "copper": Decimal("1"),
+    "iron": Decimal("2"),
+    "golden": Decimal("0"),
+    "diamond": Decimal("3"),
+    "netherite": Decimal("4"),
+}
+SPEAR_26_1_2_SWING_DURATIONS: Mapping[str, Decimal] = {
+    "wooden": Decimal("0.65"),
+    "stone": Decimal("0.75"),
+    "copper": Decimal("0.85"),
+    "iron": Decimal("0.95"),
+    "golden": Decimal("0.95"),
+    "diamond": Decimal("1.05"),
+    "netherite": Decimal("1.15"),
+}
+
 ARMOR_MATERIALS: Mapping[str, ArmorMaterialDefinition] = {
     "leather": ArmorMaterialDefinition(
         protection={"boots": Decimal("1"), "leggings": Decimal("2"), "chestplate": Decimal("3"), "helmet": Decimal("1")},
@@ -284,6 +306,7 @@ def build_search_item(
     overrides: Mapping[str, TooltipOverride] | None = None,
     catalog: TranslationCatalog | None = None,
     allow_unclassified_name_only: bool = False,
+    minecraft_version: str | None = None,
 ) -> SearchItem:
     hide_flags = _validated_hide_flags(item_id, output_nbt)
     override = (load_overrides() if overrides is None else overrides).get(item_id)
@@ -322,7 +345,7 @@ def build_search_item(
             confidence="source_reproduced",
         )
 
-    equipment = _equipment_attributes(item_id, catalog)
+    equipment = _equipment_attributes(item_id, catalog, minecraft_version=minecraft_version)
     if item_id in classifications.equipment and equipment is None:
         raise UnsupportedTooltipItemError(
             f"{item_id}: classified as equipment but has no source-backed equipment rule"
@@ -353,6 +376,8 @@ def build_search_item(
 def _equipment_attributes(
     item_id: str,
     catalog: TranslationCatalog | None,
+    *,
+    minecraft_version: str | None,
 ) -> tuple[str, tuple[tuple[Decimal, str, Decimal], ...]] | None:
     if not item_id.startswith("minecraft:"):
         return None
@@ -377,6 +402,24 @@ def _equipment_attributes(
             ),
         )
         return _translation(catalog, "item.modifiers.mainhand", _MAIN_HAND_HEADER), modifiers
+
+    if minecraft_version == "26.1.2" and item_type == "spear":
+        attack_damage = SPEAR_26_1_2_ATTACK_DAMAGE.get(material)
+        swing_duration = SPEAR_26_1_2_SWING_DURATIONS.get(material)
+        if attack_damage is not None and swing_duration is not None:
+            modifiers = (
+                (
+                    attack_damage,
+                    _translation(catalog, "attribute.name.generic.attack_damage", "Attack Damage"),
+                    Decimal("1"),
+                ),
+                (
+                    Decimal("1") / swing_duration - Decimal("4"),
+                    _translation(catalog, "attribute.name.generic.attack_speed", "Attack Speed"),
+                    Decimal("1"),
+                ),
+            )
+            return _translation(catalog, "item.modifiers.mainhand", _MAIN_HAND_HEADER), modifiers
 
     armor_material = ARMOR_MATERIALS.get(material)
     header = _ARMOR_HEADERS.get(item_type)

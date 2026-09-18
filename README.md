@@ -4,7 +4,7 @@ MCSR Search Crafting is a static React application that ranks Minecraft Java Edi
 
 The workspace is English-only and organized as three responsive columns: the combined English score, saved item sets, and their calculated searches. Each item set owns an independent infinite inventory and grid size. Draft edits are isolated until **Save**; Cancel leaves the saved calculation and browser data unchanged. Rows show the best three unified single/overlap routes by default, with up to ten on expansion. Native 16×16 Minecraft item icons are imported from the pinned client; see [the exporter workflow](docs/icon-exporter.md).
 
-Each package includes shaped and shapeless crafting-table recipes; it does not infer materials recursively, track quantities, simulate recipe unlocks, or include furnace, blasting, smoking, campfire, stonecutting, or smithing recipes. The 26.1.2 package loads all supplied language translations. Its newer item tooltip lines use the existing audited rules when available and otherwise search the translated item name.
+Each package includes shaped and shapeless crafting-table recipes; it does not infer materials recursively, track quantities, simulate recipe unlocks, or include furnace, blasting, smoking, campfire, stonecutting, or smithing recipes. The 26.1.2 package loads all supplied language translations and reproduces its seven source-defined spear damage and attack-speed tooltip lines. Other newer item tooltips use the existing audited rules when available and otherwise search the translated item name.
 
 ## Prerequisites
 

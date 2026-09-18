@@ -133,6 +133,7 @@ def generate(
         overrides,
         report,
         allow_unclassified_name_only=minecraft_version != MINECRAFT_VERSION,
+        minecraft_version=minecraft_version,
     )
     inventory_items = _build_inventory_items(enriched_recipes, presets, catalog, report)
     localized_catalogs = _load_language_catalogs(
@@ -402,6 +403,7 @@ def _build_items(
     *,
     subject_prefix: str = "",
     allow_unclassified_name_only: bool = False,
+    minecraft_version: str = MINECRAFT_VERSION,
 ) -> dict[str, SearchItem]:
     if catalog is None:
         return {}
@@ -415,6 +417,7 @@ def _build_items(
                 overrides=overrides,
                 catalog=catalog,
                 allow_unclassified_name_only=allow_unclassified_name_only,
+                minecraft_version=minecraft_version,
             )
         except KeyError as error:
             report.error("missing_translation", f"{subject_prefix}{item_id}", str(error))
@@ -483,6 +486,7 @@ def _build_localized_search_data(
             report,
             subject_prefix=f"{locale}:",
             allow_unclassified_name_only=minecraft_version != MINECRAFT_VERSION,
+            minecraft_version=minecraft_version,
         )
         inventory_items = _build_inventory_items(
             recipes,
