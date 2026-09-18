@@ -61,8 +61,26 @@ describe('CraftingSheet', () => {
     expect(screen.getByLabelText('Character occurrence bar chart')).toBeVisible()
     expect(container.querySelector('.crafting-sheet__panel--page > .crafting-sheet__page-info')).toBeTruthy()
     expect(container.querySelector('.crafting-sheet__panel--page > .crafting-sheet__sets')).toBeTruthy()
+    expect(container.querySelector('.crafting-sheet__disclosure .arrow-sprite--left')).toBeTruthy()
+    expect(screen.getByText((_, element) => Boolean(element?.classList.contains('crafting-sheet__hint') && element.textContent === '_ = space · ← = backspace · SH = shift home (replace search)'))).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: 'Back to english crafts' }))
     expect(input.onBack).toHaveBeenCalledOnce()
+  })
+
+  test('uses SH for search replacement in the dedicated sheet page', () => {
+    const input = props()
+    const first = search('aw', 'anchor')
+    const replacementStep = search('bed').steps[0]
+    const replacement: RankedSearch = {
+      ...first,
+      kind: 'overlap',
+      queries: ['aw', 'bed'],
+      steps: [first.steps[0], { ...replacementStep, retainedPrefix: '', freeBackspaceCount: 2, typedSuffix: 'bed' }],
+    }
+
+    render(<CraftingSheet {...input} entries={[{ ...input.entries[0], selectedSearch: replacement }]} layout="page" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Expand item set 1' }))
+    expect(screen.getByText('SH', { selector: '.crafting-sheet__key' })).toHaveAttribute('title', 'Select the previous query, then replace it')
   })
 
   test('keeps inclusion independent of expansion and retains the editor while animating closed', () => {

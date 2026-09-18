@@ -1716,6 +1716,8 @@ h3 {
     var(--language-score-high)
   );
 }
+:root[data-theme] .arrow-sprite--left,
+:root[data-theme] .arrow-sprite--right,
 :root[data-theme] .arrow-sprite--up,
 :root[data-theme] .arrow-sprite--down { filter: var(--navigation-sprite-filter); }
 :root[data-theme] h1,

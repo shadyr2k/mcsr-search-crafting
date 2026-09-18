@@ -96,6 +96,7 @@ describe('App workspace composition', () => {
     expect(screen.getByAltText('Stick')).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'english (us) search crafts' })).toBeTruthy()
     expect(screen.getByText('optimize recipe book results')).toBeTruthy()
+    expect(document.querySelector('.results-column .crafting-sheet__disclosure .arrow-sprite')?.classList.contains('arrow-sprite--right')).toBe(true)
   })
 
   test('opens the crafting sheet as a sliding page and returns to the crafts', async () => {
