@@ -477,6 +477,7 @@ function App() {
       disabledEntries={craftingSheet.disabledEntries}
       characterSet={craftingSheet.characterSet}
       characterUsages={craftingSheet.characterUsages}
+      optimalCharacterCount={craftingSheet.optimalCharacterCount}
       totalTypedCharacters={craftingSheet.totalTypedCharacters}
       totalScore={craftingSheet.totalScore}
       scoreDelta={craftingSheet.scoreDelta}
@@ -511,6 +512,7 @@ function App() {
           disabledEntries={craftingSheet.disabledEntries}
           characterSet={craftingSheet.characterSet}
           characterUsages={craftingSheet.characterUsages}
+          optimalCharacterCount={craftingSheet.optimalCharacterCount}
           totalTypedCharacters={craftingSheet.totalTypedCharacters}
           totalScore={craftingSheet.totalScore}
           scoreDelta={craftingSheet.scoreDelta}

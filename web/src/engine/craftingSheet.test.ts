@@ -109,11 +109,23 @@ describe('crafting sheet model', () => {
     expect(model.entries.map((sheetEntry) => sheetEntry.queryLabel)).toEqual(['k', 'k'])
     expect(model.entries.map((sheetEntry) => sheetEntry.options.map((option) => option.label))).toEqual([['a', 'k'], ['b', 'k']])
     expect(model.characterSet).toEqual(['k'])
+    expect(model.optimalCharacterCount).toBe(1)
     expect(model.characterUsages).toEqual([expect.objectContaining({
       character: 'k',
       craftCount: 2,
       entryIds: ['first', 'second'],
     })])
+  })
+
+  test('keeps the score-optimal character count when a higher-score choice saves characters', () => {
+    const first = entry('first', 0)
+    const firstAlternatives = [search('ab'), search('k', 1)]
+    const model = createCraftingSheetModel([first], new Map([
+      [first.id, ready(first.id, firstAlternatives)],
+    ]), { first: { craftKey: craftingSheetCraftKey(firstAlternatives[1]) } })
+
+    expect(model.characterSet).toEqual(['k'])
+    expect(model.optimalCharacterCount).toBe(2)
   })
 
   test('honors a manual non-optimal craft selection and excludes disabled rows from character counts', () => {

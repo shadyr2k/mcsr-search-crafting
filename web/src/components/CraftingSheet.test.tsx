@@ -51,7 +51,7 @@ describe('CraftingSheet', () => {
     expect(screen.queryByRole('button', { name: 'choose craft for bed' })).not.toBeInTheDocument()
   })
 
-  test('uses two columns on its dedicated page and provides a back control', () => {
+  test('uses a character-details column, chart column, and item-set columns on its dedicated page', () => {
     const input = { ...props(), onBack: vi.fn() }
 
     const { container } = render(<CraftingSheet {...input} layout="page" />)
@@ -60,9 +60,14 @@ describe('CraftingSheet', () => {
     expect(screen.getByRole('button', { name: 'Back to english crafts' })).toBeVisible()
     expect(screen.getByLabelText('Character occurrence bar chart')).toBeVisible()
     expect(container.querySelector('.crafting-sheet__panel--page > .crafting-sheet__page-info')).toBeTruthy()
+    expect(container.querySelector('.crafting-sheet__chart--page')).toBeTruthy()
     expect(container.querySelector('.crafting-sheet__panel--page > .crafting-sheet__sets')).toBeTruthy()
+    expect(container.querySelector('.crafting-sheet__sets--columns .crafting-sheet__set-columns')).toBeTruthy()
     expect(container.querySelector('.crafting-sheet__disclosure .arrow-sprite--left')).toBeTruthy()
     expect(screen.getByText((_, element) => Boolean(element?.classList.contains('crafting-sheet__hint') && element.textContent === '_ = space · ← = backspace · SH = shift home (replace search)'))).toBeVisible()
+    expect(screen.queryByText('character usage')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Show details for b' }))
+    expect(screen.getByLabelText('b crafts')).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: 'Back to english crafts' }))
     expect(input.onBack).toHaveBeenCalledOnce()
   })
@@ -94,6 +99,18 @@ describe('CraftingSheet', () => {
     const worstEntry = { ...input.entries[0], totalScore: worstOption.totalScore, scoreDelta: worstOption.scoreDelta }
     rerender(<CraftingSheet {...input} entries={[worstEntry]} totalScore={worstOption.totalScore} scoreDelta={worstOption.scoreDelta} />)
     expect(screen.getByLabelText('Total score').style.getPropertyValue('--crafting-sheet-score-hue')).toBe('0deg')
+  })
+
+  test('shows distinct-character savings or cost against the score-optimal setup', () => {
+    const input = props()
+    const { rerender } = render(<CraftingSheet {...input} />)
+    expect(screen.getByLabelText('Distinct characters')).toHaveTextContent('4+2')
+
+    rerender(<CraftingSheet {...input} characterSet={['k']} optimalCharacterCount={2} />)
+    expect(screen.getByLabelText('Distinct characters')).toHaveTextContent('1-1')
+
+    rerender(<CraftingSheet {...input} characterSet={['k']} optimalCharacterCount={1} />)
+    expect(screen.getByLabelText('Distinct characters')).toHaveTextContent('1±0')
   })
 
   test('keeps inclusion independent of expansion and retains the editor while animating closed', () => {
@@ -165,7 +182,7 @@ describe('CraftingSheet', () => {
     expect(screen.getByText('Unable to save choices.')).toHaveAttribute('role', 'status')
   })
 
-  test('renders execution controls outside the query font and can inspect character usage', () => {
+  test('renders execution controls outside the query font and can inspect selected-character usage', () => {
     const input = props()
     const first = search('aw', 'anchor')
     const next = search('a be').steps[0]
@@ -176,8 +193,7 @@ describe('CraftingSheet', () => {
     expect(screen.getByText('_be', { selector: '.crafting-sheet__query-text' })).toBeVisible()
     expect(screen.getByLabelText('1 backspace')).toHaveClass('crafting-sheet__key')
     expect(container.querySelector('.crafting-sheet__key .crafting-sheet__query-text')).toBeNull()
-    fireEvent.click(screen.getByText('character usage'))
-    fireEvent.click(screen.getByRole('button', { name: /b.*1 craft/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show details for b' }))
     expect(screen.getByLabelText('b crafts').querySelector('mark')).toHaveTextContent('b')
   })
 })

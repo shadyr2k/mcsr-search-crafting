@@ -67,6 +67,8 @@ export interface CraftingSheetModel {
   disabledEntries: readonly CraftingSheetEntry[]
   characterSet: readonly string[]
   characterUsages: readonly CraftingSheetCharacterUsage[]
+  /** Fewest distinct characters among all score-optimal choices for active item sets. */
+  optimalCharacterCount: number
   isCalculating: boolean
   totalTypedCharacters: number
   totalScore: number
@@ -244,6 +246,15 @@ function defaultOptionIds(
   return bestSelections
 }
 
+function characterCountForSelections(entries: readonly CandidateEntry[], selections: ReadonlyMap<string, string>): number {
+  const characters = new Set<string>()
+  for (const candidate of entries) {
+    const option = candidate.options.find((current) => current.id === selections.get(candidate.entry.id))
+    if (option) for (const character of option.characters) characters.add(character)
+  }
+  return characters.size
+}
+
 function candidateEntries(
   entries: readonly TargetWorkspaceEntry[],
   states: ReadonlyMap<string, RowOptimizationState>,
@@ -363,6 +374,9 @@ export function createCraftingSheetModel(
   selections: Readonly<Record<string, CraftingSheetSelection>> = {},
 ): CraftingSheetModel {
   const candidates = candidateEntries(entries, states)
+  const activeCandidates = candidates.entries.filter((candidate) => selections[candidate.entry.id]?.disabled !== true)
+  const scoreOptimalOptionIds = defaultOptionIds(activeCandidates)
+  const optimalCharacterCount = characterCountForSelections(activeCandidates, scoreOptimalOptionIds)
   // This is the reset target: every row is active and every choice is an
   // equal-score craft selected for the smallest common character set.
   const defaults = defaultOptionIds(candidates.entries)
@@ -451,6 +465,7 @@ export function createCraftingSheetModel(
     disabledEntries: sheetEntries.filter((entry) => entry.disabled),
     characterSet: [...characterOccurrences.keys()].sort((left, right) => left.localeCompare(right)),
     characterUsages,
+    optimalCharacterCount,
     isCalculating: candidates.isCalculating,
     totalTypedCharacters: sheetEntries.reduce((sum, entry) => sum + (entry.disabled ? 0 : entry.totalTypedCharacters), 0),
     totalScore: sheetEntries.reduce((sum, entry) => sum + (entry.disabled ? 0 : entry.totalScore), 0),
