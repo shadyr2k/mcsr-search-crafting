@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
 import type { IconManifest } from '../data/iconManifest'
 import type { RankedSearch, SearchItem } from '../domain/types'
@@ -282,25 +282,47 @@ function SheetSummary({
 function ItemSetList({ entries, items, icons, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, columns = false }: Pick<CraftingSheetProps, 'entries' | 'items' | 'icons' | 'onSelectItemCraft' | 'onMoveItemCraft' | 'onSetEntryDisabled'> & { columns?: boolean }) {
   const columnsRef = useRef<HTMLDivElement>(null)
   const [openEntryIds, setOpenEntryIds] = useState<readonly string[]>([])
-  const [expandedRowCount, setExpandedRowCount] = useState(1)
+  const [rowCount, setRowCount] = useState<number>()
   const openEntries = openEntryIds.filter((entryId) => entries.some((entry) => entry.id === entryId && !entry.disabled))
+  const hasExcludedEntries = columns && entries.some((entry) => entry.disabled)
+  const hasExpandedEntries = columns && openEntries.length > 0
+  const usesCompactRows = (hasExcludedEntries || hasExpandedEntries) && rowCount !== undefined
+
+  function measureRowCount() {
+    if (!columnsRef.current) return
+    const styles = getComputedStyle(columnsRef.current)
+    const rowGap = Number.parseFloat(styles.rowGap) || 0
+    const minimumRowHeight = (Number.parseFloat(styles.fontSize) || 16) * 3.75
+    if (columnsRef.current.clientHeight > 0) {
+      const nextRowCount = Math.max(1, Math.floor((columnsRef.current.clientHeight + rowGap) / (minimumRowHeight + rowGap)))
+      setRowCount((current) => current === nextRowCount ? current : nextRowCount)
+    }
+  }
+
+  useLayoutEffect(() => {
+    if (!columns || (!hasExcludedEntries && !hasExpandedEntries)) return
+    measureRowCount()
+    if (typeof ResizeObserver === 'undefined' || !columnsRef.current) return
+    const observer = new ResizeObserver(measureRowCount)
+    observer.observe(columnsRef.current)
+    return () => observer.disconnect()
+  }, [columns, hasExcludedEntries, hasExpandedEntries])
 
   function setEntryOpen(entryId: string, open: boolean) {
-    if (open && columnsRef.current) {
-      const firstEntry = columnsRef.current.querySelector<HTMLElement>('.crafting-sheet__entry')
-      const rowGap = Number.parseFloat(getComputedStyle(columnsRef.current).rowGap) || 0
-      const rowHeight = firstEntry?.getBoundingClientRect().height ?? 0
-      if (rowHeight > 0) setExpandedRowCount(Math.max(1, Math.round((columnsRef.current.clientHeight + rowGap) / (rowHeight + rowGap))))
-    }
+    if (open) measureRowCount()
     setOpenEntryIds((current) => open
       ? current.includes(entryId) ? current : [...current, entryId]
       : current.filter((currentEntryId) => currentEntryId !== entryId))
   }
 
-  const hasExpandedEntries = columns && openEntries.length > 0
+  function setEntryDisabled(entryId: string, disabled: boolean) {
+    if (disabled) measureRowCount()
+    onSetEntryDisabled(entryId, disabled)
+  }
+
   return <section className={`crafting-sheet__sets${columns ? ' crafting-sheet__sets--columns' : ''}`} aria-label="Selected item sets"><h3>item sets</h3>
     {entries.length === 0 && <p className="crafting-sheet__empty">Add an item set with available crafts to build a crafting sheet.</p>}
-    {entries.length > 0 && <div ref={columnsRef} className={`crafting-sheet__set-columns${hasExpandedEntries ? ' crafting-sheet__set-columns--expanded' : ''}`} style={hasExpandedEntries ? { '--crafting-sheet-entry-row-count': String(expandedRowCount) } as CSSProperties : undefined}>{entries.map((entry) => <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} onOpenChange={columns ? (open) => setEntryOpen(entry.id, open) : undefined} />)}</div>}
+    {entries.length > 0 && <div ref={columnsRef} className={`crafting-sheet__set-columns${usesCompactRows ? ' crafting-sheet__set-columns--compact-rows' : ''}`} style={usesCompactRows ? { '--crafting-sheet-entry-row-count': String(rowCount) } as CSSProperties : undefined}>{entries.map((entry) => <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={setEntryDisabled} onOpenChange={columns ? (open) => setEntryOpen(entry.id, open) : undefined} />)}</div>}
   </section>
 }
 
