@@ -36,9 +36,10 @@
 .crafting-sheet--page .crafting-sheet__chart--page { min-width: 0; min-height: 0; padding: .65rem; overflow: auto; border-inline: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 72%, var(--page)); }
 .crafting-sheet--page .crafting-sheet__chart--page .crafting-sheet__hint { font-size: .68rem; }
 .crafting-sheet--page .crafting-sheet__chart--page li { grid-template-columns: 1rem minmax(0, 1fr) 1.1rem; gap: .25rem; min-height: 1.3rem; font-size: .63rem; }
+.crafting-sheet--page .crafting-sheet__chart--page li > :last-child { font-size: .75rem; }
 .crafting-sheet--page .crafting-sheet__chart--page .crafting-sheet__bar-track { height: .45rem; }
 .crafting-sheet--page .crafting-sheet__sets { width: auto; max-width: none; min-width: 0; min-height: 0; align-content: stretch; grid-template-rows: auto minmax(0, 1fr); gap: .25rem; padding: .65rem .65rem 0; }
-.crafting-sheet--page .crafting-sheet__set-columns { display: grid; grid-auto-flow: column; grid-template-rows: repeat(auto-fit, minmax(3.75rem, max-content)); grid-auto-columns: max-content; align-content: space-between; align-items: start; gap: .35rem .65rem; min-height: 0; overflow: auto; padding: 0; }
+.crafting-sheet--page .crafting-sheet__set-columns { display: grid; grid-auto-flow: column; grid-template-rows: repeat(auto-fit, minmax(3.75rem, 1fr)); grid-auto-columns: max-content; align-content: stretch; align-items: stretch; gap: .35rem .65rem; min-height: 0; overflow: auto; padding: 0; }
 .crafting-sheet--page .crafting-sheet__entry { width: auto; max-width: min(28rem, calc(100vw - 4rem)); padding: .45rem .65rem; }
 .crafting-sheet--page .crafting-sheet__entry-heading { gap: .45rem; }
 .crafting-sheet--page .crafting-sheet__entry-toggle { gap: .35rem; padding: .1rem; }
