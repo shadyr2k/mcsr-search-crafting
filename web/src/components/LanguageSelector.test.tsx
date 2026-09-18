@@ -55,6 +55,15 @@ describe('LanguageSelector', () => {
     expect(resultsColumnTitle('fra_de', specialLocales)).toBe('east franconian search crafts')
   })
 
+  test('uses a script qualifier without passing it to Intl as a region', () => {
+    const variants = [
+      { locale: 'be_by', name: 'Беларуская', region: 'Беларусь', script: 'non_latin' as const },
+      { locale: 'be_latn', name: 'Biełaruskaja', region: 'Biełaruś', script: 'latin' as const },
+    ]
+
+    expect(englishLocaleName(variants[1], variants)).toBe(`${englishLanguageName(variants[1])} (latn)`)
+  })
+
   test('filters all categories with one Unicode-aware language search and ranks ready scores first', () => {
     render(<LanguageSelector
       languages={languages}

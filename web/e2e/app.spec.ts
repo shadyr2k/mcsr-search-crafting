@@ -28,6 +28,11 @@ test('switches to the complete 26.1.2 data package', async ({ page }) => {
   await page.getByRole('button', { name: 'Add item set' }).click()
   await page.getByRole('searchbox', { name: 'Search Goals' }).fill('pale oak planks')
   await expect(page.getByRole('button', { name: 'Pale Oak Planks', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Cancel' }).click()
+
+  await page.getByRole('button', { name: 'recipe book sim' }).click()
+  await expect(page.getByRole('region', { name: 'Recipe book results' })).toBeVisible()
+  await expect(page.locator('.recipe-book-sim__book-items li').first()).toBeVisible()
 })
 
 test('keeps craft-row targets and junk counts ordered at every responsive breakpoint', async ({ page }) => {

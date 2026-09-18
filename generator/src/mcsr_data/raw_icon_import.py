@@ -140,19 +140,11 @@ def _prepare_icon(item_id: str, contents: bytes) -> bytes:
                 raise IconImportError(
                     f"{item_id}: expected an RGBA PNG"
                 )
-            if image.size == (16, 16):
-                return contents
-            if image.size != (128, 128):
+            if image.size not in {(16, 16), (128, 128)}:
                 raise IconImportError(
                     f"{item_id}: expected a 16x16 or 128x128 RGBA PNG"
                 )
-            resized = image.resize((16, 16), Image.Resampling.NEAREST)
-            try:
-                output = io.BytesIO()
-                resized.save(output, format="PNG", compress_level=9)
-                return output.getvalue()
-            finally:
-                resized.close()
+            return contents
     except IconImportError:
         raise
     except (OSError, ValueError, UnidentifiedImageError) as error:

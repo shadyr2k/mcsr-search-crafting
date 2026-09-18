@@ -83,6 +83,10 @@ function localeParts(locale: string): [string, string | undefined] {
   return [language, region]
 }
 
+function isRegionCode(value: string): boolean {
+  return /^[a-z]{2}$/i.test(value) || /^\d{3}$/.test(value)
+}
+
 export function englishLanguageName(language: LanguageMetadata): string {
   const [code] = localeParts(language.locale)
   const displayName = MINECRAFT_LANGUAGE_ALIASES[language.locale]
@@ -101,7 +105,9 @@ export function englishLocaleName(language: LanguageMetadata, languages: readonl
   if (variants.length < 2 || !region) return englishLanguageName(language)
   const regionName = region.toLowerCase() === 'us'
     ? 'us'
-    : (englishRegionNames.of(region.toUpperCase()) ?? region).toLocaleLowerCase('en-US')
+    : isRegionCode(region)
+      ? (englishRegionNames.of(region.toUpperCase()) ?? region).toLocaleLowerCase('en-US')
+      : region.toLocaleLowerCase('en-US')
   return `${englishLanguageName(language)} (${regionName})`
 }
 

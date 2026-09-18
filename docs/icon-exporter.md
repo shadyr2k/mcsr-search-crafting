@@ -68,7 +68,6 @@ remain future work.
 
 The 26.1.2 package uses a supplied flat archive of item PNGs rather than the
 1.16.1 exporter. `mcsr-import-raw-icons` selects only the exact generated
-search/inventory union, checks every image is RGBA, and converts the archive's
-128×128 pixel-art exports to 16×16 with nearest-neighbor resampling. Extra
-26.2 icons are ignored. The importer fails if a required 26.1.2 item has no
-matching filename.
+search/inventory union, checks every image is RGBA, and preserves the archive's
+128×128 pixel-art exports. Extra 26.2 icons are ignored. The importer fails if
+a required 26.1.2 item has no matching filename.

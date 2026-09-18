@@ -92,7 +92,7 @@ def test_rejects_non_native_icon_images(tmp_path):
         import_raw_icon_archive(archive, search, inventory, tmp_path / "output", minecraft_version="26.1.2")
 
 
-def test_downsamples_the_archive_export_size_without_smoothing(tmp_path):
+def test_preserves_the_archive_export_size_without_smoothing(tmp_path):
     search = tmp_path / "search-items.json"
     inventory = tmp_path / "inventory-items.json"
     archive = tmp_path / "icons.zip"
@@ -104,7 +104,8 @@ def test_downsamples_the_archive_export_size_without_smoothing(tmp_path):
 
     with Image.open(tmp_path / "output" / "minecraft" / "stick.png") as icon:
         assert icon.mode == "RGBA"
-        assert icon.size == (16, 16)
+        assert icon.size == (128, 128)
+    assert (tmp_path / "output" / "minecraft" / "stick.png").read_bytes() == png_bytes(size=(128, 128))
 
 
 def test_uses_an_explicit_icon_override_for_component_variants(tmp_path):
