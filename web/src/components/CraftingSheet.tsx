@@ -254,7 +254,7 @@ function SheetSummary({
     <div className="crafting-sheet__intro"><p>create a custom craft sheet</p><button type="button" className="crafting-sheet__reset" onClick={onReset}>reset sheet</button></div>
     <div className="crafting-sheet__totals" aria-live="polite" aria-atomic="true">
       <div><strong aria-label="Total characters">{totalTypedCharacters}</strong><span>total characters</span></div>
-      <div><strong aria-label="Distinct characters" title="Difference from the fewest characters possible among all score-optimal craft choices.">{characterSet.length}<small className={`crafting-sheet__character-delta${characterDelta < 0 ? ' crafting-sheet__character-delta--saved' : ''}`}>{characterDelta === 0 ? '±0' : `${characterDelta > 0 ? '+' : ''}${characterDelta}`}</small></strong><span>distinct characters</span></div>
+      <div><strong aria-label="Distinct characters" title="Difference from the fewest characters possible among all score-optimal craft choices.">{characterSet.length}{characterDelta !== 0 && <small className={`crafting-sheet__character-delta${characterDelta < 0 ? ' crafting-sheet__character-delta--saved' : ''}`}>{characterDelta > 0 ? '+' : ''}{characterDelta}</small>}</strong><span>distinct characters</span></div>
       <div><strong>{readyCount}</strong><span>included item sets</span></div>
       <div><strong className="crafting-sheet__score" style={{ '--crafting-sheet-score-hue': `${scoreHue}deg` } as CSSProperties} aria-label="Total score" title="Green is tied with the best score; red is the high end of the available score range.">{totalScore}</strong><span>total score · {scoreDelta === 0 ? 'best' : `${scoreDelta > 0 ? '+' : ''}${scoreDelta} vs best`}</span></div>
     </div>

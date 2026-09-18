@@ -110,7 +110,7 @@ describe('CraftingSheet', () => {
     expect(screen.getByLabelText('Distinct characters')).toHaveTextContent('1-1')
 
     rerender(<CraftingSheet {...input} characterSet={['k']} optimalCharacterCount={1} />)
-    expect(screen.getByLabelText('Distinct characters')).toHaveTextContent('1±0')
+    expect(screen.getByLabelText('Distinct characters')).toHaveTextContent(/^1$/)
   })
 
   test('keeps inclusion independent of expansion and retains the editor while animating closed', () => {
