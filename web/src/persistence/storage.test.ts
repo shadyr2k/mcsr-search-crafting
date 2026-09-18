@@ -6,6 +6,7 @@ import {
   loadCustomInventorySlots,
   loadGameVersionPreference,
   loadLanguagePreferences,
+  loadLanguageScoreCache,
   loadRecipeBookInventory,
   loadThemePreference,
   loadTargetWorkspace,
@@ -13,6 +14,7 @@ import {
   saveCraftingSheetPreferences,
   saveGameVersionPreference,
   saveLanguagePreferences,
+  saveLanguageScoreCache,
   saveRecipeBookInventory,
   saveThemePreference,
   saveTargetWorkspace,
@@ -533,5 +535,21 @@ describe('version-scoped crafting records', () => {
     expect(loadTargetWorkspace(storage, '1.16.1').value).toEqual(oldWorkspace)
     expect(loadTargetWorkspace(storage, '26.1.2').value).toEqual(newWorkspace)
     expect(storage.getItem('mcsr.game.26.1.2.mcsr.inventory-slots.v1')).not.toBeNull()
+  })
+
+  test('keeps completed language scores separate for each Minecraft version', () => {
+    const storage = new MemoryStorage()
+    const cache = { entryScores: {
+      '{"targetIds":["minecraft:stick"]}': { en_us: 8, de_de: 5 },
+    } }
+
+    saveLanguageScoreCache(cache, storage, '26.1.2')
+
+    expect(loadLanguageScoreCache(storage, '26.1.2')).toEqual({ value: cache, warning: undefined })
+    expect(loadLanguageScoreCache(storage, '1.16.1')).toEqual({ value: { entryScores: {} }, warning: undefined })
+    expect(JSON.parse(storage.getItem('mcsr.game.26.1.2.mcsr.language-score-cache.v1')!)).toEqual({
+      schemaVersion: 1,
+      entryScores: cache.entryScores,
+    })
   })
 })

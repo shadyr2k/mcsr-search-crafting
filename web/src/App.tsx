@@ -125,7 +125,7 @@ function App() {
   const gameVersion = gameVersionForId(gameVersionId)
   const { states, retry } = useRowOptimizations(data, workspace.entries)
   const craftingSheet = useCraftingSheet(selectedLocale, entries, states, gameVersion.id)
-  const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.packageBaseUrl)
+  const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.packageBaseUrl, gameVersion.id)
 
   useLayoutEffect(() => {
     if (tutorialIndex === null) return

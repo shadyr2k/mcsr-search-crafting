@@ -1,16 +1,44 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { isBannedLocale } from '../components/LanguageSelector'
 import { loadLocalizedSearchPayload, parseLocalizedGeneratedData } from '../data/schema'
 import type { GeneratedData, LanguageMetadata, LanguageScoreState, TargetWorkspaceEntry } from '../domain/types'
 import { aggregateLocaleScore } from '../engine/optimizeWorkspace'
-import { isBannedLocale } from '../components/LanguageSelector'
+import { LEGACY_GAME_VERSION_ID, loadLanguageScoreCache, saveLanguageScoreCache, type LanguageScoreCache } from '../persistence/storage'
+
+interface ScoringEntry {
+  entry: TargetWorkspaceEntry
+  cacheKey: string
+}
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
 }
 
-function scoreableEntries(entries: readonly TargetWorkspaceEntry[]): boolean {
-  return entries.some((entry) => entry.enabled && entry.targetIds.length > 0)
+function cacheKeyForEntry(entry: TargetWorkspaceEntry): string {
+  const targetIds = [...new Set(entry.targetIds)]
+  if (!entry.retainCraftOrder) targetIds.sort()
+  return JSON.stringify({
+    targetIds,
+    inventoryItemIds: [...new Set(entry.inventoryItemIds)].sort(),
+    gridSize: entry.gridSize,
+    retainCraftOrder: entry.retainCraftOrder === true,
+  })
+}
+
+function cachedAggregateScore(
+  cache: LanguageScoreCache | undefined,
+  locale: string,
+  entries: readonly ScoringEntry[],
+): number | undefined {
+  if (!cache) return undefined
+  let total = 0
+  for (const { cacheKey } of entries) {
+    const score = cache.entryScores[cacheKey]?.[locale]
+    if (score === undefined) return undefined
+    total += score
+  }
+  return total
 }
 
 export function useLanguageScores(
@@ -19,38 +47,55 @@ export function useLanguageScores(
   entries: readonly TargetWorkspaceEntry[],
   enabledBannedLocales: ReadonlySet<string>,
   dataBaseUrl = import.meta.env.BASE_URL,
+  minecraftVersion = LEGACY_GAME_VERSION_ID,
 ): ReadonlyMap<string, LanguageScoreState> {
   const [scores, setScores] = useState<ReadonlyMap<string, LanguageScoreState>>(new Map())
-  const enabledBannedLocalesRef = useRef(enabledBannedLocales)
-  const previouslyEnabledBannedLocalesRef = useRef<ReadonlySet<string> | undefined>(undefined)
-  useEffect(() => { enabledBannedLocalesRef.current = enabledBannedLocales }, [enabledBannedLocales])
+  const [loadedCacheVersion, setLoadedCacheVersion] = useState<string>()
+  const cacheRef = useRef<LanguageScoreCache | undefined>(undefined)
+  const scoringEntries = useMemo(() => entries
+    .filter((entry) => entry.enabled && entry.targetIds.length > 0)
+    .map((entry) => ({ entry, cacheKey: cacheKeyForEntry(entry) })), [entries])
   const inputFingerprint = useMemo(() => JSON.stringify({
     locales: languages.map((language) => language.locale),
-    entries: entries.map((entry) => ({
-      id: entry.id,
-      enabled: entry.enabled,
-      targets: entry.retainCraftOrder ? [...entry.targetIds] : [...entry.targetIds].sort(),
-      inventory: [...entry.inventoryItemIds].sort(),
-      gridSize: entry.gridSize,
-      retainCraftOrder: entry.retainCraftOrder === true,
-    })),
-  }), [languages, entries])
+    itemSets: scoringEntries.map(({ cacheKey }) => cacheKey).sort(),
+  }), [languages, scoringEntries])
+  const enabledBannedLocalesFingerprint = useMemo(() => JSON.stringify([...enabledBannedLocales].sort()), [enabledBannedLocales])
 
   useEffect(() => {
-    previouslyEnabledBannedLocalesRef.current = new Set(enabledBannedLocales)
-    if (!baseData || languages.length === 0 || !scoreableEntries(entries)) {
+    cacheRef.current = loadLanguageScoreCache(undefined, minecraftVersion).value
+    setScores(new Map())
+    setLoadedCacheVersion(minecraftVersion)
+  }, [minecraftVersion])
+
+  useEffect(() => {
+    if (loadedCacheVersion !== minecraftVersion || !baseData || languages.length === 0 || scoringEntries.length === 0) {
       setScores(new Map())
       return
     }
+
+    const eligibleLanguages = languages.filter((language) => (
+      !isBannedLocale(language.locale) || enabledBannedLocales.has(language.locale)
+    ))
+    const pendingLocales = new Set<string>()
+    const initialScores = new Map<string, LanguageScoreState>()
+    for (const language of languages) {
+      if (!eligibleLanguages.includes(language)) {
+        initialScores.set(language.locale, { status: 'disabled' })
+        continue
+      }
+      const score = cachedAggregateScore(cacheRef.current, language.locale, scoringEntries)
+      if (score === undefined) {
+        pendingLocales.add(language.locale)
+        initialScores.set(language.locale, { status: 'pending' })
+      } else initialScores.set(language.locale, { status: 'ready', score })
+    }
+    setScores(initialScores)
+    if (pendingLocales.size === 0) return
+
     const controller = new AbortController()
-    const eligibleLanguages = languages.filter((language) => !isBannedLocale(language.locale) || enabledBannedLocalesRef.current.has(language.locale))
-    setScores(new Map(languages.map((language) => [
-      language.locale,
-      eligibleLanguages.includes(language) ? { status: 'pending' } : { status: 'disabled' },
-    ] satisfies [string, LanguageScoreState])))
 
     function publish(locale: string, state: LanguageScoreState) {
-      if (isBannedLocale(locale) && !enabledBannedLocalesRef.current.has(locale)) return
+      if (controller.signal.aborted) return
       setScores((current) => {
         const next = new Map(current)
         next.set(locale, state)
@@ -58,98 +103,64 @@ export function useLanguageScores(
       })
     }
 
+    function rememberScore(cacheKey: string, locale: string, score: number) {
+      const currentCache = cacheRef.current
+      if (!currentCache || currentCache.entryScores[cacheKey]?.[locale] === score) return
+      const updatedCache: LanguageScoreCache = {
+        entryScores: {
+          ...currentCache.entryScores,
+          [cacheKey]: { ...currentCache.entryScores[cacheKey], [locale]: score },
+        },
+      }
+      cacheRef.current = updatedCache
+      saveLanguageScoreCache(updatedCache, undefined, minecraftVersion)
+    }
+
     async function calculate(locale: string, localeData: GeneratedData) {
       try {
-        const score = await aggregateLocaleScore(localeData, entries, { signal: controller.signal })
-        if (!controller.signal.aborted) publish(locale, score === undefined ? { status: 'unavailable' } : { status: 'ready', score })
+        for (const { entry, cacheKey } of scoringEntries) {
+          if (cachedAggregateScore(cacheRef.current, locale, [{ entry, cacheKey }]) !== undefined) continue
+          const score = await aggregateLocaleScore(localeData, [entry], { signal: controller.signal })
+          if (controller.signal.aborted) return
+          if (score === undefined || !Number.isFinite(score)) throw new Error('No language score was available.')
+          rememberScore(cacheKey, locale, score)
+        }
+        const score = cachedAggregateScore(cacheRef.current, locale, scoringEntries)
+        publish(locale, score === undefined ? { status: 'unavailable' } : { status: 'ready', score })
       } catch (error) {
-        if (!controller.signal.aborted && !isAbortError(error)) publish(locale, { status: 'unavailable' })
+        if (!isAbortError(error)) publish(locale, { status: 'unavailable' })
       }
     }
 
     void (async () => {
-      await calculate('en_us', baseData)
+      if (pendingLocales.has('en_us')) await calculate('en_us', baseData)
       if (controller.signal.aborted) return
+
+      const pendingLocalizedLocales = eligibleLanguages.filter((language) => (
+        language.locale !== 'en_us' && pendingLocales.has(language.locale)
+      ))
+      if (pendingLocalizedLocales.length === 0) return
+
       let payload: unknown
       try {
         payload = await loadLocalizedSearchPayload(dataBaseUrl)
       } catch (error) {
-        if (!controller.signal.aborted && !isAbortError(error)) {
-          eligibleLanguages.filter((language) => language.locale !== 'en_us').forEach((language) => publish(language.locale, { status: 'unavailable' }))
-        }
+        if (!isAbortError(error)) pendingLocalizedLocales.forEach((language) => publish(language.locale, { status: 'unavailable' }))
         return
       }
-      for (const language of eligibleLanguages) {
-        if (language.locale === 'en_us' || controller.signal.aborted) continue
+
+      for (const language of pendingLocalizedLocales) {
+        if (controller.signal.aborted) return
         try {
           await calculate(language.locale, parseLocalizedGeneratedData(payload, language.locale, baseData))
         } catch (error) {
-          if (!controller.signal.aborted && !isAbortError(error)) publish(language.locale, { status: 'unavailable' })
+          if (!isAbortError(error)) publish(language.locale, { status: 'unavailable' })
         }
       }
     })()
 
     return () => controller.abort()
-  }, [baseData, dataBaseUrl, entries, inputFingerprint, languages])
-
-  useEffect(() => {
-    const previous = previouslyEnabledBannedLocalesRef.current
-    previouslyEnabledBannedLocalesRef.current = new Set(enabledBannedLocales)
-    if (!baseData || languages.length === 0 || !scoreableEntries(entries) || previous === undefined) return
-
-    const newlyEnabled = [...enabledBannedLocales].filter((locale) => !previous.has(locale))
-    const newlyDisabled = [...previous].filter((locale) => !enabledBannedLocales.has(locale))
-    if (newlyEnabled.length === 0 && newlyDisabled.length === 0) return
-
-    setScores((current) => {
-      const next = new Map(current)
-      newlyDisabled.forEach((locale) => next.set(locale, { status: 'disabled' }))
-      newlyEnabled.forEach((locale) => next.set(locale, { status: 'pending' }))
-      return next
-    })
-    if (newlyEnabled.length === 0) return
-
-    const controller = new AbortController()
-    void (async () => {
-      let payload: unknown
-      try {
-        payload = await loadLocalizedSearchPayload(dataBaseUrl)
-      } catch (error) {
-        if (!controller.signal.aborted && !isAbortError(error)) {
-          setScores((current) => {
-            const next = new Map(current)
-            newlyEnabled.forEach((locale) => next.set(locale, { status: 'unavailable' }))
-            return next
-          })
-        }
-        return
-      }
-
-      for (const locale of newlyEnabled) {
-        if (controller.signal.aborted || !enabledBannedLocalesRef.current.has(locale)) continue
-        try {
-          const score = await aggregateLocaleScore(parseLocalizedGeneratedData(payload, locale, baseData), entries, { signal: controller.signal })
-          if (!controller.signal.aborted && enabledBannedLocalesRef.current.has(locale)) {
-            setScores((current) => {
-              const next = new Map(current)
-              next.set(locale, score === undefined ? { status: 'unavailable' } : { status: 'ready', score })
-              return next
-            })
-          }
-        } catch (error) {
-          if (!controller.signal.aborted && !isAbortError(error)) {
-            setScores((current) => {
-              const next = new Map(current)
-              next.set(locale, { status: 'unavailable' })
-              return next
-            })
-          }
-        }
-      }
-    })()
-
-    return () => controller.abort()
-  }, [baseData, dataBaseUrl, enabledBannedLocales, entries, inputFingerprint, languages])
+  }, [baseData, dataBaseUrl, enabledBannedLocalesFingerprint, inputFingerprint, languages, loadedCacheVersion, minecraftVersion, scoringEntries])
 
   return scores
 }

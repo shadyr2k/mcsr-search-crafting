@@ -7,6 +7,7 @@ const THEME_PREFERENCE_KEY = 'mcsr.theme-preference.v1'
 const RECIPE_BOOK_INVENTORY_KEY = 'mcsr.recipe-book-inventory.v1'
 const CRAFTING_SHEET_PREFERENCES_KEY = 'mcsr.crafting-sheet.v1'
 const GAME_VERSION_PREFERENCE_KEY = 'mcsr.game-version.v1'
+const LANGUAGE_SCORE_CACHE_KEY = 'mcsr.language-score-cache.v1'
 const SLOT_COUNT = 3
 export const LEGACY_GAME_VERSION_ID = '1.16.1'
 
@@ -82,6 +83,14 @@ interface VersionedRecipeBookInventory {
 }
 
 interface VersionedCraftingSheetPreferences extends CraftingSheetPreferences {
+  schemaVersion: 1
+}
+
+export interface LanguageScoreCache {
+  entryScores: Record<string, Record<string, number>>
+}
+
+interface VersionedLanguageScoreCache extends LanguageScoreCache {
   schemaVersion: 1
 }
 
@@ -196,12 +205,24 @@ function defaultLanguagePreferences(): LanguagePreferences {
   return { selectedLocale: 'en_us', enabledBannedLocales: [] }
 }
 
+function defaultLanguageScoreCache(): LanguageScoreCache {
+  return { entryScores: {} }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+function isLanguageScoreCache(value: unknown): value is VersionedLanguageScoreCache {
+  if (!isRecord(value) || value.schemaVersion !== 1 || !isRecord(value.entryScores)) return false
+  return Object.keys(value).every((key) => key === 'schemaVersion' || key === 'entryScores')
+    && Object.values(value.entryScores).every((scores) => (
+      isRecord(scores) && Object.values(scores).every((score) => typeof score === 'number' && Number.isFinite(score))
+    ))
 }
 
 function isCustomInventoryPreset(value: unknown): value is CustomInventoryPreset {
@@ -498,6 +519,51 @@ export function saveLanguagePreferences(
   }
   const target = storageOrDefault(storage, minecraftVersion)
   saveLanguagePreferencesRecord(preferences, target)
+  return { warning: target.warning }
+}
+
+function encodeLanguageScoreCache(cache: LanguageScoreCache): VersionedLanguageScoreCache {
+  const entryScores: Record<string, Record<string, number>> = {}
+  for (const entryKey of Object.keys(cache.entryScores).sort()) {
+    const scores = cache.entryScores[entryKey]
+    entryScores[entryKey] = Object.fromEntries(Object.entries(scores).sort(([left], [right]) => left.localeCompare(right)))
+  }
+  return { schemaVersion: 1, entryScores }
+}
+
+function saveLanguageScoreCacheRecord(cache: LanguageScoreCache, storage: ResilientStorage): void {
+  storage.setItem(LANGUAGE_SCORE_CACHE_KEY, JSON.stringify(encodeLanguageScoreCache(cache)))
+}
+
+export function loadLanguageScoreCache(
+  storage?: Storage,
+  minecraftVersion = LEGACY_GAME_VERSION_ID,
+): PersistenceLoadResult<LanguageScoreCache> {
+  const target = storageOrDefault(storage, minecraftVersion)
+  const fallback = defaultLanguageScoreCache()
+  const raw = target.getItem(LANGUAGE_SCORE_CACHE_KEY)
+  if (raw === null) return { value: fallback, warning: target.warning }
+  try {
+    const parsed = parseJson(target, LANGUAGE_SCORE_CACHE_KEY)
+    if (!isLanguageScoreCache(parsed)) {
+      return recover(target, LANGUAGE_SCORE_CACHE_KEY, 'language-score-cache', raw, fallback)
+    }
+    return { value: { entryScores: parsed.entryScores }, warning: target.warning }
+  } catch {
+    return recover(target, LANGUAGE_SCORE_CACHE_KEY, 'language-score-cache', raw, fallback)
+  }
+}
+
+export function saveLanguageScoreCache(
+  cache: LanguageScoreCache,
+  storage?: Storage,
+  minecraftVersion = LEGACY_GAME_VERSION_ID,
+): PersistenceSaveResult {
+  if (!isLanguageScoreCache({ schemaVersion: 1, ...cache })) {
+    throw new TypeError('Language score caches must contain finite scores for each item set and locale.')
+  }
+  const target = storageOrDefault(storage, minecraftVersion)
+  saveLanguageScoreCacheRecord(cache, target)
   return { warning: target.warning }
 }
 
