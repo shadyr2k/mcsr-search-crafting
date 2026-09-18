@@ -4,7 +4,7 @@ MCSR Search Crafting is a static React application that ranks Minecraft Java Edi
 
 The workspace is English-only and organized as three responsive columns: the combined English score, saved item sets, and their calculated searches. Each item set owns an independent infinite inventory and grid size. Draft edits are isolated until **Save**; Cancel leaves the saved calculation and browser data unchanged. Rows show the best three unified single/overlap routes by default, with up to ten on expansion. Native 16×16 Minecraft item icons are imported from the pinned client; see [the exporter workflow](docs/icon-exporter.md).
 
-Each package includes shaped and shapeless crafting-table recipes; it does not infer materials recursively, track quantities, simulate recipe unlocks, or include furnace, blasting, smoking, campfire, stonecutting, or smithing recipes. The 26.1.2 package loads all supplied language translations and reproduces its seven source-defined spear damage and attack-speed tooltip lines. Other newer item tooltips use the existing audited rules when available and otherwise search the translated item name.
+Each package includes shaped and shapeless crafting-table recipes; it does not infer materials recursively, track quantities, simulate recipe unlocks, or include furnace, blasting, smoking, campfire, stonecutting, or smithing recipes. The 26.1.2 package loads all supplied language translations and source-reproduces every normal-tooltip line for its 887 crafting outputs, including modern item names, attributes, and component-provided detail.
 
 ## Prerequisites
 
@@ -89,7 +89,7 @@ The production build is emitted to the ignored `web/dist/` directory. Its files 
 
 ## Architecture
 
-The build-time generator under `generator/src/mcsr_data/` parses extracted recipes, resolves item tags, applies English translations and source-reproduced tooltip rules where audited, constructs recipe-result collections, validates cross-references, and publishes deterministic JSON. Generator tests live in `generator/tests/`; 1.16.1 source provenance is recorded in `generator/references/minecraft-1.16.1-tooltip-sources.md` and `generator/references/minecraft-1.16.1-recipe-collection-sources.md`.
+The build-time generator under `generator/src/mcsr_data/` parses extracted recipes, resolves item tags, applies English translations and source-reproduced tooltip rules where audited, constructs recipe-result collections, validates cross-references, and publishes deterministic JSON. Generator tests live in `generator/tests/`; tooltip source provenance is recorded in `generator/references/minecraft-1.16.1-tooltip-sources.md` and `generator/references/minecraft-26.1.2-tooltip-sources.md`.
 
 The runtime application under `web/src/` has explicit module boundaries:
 
@@ -136,4 +136,4 @@ Single-query and overlap routes share one deterministic ranking. Each enabled ta
 
 ## Validation boundary
 
-The generator's tooltip and recipe-result collection behavior is audited against Minecraft 1.16.1 client sources, and every generated artifact must pass schema and diagnostic validation. The browser requires schema version 3 for all five runtime payloads and rejects an older, newer, or mixed-version set explicitly. Native item icons are exported from the same pinned client and verified during import; see [the exporter workflow](docs/icon-exporter.md). Automatic live-game comparison of tooltip and language strings remains future work, so confidence means source-reproduced or explicitly overridden—not live-game verified.
+The generator's tooltip and recipe-result collection behavior is audited against the pinned Minecraft 1.16.1 and 26.1.2 client sources, and every generated artifact must pass schema and diagnostic validation. The browser requires schema version 3 for all five runtime payloads and rejects an older, newer, or mixed-version set explicitly. Native item icons are exported from the same pinned client and verified during import; see [the exporter workflow](docs/icon-exporter.md). Automatic live-game comparison of tooltip and language strings remains future work, so confidence means source-reproduced or explicitly overridden—not live-game verified.

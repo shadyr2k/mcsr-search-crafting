@@ -37,11 +37,17 @@ class TooltipOverride:
 class TooltipClassifications:
     name_only: frozenset[str]
     banner_pattern_descriptions: Mapping[str, str]
+    item_tooltips: frozenset[str]
     equipment: frozenset[str]
 
     @property
     def all_item_ids(self) -> set[str]:
-        return set(self.name_only) | set(self.banner_pattern_descriptions) | set(self.equipment)
+        return (
+            set(self.name_only)
+            | set(self.banner_pattern_descriptions)
+            | set(self.item_tooltips)
+            | set(self.equipment)
+        )
 
 
 class OverrideValidationError(ValueError):
@@ -56,11 +62,12 @@ class UnsupportedTooltipItemError(ValueError):
     """Raised when an item lacks an explicit source-audited classification."""
 
 
-_MATERIALS = ("wooden", "stone", "iron", "diamond", "golden", "netherite")
+_MATERIALS = ("wooden", "stone", "copper", "iron", "diamond", "golden", "netherite")
 
 TOOL_MATERIALS: Mapping[str, ToolMaterialDefinition] = {
     "wooden": ToolMaterialDefinition(Decimal("0")),
     "stone": ToolMaterialDefinition(Decimal("1")),
+    "copper": ToolMaterialDefinition(Decimal("1")),
     "iron": ToolMaterialDefinition(Decimal("2")),
     "diamond": ToolMaterialDefinition(Decimal("3")),
     "golden": ToolMaterialDefinition(Decimal("0")),
@@ -76,6 +83,7 @@ TOOL_TYPES: Mapping[str, ToolTypeDefinition] = {
         constructor_damage={
             "wooden": Decimal("6"),
             "stone": Decimal("7"),
+            "copper": Decimal("7"),
             "iron": Decimal("6"),
             "diamond": Decimal("5"),
             "golden": Decimal("6"),
@@ -84,6 +92,7 @@ TOOL_TYPES: Mapping[str, ToolTypeDefinition] = {
         attack_speed={
             "wooden": Decimal("-3.2"),
             "stone": Decimal("-3.2"),
+            "copper": Decimal("-3.2"),
             "iron": Decimal("-3.1"),
             "diamond": Decimal("-3"),
             "golden": Decimal("-3"),
@@ -102,6 +111,7 @@ TOOL_TYPES: Mapping[str, ToolTypeDefinition] = {
         constructor_damage={
             "wooden": Decimal("0"),
             "stone": Decimal("-1"),
+            "copper": Decimal("-1"),
             "iron": Decimal("-2"),
             "diamond": Decimal("-3"),
             "golden": Decimal("0"),
@@ -110,6 +120,7 @@ TOOL_TYPES: Mapping[str, ToolTypeDefinition] = {
         attack_speed={
             "wooden": Decimal("-3"),
             "stone": Decimal("-2"),
+            "copper": Decimal("-2"),
             "iron": Decimal("-1"),
             "diamond": Decimal("0"),
             "golden": Decimal("-3"),
@@ -141,6 +152,11 @@ SPEAR_26_1_2_SWING_DURATIONS: Mapping[str, Decimal] = {
 }
 
 ARMOR_MATERIALS: Mapping[str, ArmorMaterialDefinition] = {
+    "copper": ArmorMaterialDefinition(
+        protection={"boots": Decimal("1"), "leggings": Decimal("3"), "chestplate": Decimal("4"), "helmet": Decimal("2")},
+        toughness=Decimal("0"),
+        knockback_resistance=Decimal("0"),
+    ),
     "leather": ArmorMaterialDefinition(
         protection={"boots": Decimal("1"), "leggings": Decimal("2"), "chestplate": Decimal("3"), "helmet": Decimal("1")},
         toughness=Decimal("0"),
@@ -184,6 +200,12 @@ _ARMOR_HEADERS = {
     "chestplate": "When on body:",
     "helmet": "When on head:",
 }
+_ARMOR_HEADERS_26_1_2 = {
+    "boots": "When on Feet:",
+    "leggings": "When on Legs:",
+    "chestplate": "When on Chest:",
+    "helmet": "When on Head:",
+}
 _ARMOR_HEADER_KEYS = {
     "boots": "item.modifiers.feet",
     "leggings": "item.modifiers.legs",
@@ -196,12 +218,16 @@ _ARMOR_SLOTS_BY_MATERIAL = {
 }
 _ARMOR_SLOTS_BY_MATERIAL["turtle"] = frozenset({"helmet"})
 _MAIN_HAND_HEADER = "When in main hand:"
+_MAIN_HAND_HEADER_26_1_2 = "When in Main Hand:"
 _OVERRIDES_PATH = Path(__file__).with_name("overrides.json")
-_CLASSIFICATIONS_PATH = Path(__file__).with_name("tooltip_classifications.json")
+_CLASSIFICATION_PATHS = {
+    "1.16.1": Path(__file__).with_name("tooltip_classifications.json"),
+    "26.1.2": Path(__file__).with_name("tooltip_classifications_26_1_2.json"),
+}
 _OVERRIDE_FIELDS = frozenset({"item_id", "lines", "reason"})
 _CLASSIFICATION_FIELDS = frozenset({
     "schema_version", "minecraft_version", "name_only",
-    "banner_pattern_descriptions", "equipment",
+    "banner_pattern_descriptions", "item_tooltips", "equipment",
 })
 
 
@@ -249,8 +275,16 @@ def load_overrides(path: Path | None = None) -> dict[str, TooltipOverride]:
     return overrides
 
 
-def load_tooltip_classifications(path: Path | None = None) -> TooltipClassifications:
-    classification_path = path or _CLASSIFICATIONS_PATH
+def load_tooltip_classifications(
+    path: Path | None = None,
+    *,
+    minecraft_version: str = "1.16.1",
+) -> TooltipClassifications:
+    classification_path = path or _CLASSIFICATION_PATHS.get(minecraft_version)
+    if classification_path is None:
+        raise UnsupportedTooltipItemError(
+            f"Minecraft {minecraft_version}: no source-audited tooltip classifications are available"
+        )
     try:
         raw = json.loads(classification_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
@@ -268,12 +302,17 @@ def load_tooltip_classifications(path: Path | None = None) -> TooltipClassificat
             f"{classification_path}: invalid classification fields; "
             f"unknown={sorted(unknown_fields)}, missing={sorted(missing_fields)}"
         )
-    if raw["schema_version"] != 1 or raw["minecraft_version"] != "1.16.1":
+    if raw["schema_version"] != 2 or raw["minecraft_version"] != minecraft_version:
         raise UnsupportedTooltipItemError(
-            f"{classification_path}: expected schema 1 for Minecraft 1.16.1"
+            f"{classification_path}: expected schema 2 for Minecraft {minecraft_version}"
         )
 
     name_only = _load_classification_list(classification_path, "name_only", raw["name_only"])
+    item_tooltips = _load_classification_list(
+        classification_path,
+        "item_tooltips",
+        raw["item_tooltips"],
+    )
     equipment = _load_classification_list(classification_path, "equipment", raw["equipment"])
     raw_descriptions = raw["banner_pattern_descriptions"]
     if (
@@ -290,12 +329,12 @@ def load_tooltip_classifications(path: Path | None = None) -> TooltipClassificat
             f"{classification_path}: banner_pattern_descriptions must map item IDs to text"
         )
     descriptions = dict(raw_descriptions)
-    categories = (name_only, frozenset(descriptions), equipment)
+    categories = (name_only, frozenset(descriptions), item_tooltips, equipment)
     if any(left & right for index, left in enumerate(categories) for right in categories[index + 1:]):
         raise UnsupportedTooltipItemError(
             f"{classification_path}: tooltip classification categories overlap"
         )
-    return TooltipClassifications(name_only, descriptions, equipment)
+    return TooltipClassifications(name_only, descriptions, item_tooltips, equipment)
 
 
 def build_search_item(
@@ -305,9 +344,11 @@ def build_search_item(
     *,
     overrides: Mapping[str, TooltipOverride] | None = None,
     catalog: TranslationCatalog | None = None,
-    allow_unclassified_name_only: bool = False,
     minecraft_version: str | None = None,
+    require_classification: bool = False,
 ) -> SearchItem:
+    tooltip_version = minecraft_version or "1.16.1"
+    display_name = _stack_display_name(item_id, name, catalog, minecraft_version=tooltip_version)
     hide_flags = _validated_hide_flags(item_id, output_nbt)
     override = (load_overrides() if overrides is None else overrides).get(item_id)
     if override is not None:
@@ -329,33 +370,65 @@ def build_search_item(
             override_reason=override.reason,
         )
 
-    classifications = load_tooltip_classifications()
+    classifications = load_tooltip_classifications(minecraft_version=tooltip_version)
     description = classifications.banner_pattern_descriptions.get(item_id)
     if description is not None:
         if catalog is not None:
             description = catalog.translation(_banner_pattern_description_key(item_id))
         return SearchItem(
             item_id=item_id,
-            name=name,
+            name=display_name,
             search_lines=(
-                SearchLine("name", name),
+                SearchLine("name", display_name),
                 SearchLine("item_description", description),
             ),
             generation_method="derived_item_tooltip",
             confidence="source_reproduced",
         )
 
-    equipment = _equipment_attributes(item_id, catalog, minecraft_version=minecraft_version)
-    if item_id in classifications.equipment and equipment is None:
-        raise UnsupportedTooltipItemError(
-            f"{item_id}: classified as equipment but has no source-backed equipment rule"
+    item_tooltips = _item_tooltip_lines(item_id, catalog, minecraft_version=tooltip_version)
+    if item_id in classifications.item_tooltips or (
+        item_tooltips is not None and not require_classification
+    ):
+        if item_tooltips is None:
+            raise UnsupportedTooltipItemError(
+                f"{item_id}: classified with item tooltip lines but has no source-backed rule"
+            )
+        return SearchItem(
+            item_id=item_id,
+            name=display_name,
+            search_lines=(
+                SearchLine("name", display_name),
+                *(SearchLine("item_description", line) for line in item_tooltips),
+            ),
+            generation_method="derived_item_tooltip",
+            confidence="source_reproduced",
         )
-    if equipment is None and item_id not in classifications.name_only and not allow_unclassified_name_only:
+
+    equipment = _equipment_attributes(item_id, catalog, minecraft_version=tooltip_version)
+    if item_id in classifications.equipment:
+        if equipment is None:
+            raise UnsupportedTooltipItemError(
+                f"{item_id}: classified as equipment but has no source-backed equipment rule"
+            )
+    elif equipment is not None and require_classification:
         raise UnsupportedTooltipItemError(
-            f"{item_id}: no source-audited tooltip classification; audit the Minecraft "
-            "1.16.1 item tooltip and add an explicit classification or override"
+            f"{item_id}: has source-derived equipment attributes but is absent from the "
+            f"Minecraft {tooltip_version} tooltip classification"
         )
-    search_lines = [SearchLine("name", name)]
+    elif item_tooltips is not None and require_classification:
+        raise UnsupportedTooltipItemError(
+            f"{item_id}: has source-derived item tooltip lines but is absent from the "
+            f"Minecraft {tooltip_version} tooltip classification"
+        )
+
+    if equipment is None and item_id not in classifications.name_only:
+        raise UnsupportedTooltipItemError(
+            f"{item_id}: no source-audited tooltip classification for Minecraft "
+            f"{tooltip_version}; audit the item tooltip and add an explicit classification "
+            "or override"
+        )
+    search_lines = [SearchLine("name", display_name)]
     if equipment is not None and not _attributes_hidden(hide_flags):
         header, modifiers = equipment
         search_lines.append(SearchLine("attribute_header", header))
@@ -366,10 +439,86 @@ def build_search_item(
         )
     return SearchItem(
         item_id=item_id,
-        name=name,
+        name=display_name,
         search_lines=tuple(search_lines),
         generation_method="derived_attribute_logic" if equipment is not None else "name_only",
         confidence="source_reproduced",
+    )
+
+
+def _stack_display_name(
+    item_id: str,
+    fallback_name: str,
+    catalog: TranslationCatalog | None,
+    *,
+    minecraft_version: str,
+) -> str:
+    """Return the default stack name after client-provided item components apply."""
+    if minecraft_version != "26.1.2":
+        return fallback_name
+    if item_id.endswith("_smithing_template") or item_id in {
+        "minecraft:creeper_banner_pattern",
+        "minecraft:flower_banner_pattern",
+        "minecraft:mojang_banner_pattern",
+        "minecraft:skull_banner_pattern",
+    }:
+        path = item_id.removeprefix("minecraft:")
+        return _translation(catalog, f"item.minecraft.{path}.new", fallback_name)
+    return fallback_name
+
+
+def _item_tooltip_lines(
+    item_id: str,
+    catalog: TranslationCatalog | None,
+    *,
+    minecraft_version: str,
+) -> tuple[str, ...] | None:
+    """Reproduce non-attribute normal-tooltip lines for the audited 26.1.2 outputs."""
+    if minecraft_version != "26.1.2":
+        return None
+    if item_id == "minecraft:beehive":
+        return (
+            _format_translation(catalog, "container.beehive.bees", "Bees: %s / %s", "0", "3"),
+            _format_translation(catalog, "container.beehive.honey", "Honey: %s / %s", "0", "5"),
+        )
+    if item_id == "minecraft:firework_rocket":
+        return (
+            f"{_translation(catalog, 'item.minecraft.firework_rocket.flight', 'Flight Duration:')} 1",
+        )
+    if item_id == "minecraft:music_disc_5":
+        return (_translation(catalog, "jukebox_song.minecraft.5", "Samuel Åberg - 5"),)
+    if item_id == "minecraft:netherite_upgrade_smithing_template":
+        return _smithing_template_tooltip_lines(
+            catalog,
+            "item.minecraft.smithing_template.netherite_upgrade.applies_to",
+            "Diamond Equipment",
+            "item.minecraft.smithing_template.netherite_upgrade.ingredients",
+            "Netherite Ingot",
+        )
+    if item_id.endswith("_armor_trim_smithing_template"):
+        return _smithing_template_tooltip_lines(
+            catalog,
+            "item.minecraft.smithing_template.armor_trim.applies_to",
+            "Armor",
+            "item.minecraft.smithing_template.armor_trim.ingredients",
+            "Ingots & Crystals",
+        )
+    return None
+
+
+def _smithing_template_tooltip_lines(
+    catalog: TranslationCatalog | None,
+    applies_to_key: str,
+    applies_to_fallback: str,
+    ingredients_key: str,
+    ingredients_fallback: str,
+) -> tuple[str, ...]:
+    return (
+        _translation(catalog, "item.minecraft.smithing_template", "Smithing Template"),
+        _translation(catalog, "item.minecraft.smithing_template.applies_to", "Applies to:"),
+        _translation(catalog, applies_to_key, applies_to_fallback),
+        _translation(catalog, "item.minecraft.smithing_template.ingredients", "Ingredients:"),
+        _translation(catalog, ingredients_key, ingredients_fallback),
     )
 
 
@@ -377,10 +526,46 @@ def _equipment_attributes(
     item_id: str,
     catalog: TranslationCatalog | None,
     *,
-    minecraft_version: str | None,
+    minecraft_version: str,
 ) -> tuple[str, tuple[tuple[Decimal, str, Decimal], ...]] | None:
     if not item_id.startswith("minecraft:"):
         return None
+    if minecraft_version == "26.1.2":
+        if item_id == "minecraft:mace":
+            return _translation(
+                catalog,
+                "item.modifiers.mainhand",
+                _MAIN_HAND_HEADER_26_1_2,
+            ), (
+                (
+                    Decimal("5"),
+                    _translation(
+                        catalog,
+                        "attribute.name.generic.attack_damage",
+                        "Attack Damage",
+                    ),
+                    Decimal("1"),
+                ),
+                (
+                    Decimal("-3.4"),
+                    _translation(
+                        catalog,
+                        "attribute.name.generic.attack_speed",
+                        "Attack Speed",
+                    ),
+                    Decimal("1"),
+                ),
+            )
+        if item_id in {"minecraft:leather_horse_armor", "minecraft:wolf_armor"}:
+            armor = Decimal("3") if item_id == "minecraft:leather_horse_armor" else Decimal("11")
+            return _translation(catalog, "item.modifiers.body", "When equipped:"), (
+                (
+                    armor,
+                    _translation(catalog, "attribute.name.generic.armor", "Armor"),
+                    Decimal("1"),
+                ),
+            )
+
     path = item_id.removeprefix("minecraft:")
     material, separator, item_type = path.rpartition("_")
     if not separator:
@@ -401,7 +586,11 @@ def _equipment_attributes(
                 Decimal("1"),
             ),
         )
-        return _translation(catalog, "item.modifiers.mainhand", _MAIN_HAND_HEADER), modifiers
+        return _translation(
+            catalog,
+            "item.modifiers.mainhand",
+            _MAIN_HAND_HEADER_26_1_2 if minecraft_version == "26.1.2" else _MAIN_HAND_HEADER,
+        ), modifiers
 
     if minecraft_version == "26.1.2" and item_type == "spear":
         attack_damage = SPEAR_26_1_2_ATTACK_DAMAGE.get(material)
@@ -419,10 +608,16 @@ def _equipment_attributes(
                     Decimal("1"),
                 ),
             )
-            return _translation(catalog, "item.modifiers.mainhand", _MAIN_HAND_HEADER), modifiers
+            return _translation(
+                catalog,
+                "item.modifiers.mainhand",
+                _MAIN_HAND_HEADER_26_1_2,
+            ), modifiers
 
     armor_material = ARMOR_MATERIALS.get(material)
-    header = _ARMOR_HEADERS.get(item_type)
+    header = (
+        _ARMOR_HEADERS_26_1_2 if minecraft_version == "26.1.2" else _ARMOR_HEADERS
+    ).get(item_type)
     if (
         armor_material is None
         or header is None
@@ -526,6 +721,17 @@ def _translation(
     fallback: str,
 ) -> str:
     return fallback if catalog is None else catalog.translation(key)
+
+
+def _format_translation(
+    catalog: TranslationCatalog | None,
+    key: str,
+    fallback: str,
+    *arguments: str,
+) -> str:
+    if catalog is None:
+        return TranslationCatalog({key: fallback}).format(key, *arguments)
+    return catalog.format(key, *arguments)
 
 
 def _banner_pattern_description_key(item_id: str) -> str:

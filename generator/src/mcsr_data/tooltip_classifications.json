@@ -49,6 +49,7 @@
     "minecraft:wooden_shovel",
     "minecraft:wooden_sword"
   ],
+  "item_tooltips": [],
   "minecraft_version": "1.16.1",
   "name_only": [
     "minecraft:acacia_boat",
@@ -568,5 +569,5 @@
     "minecraft:yellow_terracotta",
     "minecraft:yellow_wool"
   ],
-  "schema_version": 1
+  "schema_version": 2
 }
