@@ -26,10 +26,14 @@ test('expands a sheet item set without clipping its controls inside a compact ro
   await page.reload()
   await page.getByRole('button', { name: /english.*search crafts/ }).click()
   const entry = page.getByRole('region', { name: 'item set 1', exact: true })
+  const collapsedWidth = await entry.evaluate((element) => element.getBoundingClientRect().width)
 
   await entry.getByRole('button', { name: 'Expand item set 1' }).click()
   await expect(entry.getByRole('button', { name: /choose craft for/ }).first()).toBeVisible()
   expect(await entry.evaluate((element) => element.scrollHeight <= element.clientHeight + 1)).toBe(true)
+  await entry.getByRole('button', { name: 'Collapse item set 1' }).click()
+  await expect.poll(async () => (await entry.locator('.crafting-sheet__details').boundingBox())!.height).toBe(0)
+  expect(await entry.evaluate((element) => element.getBoundingClientRect().width)).toBeCloseTo(collapsedWidth, 0)
 })
 
 test('packs excluded sheet rows at their natural height', async ({ page }) => {

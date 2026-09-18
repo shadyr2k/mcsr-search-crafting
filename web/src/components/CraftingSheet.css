@@ -16,6 +16,8 @@
 .crafting-sheet__details {
   display: grid;
   grid-template-rows: 0fr;
+  min-width: 0;
+  max-width: 0;
   opacity: 0;
   pointer-events: none;
   transition: grid-template-rows 420ms cubic-bezier(.4, 0, .2, 1), opacity 220ms ease;
@@ -23,11 +25,12 @@
 }
 .crafting-sheet__details--open {
   grid-template-rows: 1fr;
+  max-width: none;
   opacity: 1;
   pointer-events: auto;
   animation-name: craft-disclosure-open;
 }
-.crafting-sheet__details-clip { min-height: 0; overflow: hidden; }
+.crafting-sheet__details-clip { min-width: 0; min-height: 0; overflow: hidden; }
 .crafting-sheet__panel { display: grid; gap: .9rem; padding: 1rem; border-top: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 82%, var(--page)); }
 .crafting-sheet--page { width: min(100%, 112rem); margin-inline: auto; }
 .crafting-sheet__panel--page { width: 100%; max-width: none; min-height: min(48rem, calc(100dvh - 2.5rem)); max-height: min(48rem, calc(100dvh - 2.5rem)); grid-template-columns: minmax(20rem, 24rem) minmax(13rem, 17rem) minmax(22rem, 1fr); align-items: stretch; gap: 0; padding: 0; border-top: 0; background: transparent; }
