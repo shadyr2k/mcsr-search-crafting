@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'rea
 
 import type { IconManifest } from '../data/iconManifest'
 import { ItemIcon } from './ItemIcon'
+import { isScrollbarPointer } from './outsidePointer'
 
 interface PickerItem {
   id: string
@@ -40,6 +41,7 @@ export function ItemPicker({
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
+  const scrollbarPointerRef = useRef(false)
   const searchId = useId()
   const searchLabel = label.startsWith('Search ') ? label : `Search ${label}`
   const selected = useMemo(() => new Set(selectedIds), [selectedIds])
@@ -61,6 +63,11 @@ export function ItemPicker({
 
   useEffect(() => {
     function closeWhenPointerLeavesPicker(event: PointerEvent) {
+      if (isScrollbarPointer(event)) {
+        scrollbarPointerRef.current = true
+        window.setTimeout(() => { scrollbarPointerRef.current = false })
+        return
+      }
       if (pickerRef.current && event.target instanceof Node && !pickerRef.current.contains(event.target)) setOpen(false)
     }
 
@@ -110,6 +117,7 @@ export function ItemPicker({
     ref={pickerRef}
     className={`item-picker${className ? ` ${className}` : ''}`}
     onBlurCapture={(event) => {
+      if (scrollbarPointerRef.current) return
       if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false)
     }}
   >

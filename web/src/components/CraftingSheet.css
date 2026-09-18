@@ -29,6 +29,9 @@
 }
 .crafting-sheet__details-clip { min-height: 0; overflow: hidden; }
 .crafting-sheet__panel { display: grid; gap: .9rem; padding: 1rem; border-top: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 82%, var(--page)); }
+.crafting-sheet--page { width: 100%; }
+.crafting-sheet__panel--page { grid-template-columns: minmax(19rem, .8fr) minmax(28rem, 1.5fr); align-items: start; }
+.crafting-sheet__page-info { display: grid; gap: .9rem; min-width: 0; }
 .crafting-sheet__intro { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
 .crafting-sheet__intro p { margin: 0; color: var(--muted); font-size: .85rem; }
 .crafting-sheet__reset { flex: 0 0 auto; font-size: .8rem; min-height: 2.2rem; padding: .3rem .6rem; }
@@ -111,6 +114,9 @@
   .crafting-sheet__totals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .crafting-sheet__totals > div:nth-child(2) { border-inline-end: 0; }
   .crafting-sheet__totals > div:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
+}
+@media (max-width: 72rem) {
+  .crafting-sheet__panel--page { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 32rem) {
   .crafting-sheet__panel { padding: .6rem; }

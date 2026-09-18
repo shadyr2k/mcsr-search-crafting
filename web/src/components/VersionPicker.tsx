@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import type { GameVersion } from '../data/gameVersions'
+import { isScrollbarPointer } from './outsidePointer'
 
 interface VersionPickerProps {
   versions: readonly GameVersion[]
@@ -16,6 +17,7 @@ export function VersionPicker({ versions, selectedVersionId, onVersionChange }: 
   useEffect(() => {
     if (!open) return
     const closeOnOutsidePress = (event: PointerEvent) => {
+      if (isScrollbarPointer(event)) return
       if (!pickerRef.current?.contains(event.target as Node)) setOpen(false)
     }
     document.addEventListener('pointerdown', closeOnOutsidePress)

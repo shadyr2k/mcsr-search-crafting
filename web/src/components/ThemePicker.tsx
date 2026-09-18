@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { IconManifest } from '../data/iconManifest'
 import type { ThemeColor, ThemePreference } from '../persistence/storage'
 import { ItemIcon } from './ItemIcon'
+import { isScrollbarPointer } from './outsidePointer'
 
 const themeOptions: ReadonlyArray<{ color: ThemeColor; label: string; itemId: string }> = [
   { color: 'white', label: 'plain white / black', itemId: 'minecraft:white_dye' },
@@ -30,6 +31,7 @@ export function ThemePicker({ theme, icons, onThemeColorChange }: ThemePickerPro
   useEffect(() => {
     if (!open) return
     const closeOnOutsidePress = (event: PointerEvent) => {
+      if (isScrollbarPointer(event)) return
       if (!pickerRef.current?.contains(event.target as Node)) setOpen(false)
     }
     document.addEventListener('pointerdown', closeOnOutsidePress)

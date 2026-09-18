@@ -1015,6 +1015,33 @@ h3 {
   to { opacity: 1; }
 }
 
+/* Opening the crafting sheet keeps its work in a separate page while retaining
+   a direct sense of where the crafts page went. */
+.page-transition--slide-left.page-transition--exiting { animation: page-content-slide-out-left 320ms cubic-bezier(.4, 0, .2, 1) both; }
+.page-transition--slide-left.page-transition--entering { animation: page-content-slide-in-right 420ms cubic-bezier(.4, 0, .2, 1) both; }
+.page-transition--slide-right.page-transition--exiting { animation: page-content-slide-out-right 320ms cubic-bezier(.4, 0, .2, 1) both; }
+.page-transition--slide-right.page-transition--entering { animation: page-content-slide-in-left 420ms cubic-bezier(.4, 0, .2, 1) both; }
+
+@keyframes page-content-slide-out-left {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(-110vw); }
+}
+
+@keyframes page-content-slide-in-right {
+  from { opacity: 0; transform: translateX(110vw); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes page-content-slide-out-right {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(110vw); }
+}
+
+@keyframes page-content-slide-in-left {
+  from { opacity: 0; transform: translateX(-110vw); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
 /* One persistent language list moves between the two page layouts. */
 .workspace-transition {
   grid-template-columns: minmax(20rem, 1fr) minmax(16rem, .75fr) minmax(28rem, 1.5fr);
@@ -3101,8 +3128,6 @@ h3 {
   }
 }
 
-/* The sheet takes the crafts column; outside presses restore the craft rows. */
-.results-column--sheet-open > .calculated-search-row { display: none; }
 .results-column--editing { visibility: hidden; pointer-events: none; }
 .results-column--editing > * { visibility: hidden !important; }
 .recipe-book-sim__characters li { padding: 0; border: 0; background: transparent; }

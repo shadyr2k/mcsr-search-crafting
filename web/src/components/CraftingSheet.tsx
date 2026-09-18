@@ -26,6 +26,8 @@ export interface CraftingSheetProps {
   defaultOpen?: boolean
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  layout?: 'inline' | 'page'
+  onBack?: () => void
   onSelectItemCraft: (entryId: string, itemId: string, optionId: string) => void
   onMoveItemCraft: (entryId: string, itemId: string, direction: -1 | 1) => void
   onSetEntryDisabled: (entryId: string, disabled: boolean) => void
@@ -215,13 +217,73 @@ function UsageChart({ usages }: { usages: readonly CraftingSheetCharacterUsage[]
   </div>
 }
 
-export function CraftingSheet({ languageName, entries, characterSet, characterUsages, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, defaultOpen = false, open, onOpenChange, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, onReset }: CraftingSheetProps) {
+function SheetSummary({
+  entries,
+  characterSet,
+  totalTypedCharacters,
+  totalScore,
+  scoreDelta,
+  isCalculating,
+  warning,
+  readyCount,
+  onReset,
+}: Pick<CraftingSheetProps, 'entries' | 'characterSet' | 'totalTypedCharacters' | 'totalScore' | 'scoreDelta' | 'isCalculating' | 'warning' | 'onReset'> & { readyCount: number }) {
+  return <>
+    <div className="crafting-sheet__intro"><p>create a custom craft sheet</p><button type="button" className="crafting-sheet__reset" onClick={onReset}>reset sheet</button></div>
+    <div className="crafting-sheet__totals" aria-live="polite" aria-atomic="true">
+      <div><strong aria-label="Total characters">{totalTypedCharacters}</strong><span>total characters</span></div>
+      <div><strong aria-label="Distinct characters">{characterSet.length}</strong><span>distinct characters</span></div>
+      <div><strong>{readyCount}</strong><span>included item sets</span></div>
+      <div><strong>{totalScore}</strong><span>total score · {scoreDelta === 0 ? 'best' : `${scoreDelta > 0 ? '+' : ''}${scoreDelta} vs best`}</span></div>
+    </div>
+    <p className="crafting-sheet__hint">Character counts include spaces and repeated letters. Control keys are excluded. Lower score is better.</p>
+    <div className="crafting-sheet__character-set-block"><h3>character set</h3>
+      {characterSet.length > 0 ? <ul className="crafting-sheet__character-set" aria-label="Selected characters">{characterSet.map((character) => <li key={character} className="crafting-sheet__query-text">{character}</li>)}</ul> : <p className="crafting-sheet__empty">No search characters are needed.</p>}
+      <p className="crafting-sheet__hint"><span className="crafting-sheet__query-text">_</span> = space · ← = backspace · Shift+Home = replace search</p>
+    </div>
+    {isCalculating && <p className="crafting-sheet__status" role="status">Updating crafting sheet… Totals include ready crafts.</p>}
+    {entries.some((entry) => !entry.disabled && entry.status === 'unavailable') && <p className="crafting-sheet__status" role="status">Some item sets have no available craft and are excluded from totals.</p>}
+    {warning && <p className="crafting-sheet__warning" role="status">{warning}</p>}
+  </>
+}
+
+function ItemSetList({ entries, items, icons, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled }: Pick<CraftingSheetProps, 'entries' | 'items' | 'icons' | 'onSelectItemCraft' | 'onMoveItemCraft' | 'onSetEntryDisabled'>) {
+  return <section className="crafting-sheet__sets" aria-label="Selected item sets"><h3>item sets</h3>
+    {entries.length === 0 && <p className="crafting-sheet__empty">Add an item set with available crafts to build a crafting sheet.</p>}
+    {entries.map((entry) => <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />)}
+  </section>
+}
+
+function CharacterUsage({ usages, defaultOpen = false }: { usages: readonly CraftingSheetCharacterUsage[]; defaultOpen?: boolean }) {
+  if (usages.length === 0) return null
+  return <details className="crafting-sheet__usage" open={defaultOpen}><summary>character usage</summary><div className="crafting-sheet__usage-layout"><ol className="crafting-sheet__usage-list">{usages.map((usage) => <CharacterUsageRow key={usage.character} usage={usage} />)}</ol><UsageChart usages={usages} /></div></details>
+}
+
+export function CraftingSheet({ languageName, entries, characterSet, characterUsages, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, defaultOpen = false, open, onOpenChange, layout = 'inline', onBack, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, onReset }: CraftingSheetProps) {
   const [localOpen, setLocalOpen] = useState(defaultOpen)
   const isOpen = open ?? localOpen
   function setIsOpen(next: boolean) { setLocalOpen(next); onOpenChange?.(next) }
   const panelId = useId()
   const readyCount = entries.filter((entry) => !entry.disabled && entry.status === 'ready').length
   const usages = useMemo(() => [...characterUsages].filter((usage) => usage.craftCount > 0).sort((left, right) => right.craftCount - left.craftCount || left.character.localeCompare(right.character)), [characterUsages])
+
+  if (layout === 'page') return <section className="crafting-sheet crafting-sheet--page" aria-label={`${languageName} crafting sheet`}>
+    <header className="crafting-sheet__header"><h2 className="crafting-sheet__heading">
+      <button type="button" className="crafting-sheet__toggle" aria-label={`Back to ${languageName} crafts`} onClick={onBack}>
+        <span className="crafting-sheet__title">{languageName} search crafts</span>
+        <span className="crafting-sheet__toggle-label" aria-hidden="true">back to crafts</span>
+        <span className="crafting-sheet__disclosure" aria-hidden="true"><ArrowSprite direction="left" compact /></span>
+      </button>
+    </h2></header>
+    <div className="crafting-sheet__panel crafting-sheet__panel--page">
+      <aside className="crafting-sheet__page-info">
+        <SheetSummary entries={entries} characterSet={characterSet} totalTypedCharacters={totalTypedCharacters} totalScore={totalScore} scoreDelta={scoreDelta} isCalculating={isCalculating} warning={warning} readyCount={readyCount} onReset={onReset} />
+        <CharacterUsage usages={usages} defaultOpen />
+      </aside>
+      <ItemSetList entries={entries} items={items} icons={icons} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />
+    </div>
+  </section>
+
   return <section className="crafting-sheet" aria-label={`${languageName} crafting sheet`}>
     <header className="crafting-sheet__header"><h2 className="crafting-sheet__heading">
       <button type="button" className="crafting-sheet__toggle" aria-controls={panelId} aria-expanded={isOpen} onClick={() => setIsOpen(!isOpen)}>
@@ -232,26 +294,9 @@ export function CraftingSheet({ languageName, entries, characterSet, characterUs
     </h2></header>
     <SheetDisclosure id={panelId} open={isOpen}>
     <div className="crafting-sheet__panel">
-      <div className="crafting-sheet__intro"><p>Your crafts, your way. Choose a sequence for each item set.</p><button type="button" className="crafting-sheet__reset" onClick={onReset}>reset sheet</button></div>
-      <div className="crafting-sheet__totals" aria-live="polite" aria-atomic="true">
-        <div><strong aria-label="Total characters">{totalTypedCharacters}</strong><span>total characters</span></div>
-        <div><strong aria-label="Distinct characters">{characterSet.length}</strong><span>distinct characters</span></div>
-        <div><strong>{readyCount}</strong><span>included item sets</span></div>
-        <div><strong>{totalScore}</strong><span>total score · {scoreDelta === 0 ? 'best' : `${scoreDelta > 0 ? '+' : ''}${scoreDelta} vs best`}</span></div>
-      </div>
-      <p className="crafting-sheet__hint">Character counts include spaces and repeated letters. Control keys are excluded. Lower score is better.</p>
-      <div className="crafting-sheet__character-set-block"><h3>character set</h3>
-        {characterSet.length > 0 ? <ul className="crafting-sheet__character-set" aria-label="Selected characters">{characterSet.map((character) => <li key={character} className="crafting-sheet__query-text">{character}</li>)}</ul> : <p className="crafting-sheet__empty">No search characters are needed.</p>}
-        <p className="crafting-sheet__hint"><span className="crafting-sheet__query-text">_</span> = space · ← = backspace · Shift+Home = replace search</p>
-      </div>
-      {isCalculating && <p className="crafting-sheet__status" role="status">Updating crafting sheet… Totals include ready crafts.</p>}
-      {entries.some((entry) => !entry.disabled && entry.status === 'unavailable') && <p className="crafting-sheet__status" role="status">Some item sets have no available craft and are excluded from totals.</p>}
-      {warning && <p className="crafting-sheet__warning" role="status">{warning}</p>}
-      <section className="crafting-sheet__sets" aria-label="Selected item sets"><h3>item sets</h3>
-        {entries.length === 0 && <p className="crafting-sheet__empty">Add an item set with available crafts to build a crafting sheet.</p>}
-        {entries.map((entry) => <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />)}
-      </section>
-      {usages.length > 0 && <details className="crafting-sheet__usage"><summary>character usage</summary><div className="crafting-sheet__usage-layout"><ol className="crafting-sheet__usage-list">{usages.map((usage) => <CharacterUsageRow key={usage.character} usage={usage} />)}</ol><UsageChart usages={usages} /></div></details>}
+      <SheetSummary entries={entries} characterSet={characterSet} totalTypedCharacters={totalTypedCharacters} totalScore={totalScore} scoreDelta={scoreDelta} isCalculating={isCalculating} warning={warning} readyCount={readyCount} onReset={onReset} />
+      <ItemSetList entries={entries} items={items} icons={icons} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />
+      <CharacterUsage usages={usages} />
     </div>
     </SheetDisclosure>
   </section>

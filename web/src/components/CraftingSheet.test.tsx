@@ -51,6 +51,20 @@ describe('CraftingSheet', () => {
     expect(screen.queryByRole('button', { name: 'choose craft for bed' })).not.toBeInTheDocument()
   })
 
+  test('uses two columns on its dedicated page and provides a back control', () => {
+    const input = { ...props(), onBack: vi.fn() }
+
+    const { container } = render(<CraftingSheet {...input} layout="page" />)
+
+    expect(screen.getByText('create a custom craft sheet')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Back to english crafts' })).toBeVisible()
+    expect(screen.getByLabelText('Character occurrence bar chart')).toBeVisible()
+    expect(container.querySelector('.crafting-sheet__panel--page > .crafting-sheet__page-info')).toBeTruthy()
+    expect(container.querySelector('.crafting-sheet__panel--page > .crafting-sheet__sets')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Back to english crafts' }))
+    expect(input.onBack).toHaveBeenCalledOnce()
+  })
+
   test('keeps inclusion independent of expansion and retains the editor while animating closed', () => {
     const input = props()
     render(<CraftingSheet {...input} />)

@@ -2,7 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 
 import './PageTutorial.css'
 
-export interface TutorialStep { target: string; title: string; text: string; editor?: boolean; sheet?: boolean }
+export interface TutorialStep { target: string; title: string; text: string; editor?: boolean }
 
 export const pageTutorials: Record<string, TutorialStep[]> = {
   home: [
@@ -14,7 +14,7 @@ export const pageTutorials: Record<string, TutorialStep[]> = {
     { target: '.item-set-editor .custom-slots', editor: true, title: 'Custom inventories', text: 'Name and save your current inventory to reuse it in other item sets and the simulator. Clear removes that saved slot. Your goals are saved separately with the item set.' },
     { target: '.workspace-transition--home .language-selector__category .language-selector__language, .workspace-transition--home .language-selector', title: 'Choose a language', text: 'Language scores compare the enabled item sets. Lower scores mean more efficient searches. Choose a language to update the crafts; on smaller screens, use the language search to see your choices and their scores.' },
     { target: '.results-column .calculated-search-row:has(.craft-preview--single):has(.craft-preview--overlap) .calculated-search-row__summary, .results-column .calculated-search-row__summary', title: 'Your top crafts', text: 'Each row previews up to three crafts. Regular crafts use one search; overlaps reuse part of a search between items. A star marks a junkless craft. Expand the row to compare regular and overlap choices, including crafts with junk.' },
-    { target: '.crafting-sheet__totals', sheet: true, title: 'Your crafting sheet', text: 'This is your personal cheat sheet. Expand an item set below to choose its queries and reorder its items. The sheet adapts the sequence and updates these totals, the character set and efficiency. Click outside the sheet to return to the crafts.' },
+    { target: '.crafting-sheet__toggle', title: 'Your crafting sheet', text: 'Open your personal cheat sheet to choose each item set’s queries and reorder its items. The sheet adapts the sequence and updates its totals, character set and efficiency.' },
   ],
   'craft-lookup': [
     { target: '.craft-lookup__editor', title: 'Look up one item set', text: 'Choose the items for a single craft, the available ingredients and craft space, then select Look up crafts. This setup is independent of your Search Crafting item sets.' },

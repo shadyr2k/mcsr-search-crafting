@@ -98,6 +98,22 @@ describe('App workspace composition', () => {
     expect(screen.getByText('optimize recipe book results')).toBeTruthy()
   })
 
+  test('opens the crafting sheet as a sliding page and returns to the crafts', async () => {
+    stubData()
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'english (us) search crafts' }))
+    expect(document.querySelector('.page-transition')?.classList.contains('page-transition--slide-left')).toBe(true)
+
+    const back = await screen.findByRole('button', { name: 'Back to english (us) crafts' })
+    expect(document.querySelector('.crafting-sheet--page')).toBeTruthy()
+    fireEvent.click(back)
+    expect(document.querySelector('.page-transition')?.classList.contains('page-transition--slide-right')).toBe(true)
+
+    await screen.findByRole('region', { name: 'Languages' })
+    expect(document.querySelector('.results-column')).toBeTruthy()
+  })
+
   test('switches to dark mode and restores the saved theme', async () => {
     stubData()
     const first = render(<App />)

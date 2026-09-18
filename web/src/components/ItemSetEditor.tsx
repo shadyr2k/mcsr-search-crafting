@@ -6,6 +6,7 @@ import { applyInventoryPreset, normalizeDraftGrid, validateItemSetDraft } from '
 import { GridSizeSwitch } from './GridSizeSwitch'
 import { ItemIcon } from './ItemIcon'
 import { ItemPicker } from './ItemPicker'
+import { isScrollbarPointer } from './outsidePointer'
 
 export type ItemSetEditorState = {
   kind: 'new' | 'existing'
@@ -92,6 +93,7 @@ export function ItemSetEditor({
     function cancelOutsideEditor(event: PointerEvent) {
       if (!cancelOnOutsidePointer) return
       if (window.matchMedia?.('(max-width: 72rem)').matches) return
+      if (isScrollbarPointer(event)) return
       if (event.target instanceof Node && !editorRef.current?.contains(event.target) && !openPickers.goals && !openPickers.inventory) onCancel()
     }
 
