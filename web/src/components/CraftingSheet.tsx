@@ -42,6 +42,17 @@ function deltaLabel(delta: number): string {
   return delta === 0 ? 'best score' : `${delta > 0 ? '+' : ''}${delta} score`
 }
 
+function totalScoreHue(entries: readonly CraftingSheetEntry[], scoreDelta: number): number {
+  const maximumDelta = entries.reduce((total, entry) => {
+    if (entry.disabled || entry.status !== 'ready') return total
+    const bestScore = entry.totalScore - entry.scoreDelta
+    const worstScore = Math.max(entry.totalScore, ...entry.options.map((option) => option.totalScore))
+    return total + Math.max(0, worstScore - bestScore)
+  }, 0)
+  const severity = maximumDelta === 0 ? 0 : Math.min(1, Math.max(0, scoreDelta / maximumDelta))
+  return Math.round(132 * (1 - severity))
+}
+
 function SheetDisclosure({ id, open, children }: { id: string; open: boolean; children: ReactNode }) {
   const [hasOpened, setHasOpened] = useState(open)
   useEffect(() => { if (open) setHasOpened(true) }, [open])
@@ -228,13 +239,14 @@ function SheetSummary({
   readyCount,
   onReset,
 }: Pick<CraftingSheetProps, 'entries' | 'characterSet' | 'totalTypedCharacters' | 'totalScore' | 'scoreDelta' | 'isCalculating' | 'warning' | 'onReset'> & { readyCount: number }) {
+  const scoreHue = totalScoreHue(entries, scoreDelta)
   return <>
     <div className="crafting-sheet__intro"><p>create a custom craft sheet</p><button type="button" className="crafting-sheet__reset" onClick={onReset}>reset sheet</button></div>
     <div className="crafting-sheet__totals" aria-live="polite" aria-atomic="true">
       <div><strong aria-label="Total characters">{totalTypedCharacters}</strong><span>total characters</span></div>
       <div><strong aria-label="Distinct characters">{characterSet.length}</strong><span>distinct characters</span></div>
       <div><strong>{readyCount}</strong><span>included item sets</span></div>
-      <div><strong>{totalScore}</strong><span>total score · {scoreDelta === 0 ? 'best' : `${scoreDelta > 0 ? '+' : ''}${scoreDelta} vs best`}</span></div>
+      <div><strong className="crafting-sheet__score" style={{ '--crafting-sheet-score-hue': `${scoreHue}deg` } as CSSProperties} aria-label="Total score" title="Green is tied with the best score; red is the high end of the available score range.">{totalScore}</strong><span>total score · {scoreDelta === 0 ? 'best' : `${scoreDelta > 0 ? '+' : ''}${scoreDelta} vs best`}</span></div>
     </div>
     <p className="crafting-sheet__hint">Character counts include spaces and repeated letters. Control keys are excluded. Lower score is better.</p>
     <div className="crafting-sheet__character-set-block"><h3>character set</h3>

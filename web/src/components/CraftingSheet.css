@@ -49,6 +49,7 @@
 .crafting-sheet__totals > div { display: grid; align-content: start; gap: .2rem; padding: .75rem; border-inline-end: 1px solid var(--border); }
 .crafting-sheet__totals > div:last-child { border-inline-end: 0; }
 .crafting-sheet__totals strong { font-size: 1.7rem; color: var(--accent-strong); font-weight: 500; line-height: 1.2; }
+.crafting-sheet__totals .crafting-sheet__score { color: hsl(var(--crafting-sheet-score-hue, 132deg) 38% 52%); }
 .crafting-sheet__totals span { font-size: .73rem; color: var(--muted); }
 .crafting-sheet__hint, .crafting-sheet__empty, .crafting-sheet__status, .crafting-sheet__warning { margin: 0; color: var(--muted); font-size: .76rem; line-height: 1.5; }
 .crafting-sheet__status, .crafting-sheet__warning { padding: .55rem .7rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--panel-selected); color: var(--text); }
@@ -140,6 +141,8 @@
   .crafting-sheet__usage-layout { grid-template-columns: 1fr; }
   .crafting-sheet__item-cost { width: 100%; margin-inline-start: 2rem; }
 }
+
+:root[data-theme='dark'] .crafting-sheet__totals .crafting-sheet__score { color: hsl(var(--crafting-sheet-score-hue, 132deg) 54% 69%); }
 
 @media (prefers-reduced-motion: reduce) {
   .crafting-sheet__details { animation: none; transition: none; }

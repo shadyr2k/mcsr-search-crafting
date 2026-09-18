@@ -83,6 +83,19 @@ describe('CraftingSheet', () => {
     expect(screen.getByText('SH', { selector: '.crafting-sheet__key' })).toHaveAttribute('title', 'Select the previous query, then replace it')
   })
 
+  test('scales the total score from green at best to red at the furthest available score', () => {
+    const input = props()
+    const bestOption = input.entries[0].options.reduce((best, option) => option.totalScore < best.totalScore ? option : best)
+    const bestEntry = { ...input.entries[0], totalScore: bestOption.totalScore, scoreDelta: 0 }
+    const { rerender } = render(<CraftingSheet {...input} entries={[bestEntry]} totalScore={bestOption.totalScore} scoreDelta={0} />)
+    expect(screen.getByLabelText('Total score').style.getPropertyValue('--crafting-sheet-score-hue')).toBe('132deg')
+
+    const worstOption = input.entries[0].options.reduce((worst, option) => option.totalScore > worst.totalScore ? option : worst)
+    const worstEntry = { ...input.entries[0], totalScore: worstOption.totalScore, scoreDelta: worstOption.scoreDelta }
+    rerender(<CraftingSheet {...input} entries={[worstEntry]} totalScore={worstOption.totalScore} scoreDelta={worstOption.scoreDelta} />)
+    expect(screen.getByLabelText('Total score').style.getPropertyValue('--crafting-sheet-score-hue')).toBe('0deg')
+  })
+
   test('keeps inclusion independent of expansion and retains the editor while animating closed', () => {
     const input = props()
     render(<CraftingSheet {...input} />)
