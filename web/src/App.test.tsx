@@ -108,11 +108,13 @@ describe('App workspace composition', () => {
 
     const back = await screen.findByRole('button', { name: 'Back to english (us) crafts' })
     expect(document.querySelector('.crafting-sheet--page')).toBeTruthy()
+    expect(document.querySelector('.app-shell')?.classList.contains('app-shell--crafting-sheet')).toBe(true)
     fireEvent.click(back)
     expect(document.querySelector('.page-transition')?.classList.contains('page-transition--slide-right')).toBe(true)
 
     await screen.findByRole('region', { name: 'Languages' })
     expect(document.querySelector('.results-column')).toBeTruthy()
+    expect(document.querySelector('.app-shell')?.classList.contains('app-shell--crafting-sheet')).toBe(false)
   })
 
   test('switches to dark mode and restores the saved theme', async () => {

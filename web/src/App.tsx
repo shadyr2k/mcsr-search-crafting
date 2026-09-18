@@ -408,7 +408,7 @@ function App() {
   const editorNumber = editor?.entryId === undefined ? undefined : entries.findIndex((entry) => entry.id === editor.entryId) + 1
   const selectedLanguage = languages.find((language) => language.locale === selectedLocale)
   const selectedLanguageName = selectedLanguage ? englishLocaleName(selectedLanguage, languages) : 'english (us)'
-  return <main className={`app-shell${tutorialIndex !== null ? ' app-shell--tutorial' : ''}`}>
+  return <main className={`app-shell${tutorialIndex !== null ? ' app-shell--tutorial' : ''}${page === 'crafting-sheet' ? ' app-shell--crafting-sheet' : ''}`}>
     <header className="app-header">
       <div className="app-header__brand">
         {icons && <ItemIcon itemId="minecraft:smithing_table" name="smithing table" manifest={icons} size="detail" className="app-header__icon" />}

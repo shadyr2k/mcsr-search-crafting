@@ -996,6 +996,33 @@ h3 {
   min-width: 0;
 }
 
+/* On wider screens the crafting sheet uses the exact space left beneath the
+   site header. Its columns can then distribute their content without adding a
+   document-level scroll area. */
+@media (min-width: 72.01rem) {
+  .app-shell--crafting-sheet {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .app-shell--crafting-sheet > .page-transition {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-rows: minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .app-shell--crafting-sheet .crafting-sheet--page,
+  .app-shell--crafting-sheet .crafting-sheet__panel--page {
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+  }
+}
+
 .page-transition--exiting {
   pointer-events: none;
   animation: page-content-fade-out 320ms cubic-bezier(.4, 0, .2, 1) both;
