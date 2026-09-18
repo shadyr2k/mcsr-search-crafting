@@ -1006,6 +1006,7 @@ h3 {
     height: 100dvh;
     min-height: 0;
     overflow: hidden;
+    padding-bottom: 1rem;
   }
 
   .app-shell--crafting-sheet > .page-transition {

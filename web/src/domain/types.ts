@@ -126,6 +126,8 @@ export interface TargetWorkspace {
  * Omitting `craftKey` means that the sheet should use its calculated default.
  */
 export interface CraftingSheetSelection {
+  /** Identifies the item-set inputs that produced this saved choice. */
+  entryFingerprint?: string
   craftKey?: string
   disabled?: boolean
   /** Legacy saved mode, retained only to restore pre-unification choices. */

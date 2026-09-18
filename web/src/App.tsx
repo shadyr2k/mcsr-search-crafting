@@ -130,7 +130,7 @@ function App() {
   const entries = useMemo(() => orderedEntries(workspace.entries), [workspace.entries])
   const gameVersion = gameVersionForId(gameVersionId)
   const { states, retry } = useRowOptimizations(data, workspace.entries)
-  const craftingSheet = useCraftingSheet(selectedLocale, entries, states, gameVersion.id)
+  const craftingSheet = useCraftingSheet(selectedLocale, entries, states, gameVersion.id, workspaceLoaded)
   const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.packageBaseUrl, gameVersion.id)
 
   useLayoutEffect(() => {

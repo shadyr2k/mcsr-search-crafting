@@ -83,7 +83,7 @@ interface VersionedRecipeBookInventory {
 }
 
 interface VersionedCraftingSheetPreferences extends CraftingSheetPreferences {
-  schemaVersion: 1
+  schemaVersion: 2
 }
 
 export interface LanguageScoreCache {
@@ -571,9 +571,12 @@ function defaultCraftingSheetPreferences(): CraftingSheetPreferences {
   return { selectionsByLocale: {} }
 }
 
-function normalizeCraftingSheetSelection(value: unknown): CraftingSheetSelection | undefined | null {
+function normalizeCraftingSheetSelection(value: unknown, allowEntryFingerprint: boolean): CraftingSheetSelection | undefined | null {
   if (!isRecord(value)) return null
-  if (!Object.keys(value).every((key) => ['craftKey', 'disabled', 'mode', 'itemCraftKeys', 'itemOrder'].includes(key))) return null
+  const knownKeys = ['craftKey', 'disabled', 'mode', 'itemCraftKeys', 'itemOrder']
+  if (allowEntryFingerprint) knownKeys.push('entryFingerprint')
+  if (!Object.keys(value).every((key) => knownKeys.includes(key))) return null
+  if (value.entryFingerprint !== undefined && (typeof value.entryFingerprint !== 'string' || value.entryFingerprint.length === 0)) return null
   if (value.craftKey !== undefined && (typeof value.craftKey !== 'string' || value.craftKey.length === 0)) return null
   if (value.disabled !== undefined && typeof value.disabled !== 'boolean') return null
   if (value.mode !== undefined && value.mode !== 'combined' && value.mode !== 'individual') return null
@@ -582,6 +585,7 @@ function normalizeCraftingSheetSelection(value: unknown): CraftingSheetSelection
   if (value.itemCraftKeys !== undefined && (!isRecord(value.itemCraftKeys)
     || !Object.values(value.itemCraftKeys).every((key) => typeof key === 'string' && key.length > 0))) return null
   const selection: CraftingSheetSelection = {}
+  if (typeof value.entryFingerprint === 'string') selection.entryFingerprint = value.entryFingerprint
   if (typeof value.craftKey === 'string') selection.craftKey = value.craftKey
   if (value.disabled === true) selection.disabled = true
   if (value.mode === 'individual' || value.mode === 'combined') selection.mode = value.mode
@@ -595,9 +599,10 @@ function normalizeCraftingSheetSelection(value: unknown): CraftingSheetSelection
 function normalizeCraftingSheetPreferences(value: unknown): {
   value: CraftingSheetPreferences
   hasInvalidMember: boolean
+  needsMigration: boolean
 } | undefined {
   if (!isRecord(value)
-    || value.schemaVersion !== 1
+    || (value.schemaVersion !== 1 && value.schemaVersion !== 2)
     || !isRecord(value.selectionsByLocale)
     || !Object.keys(value).every((key) => key === 'schemaVersion' || key === 'selectionsByLocale')) return undefined
 
@@ -610,7 +615,7 @@ function normalizeCraftingSheetPreferences(value: unknown): {
     }
     const normalizedSelections: Record<string, CraftingSheetSelection> = {}
     for (const [entryId, selection] of Object.entries(selections)) {
-      const normalized = normalizeCraftingSheetSelection(selection)
+      const normalized = normalizeCraftingSheetSelection(selection, value.schemaVersion === 2)
       if (normalized === null) {
         hasInvalidMember = true
         continue
@@ -619,7 +624,7 @@ function normalizeCraftingSheetPreferences(value: unknown): {
     }
     if (Object.keys(normalizedSelections).length > 0) selectionsByLocale[locale] = normalizedSelections
   }
-  return { value: { selectionsByLocale }, hasInvalidMember }
+  return { value: { selectionsByLocale }, hasInvalidMember, needsMigration: value.schemaVersion === 1 }
 }
 
 function encodeCraftingSheetPreferences(preferences: CraftingSheetPreferences): VersionedCraftingSheetPreferences {
@@ -628,13 +633,13 @@ function encodeCraftingSheetPreferences(preferences: CraftingSheetPreferences): 
     const selections = preferences.selectionsByLocale[locale]
     const normalizedSelections: Record<string, CraftingSheetSelection> = {}
     for (const entryId of Object.keys(selections).sort()) {
-      const selection = normalizeCraftingSheetSelection(selections[entryId])
+      const selection = normalizeCraftingSheetSelection(selections[entryId], true)
       if (selection === null) throw new TypeError('Crafting sheet selections must contain only valid craft keys and disabled flags.')
       if (selection !== undefined) normalizedSelections[entryId] = selection
     }
     if (Object.keys(normalizedSelections).length > 0) selectionsByLocale[locale] = normalizedSelections
   }
-  return { schemaVersion: 1, selectionsByLocale }
+  return { schemaVersion: 2, selectionsByLocale }
 }
 
 function saveCraftingSheetPreferencesRecord(preferences: CraftingSheetPreferences, storage: ResilientStorage): void {
@@ -656,6 +661,7 @@ export function loadCraftingSheetPreferences(
     if (normalized.hasInvalidMember) {
       return recoverInvalidMembers(target, 'crafting-sheet', raw, normalized.value, saveCraftingSheetPreferencesRecord)
     }
+    if (normalized.needsMigration) saveCraftingSheetPreferencesRecord(normalized.value, target)
     return { value: normalized.value, warning: target.warning }
   } catch {
     return recover(target, CRAFTING_SHEET_PREFERENCES_KEY, 'crafting-sheet', raw, fallback)
@@ -667,7 +673,7 @@ export function saveCraftingSheetPreferences(
   storage?: Storage,
   minecraftVersion = LEGACY_GAME_VERSION_ID,
 ): PersistenceSaveResult {
-  const normalized = normalizeCraftingSheetPreferences({ schemaVersion: 1, ...preferences })
+  const normalized = normalizeCraftingSheetPreferences({ schemaVersion: 2, ...preferences })
   if (!normalized || normalized.hasInvalidMember) {
     throw new TypeError('Crafting sheet preferences must contain language-specific craft selections.')
   }

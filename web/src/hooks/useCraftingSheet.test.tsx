@@ -1,4 +1,4 @@
-import { act, renderHook } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, test } from 'vitest'
 
 import type { RankedSearch, RowOptimizationState, TargetWorkspaceEntry } from '../domain/types'
@@ -112,10 +112,44 @@ describe('useCraftingSheet', () => {
     act(() => hook.result.current.reset())
     expect(hook.result.current.characterSet).toEqual(['a'])
     expect(JSON.parse(localStorage.getItem('mcsr.crafting-sheet.v1') ?? '{}')).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       selectionsByLocale: {
-        de_de: { tools: { disabled: true } },
+        de_de: { tools: { disabled: true, entryFingerprint: expect.any(String) } },
       },
+    })
+  })
+
+  test('keeps saved choices for untouched item sets and drops them after an item set changes or is removed', async () => {
+    const itemSet = entry('tools')
+    const searches = [search('a'), search('zq', 1)]
+    const states = statesFor(itemSet.id, searches)
+    const hook = renderHook(({ locale, itemSets }) => useCraftingSheet(locale, itemSets, states), {
+      initialProps: { locale: 'en_us', itemSets: [itemSet] as TargetWorkspaceEntry[] },
+    })
+
+    act(() => hook.result.current.selectItemCraft(itemSet.id, itemSet.targetIds[0], craftingSheetCraftKey(searches[1])))
+    expect(hook.result.current.entries[0].queryLabel).toBe('zq')
+    expect(JSON.parse(localStorage.getItem('mcsr.crafting-sheet.v1') ?? '{}')).toMatchObject({
+      schemaVersion: 2,
+      selectionsByLocale: { en_us: { tools: { entryFingerprint: expect.any(String) } } },
+    })
+
+    hook.rerender({ locale: 'de_de', itemSets: [itemSet] })
+    act(() => hook.result.current.selectItemCraft(itemSet.id, itemSet.targetIds[0], craftingSheetCraftKey(searches[1])))
+
+    hook.rerender({ locale: 'en_us', itemSets: [{ ...itemSet, gridSize: 2 }] })
+    await waitFor(() => expect(hook.result.current.entries[0].queryLabel).toBe('a'))
+    expect(JSON.parse(localStorage.getItem('mcsr.crafting-sheet.v1') ?? '{}')).toEqual({
+      schemaVersion: 2,
+      selectionsByLocale: {},
+    })
+
+    act(() => hook.result.current.selectItemCraft(itemSet.id, itemSet.targetIds[0], craftingSheetCraftKey(searches[1])))
+    hook.rerender({ locale: 'en_us', itemSets: [] })
+    await waitFor(() => expect(hook.result.current.entries).toEqual([]))
+    expect(JSON.parse(localStorage.getItem('mcsr.crafting-sheet.v1') ?? '{}')).toEqual({
+      schemaVersion: 2,
+      selectionsByLocale: {},
     })
   })
 })

@@ -446,7 +446,7 @@ describe('crafting sheet persistence', () => {
 
     expect(loadCraftingSheetPreferences(storage)).toEqual({ value: preferences, warning: undefined })
     expect(JSON.parse(storage.getItem('mcsr.crafting-sheet.v1')!)).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       selectionsByLocale: {
         de_de: { tools: { craftKey: 'single:hammer' } },
         en_us: {
@@ -454,6 +454,23 @@ describe('crafting sheet persistence', () => {
           tools: { craftKey: 'overlap:ha→ham', disabled: true },
         },
       },
+    })
+  })
+
+  test('migrates version-one saved craft choices without dropping them', () => {
+    const storage = new MemoryStorage()
+    storage.setItem('mcsr.crafting-sheet.v1', JSON.stringify({
+      schemaVersion: 1,
+      selectionsByLocale: { en_us: { tools: { craftKey: 'single:hammer' } } },
+    }))
+
+    expect(loadCraftingSheetPreferences(storage)).toEqual({
+      value: { selectionsByLocale: { en_us: { tools: { craftKey: 'single:hammer' } } } },
+      warning: undefined,
+    })
+    expect(JSON.parse(storage.getItem('mcsr.crafting-sheet.v1')!)).toEqual({
+      schemaVersion: 2,
+      selectionsByLocale: { en_us: { tools: { craftKey: 'single:hammer' } } },
     })
   })
 
