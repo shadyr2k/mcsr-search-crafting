@@ -294,8 +294,9 @@ function ItemSetList({ entries, items, icons, onSelectItemCraft, onMoveItemCraft
   const openEntries = openEntryIds.filter((entryId) => entries.some((entry) => entry.id === entryId && !entry.disabled))
   const hasExcludedEntries = columns && entries.some((entry) => entry.disabled)
   const hasExpandedEntries = columns && openEntries.length > 0
-  const usesNaturalRows = (hasExcludedEntries || hasExpandedEntries) && rowCount !== undefined
-  const usesIndependentColumns = hasExcludedEntries && rowCount !== undefined
+  const hasMeasuredRows = columns && rowCount !== undefined
+  const usesNaturalRows = (hasExcludedEntries || hasExpandedEntries) && hasMeasuredRows
+  const usesIndependentColumns = hasExcludedEntries && hasMeasuredRows
   const compactColumns = usesIndependentColumns && rowCount
     ? Array.from({ length: Math.ceil(entries.length / rowCount) }, (_, columnIndex) => entries.slice(columnIndex * rowCount, (columnIndex + 1) * rowCount))
     : []
@@ -312,13 +313,13 @@ function ItemSetList({ entries, items, icons, onSelectItemCraft, onMoveItemCraft
   }
 
   useLayoutEffect(() => {
-    if (!columns || (!hasExcludedEntries && !hasExpandedEntries)) return
+    if (!columns) return
     measureRowCount()
     if (typeof ResizeObserver === 'undefined' || !columnsRef.current) return
     const observer = new ResizeObserver(measureRowCount)
     observer.observe(columnsRef.current)
     return () => observer.disconnect()
-  }, [columns, hasExcludedEntries, hasExpandedEntries])
+  }, [columns])
 
   function setEntryOpen(entryId: string, open: boolean) {
     if (open) measureRowCount()
@@ -338,7 +339,7 @@ function ItemSetList({ entries, items, icons, onSelectItemCraft, onMoveItemCraft
 
   return <section className={`crafting-sheet__sets${columns ? ' crafting-sheet__sets--columns' : ''}`} aria-label="Selected item sets"><h3>item sets</h3>
     {entries.length === 0 && <p className="crafting-sheet__empty">Add an item set with available crafts to build a crafting sheet.</p>}
-    {entries.length > 0 && <div ref={columnsRef} className={`crafting-sheet__set-columns${usesIndependentColumns ? ' crafting-sheet__set-columns--compact-rows' : usesNaturalRows ? ' crafting-sheet__set-columns--expanded' : ''}`}>{usesIndependentColumns ? compactColumns.map((entryColumn, columnIndex) => <div className="crafting-sheet__set-column" key={columnIndex}>{entryColumn.map(renderEntry)}</div>) : entries.map(renderEntry)}</div>}
+    {entries.length > 0 && <div ref={columnsRef} style={hasMeasuredRows ? { '--crafting-sheet-entry-row-count': String(rowCount) } as CSSProperties : undefined} className={`crafting-sheet__set-columns${usesIndependentColumns ? ' crafting-sheet__set-columns--compact-rows' : usesNaturalRows ? ' crafting-sheet__set-columns--expanded' : hasMeasuredRows ? ' crafting-sheet__set-columns--sized' : ''}`}>{usesIndependentColumns ? compactColumns.map((entryColumn, columnIndex) => <div className="crafting-sheet__set-column" key={columnIndex}>{entryColumn.map(renderEntry)}</div>) : entries.map(renderEntry)}</div>}
   </section>
 }
 

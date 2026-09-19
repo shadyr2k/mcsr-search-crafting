@@ -61,6 +61,31 @@ test('stacks sheet item sets on short desktop displays', async ({ page }) => {
   expect(await page.locator('.crafting-sheet').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
 })
 
+test('keeps all-enabled sheet rows stable after a resize', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.goto('/')
+  await page.getByRole('button', { name: /english.*search crafts/ }).waitFor()
+  await page.evaluate(() => {
+    const workspace = JSON.parse(localStorage.getItem('mcsr.target-workspace.v1')!)
+    const source = workspace.entries[0]
+    workspace.entries = Array.from({ length: 18 }, (_, index) => ({ ...source, id: `stable-${index}`, order: index }))
+    localStorage.setItem('mcsr.target-workspace.v1', JSON.stringify(workspace))
+  })
+  await page.reload()
+  await page.getByRole('button', { name: /english.*search crafts/ }).click()
+  await expect.poll(() => page.locator('.page-transition').getAttribute('class')).toBe('page-transition')
+  const columns = page.locator('.crafting-sheet__set-columns')
+  await expect(columns).toHaveClass(/crafting-sheet__set-columns--sized/)
+  await page.setViewportSize({ width: 1280, height: 760 })
+  await expect(columns).toHaveClass(/crafting-sheet__set-columns--sized/)
+
+  const first = page.getByRole('region', { name: 'item set 1', exact: true })
+  const second = page.getByRole('region', { name: 'item set 2', exact: true })
+  const positions = await Promise.all([first.boundingBox(), second.boundingBox()])
+  expect(positions[1]!.x).toBeCloseTo(positions[0]!.x, 0)
+  expect(positions[1]!.y).toBeGreaterThanOrEqual(positions[0]!.y + positions[0]!.height)
+})
+
 test('packs excluded sheet rows at their natural height', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: /english.*search crafts/ }).waitFor()
