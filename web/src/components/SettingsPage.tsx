@@ -17,7 +17,7 @@ interface NumberSetting {
   step?: string
 }
 
-const numberSettings: readonly NumberSetting[] = [
+const searchSettings: readonly NumberSetting[] = [
   {
     key: 'freeInitialCharacters',
     label: 'free initial characters',
@@ -28,16 +28,6 @@ const numberSettings: readonly NumberSetting[] = [
     key: 'additionalCharacterPenalty',
     label: 'additional character penalty',
     description: 'Score penalty for each additional character.',
-  },
-  {
-    key: 'junkExistingPenalty',
-    label: 'junk existing penalty',
-    description: 'Score penalty for having junk in the result at all.',
-  },
-  {
-    key: 'junkItemPenalty',
-    label: 'junk item penalty',
-    description: 'Score penalty for each junk item in the result.',
   },
   {
     key: 'backspacePenalty',
@@ -51,17 +41,61 @@ const numberSettings: readonly NumberSetting[] = [
   },
 ]
 
+const junkSettings: readonly NumberSetting[] = [
+  {
+    key: 'junkExistingPenalty',
+    label: 'junk existing penalty',
+    description: 'Score penalty for having junk in the result at all.',
+  },
+  {
+    key: 'junkItemPenalty',
+    label: 'junk item penalty',
+    description: 'Score penalty for each junk item in the result.',
+  },
+]
+
 export function SettingsPage({ settings, catifyAvailable, onSave }: SettingsPageProps) {
   const [draft, setDraft] = useState(settings)
+  const [saved, setSaved] = useState(false)
 
-  useEffect(() => setDraft(settings), [settings])
+  useEffect(() => {
+    setDraft(settings)
+  }, [settings])
 
   function setNumber(key: keyof AppSettings['scoring'], value: string) {
     const numericValue = Number(value)
+    setSaved(false)
     setDraft((current) => ({
       ...current,
       scoring: { ...current.scoring, [key]: Number.isFinite(numericValue) ? numericValue : 0 },
     }))
+  }
+
+  function renderNumberSettings(numberSettings: readonly NumberSetting[]) {
+    return <div className="settings-page__numbers">
+      {numberSettings.map((setting) => {
+        const disabled = setting.key === 'additionalCharacterPenalty' && draft.scoring.freeInitialCharacters >= 5
+        return <label key={setting.key} title={setting.description}>
+          <span>{setting.label}</span>
+          <input
+            type="number"
+            min="0"
+            max={setting.key === 'freeInitialCharacters' ? '5' : undefined}
+            step={setting.step ?? 'any'}
+            value={draft.scoring[setting.key]}
+            disabled={disabled}
+            aria-describedby={`${setting.key}-description`}
+            onChange={(event) => setNumber(setting.key, event.target.value)}
+          />
+          <small id={`${setting.key}-description`}>{setting.description}</small>
+        </label>
+      })}
+    </div>
+  }
+
+  function save() {
+    onSave(draft)
+    setSaved(true)
   }
 
   return <section className="settings-page" aria-labelledby="settings-heading">
@@ -69,45 +103,39 @@ export function SettingsPage({ settings, catifyAvailable, onSave }: SettingsPage
       <h2 id="settings-heading">scoring settings</h2>
       <p>A language’s score estimates the effort needed to find every enabled item set in its recipe book. Lower scores are better.</p>
     </header>
-    <form onSubmit={(event) => { event.preventDefault(); onSave(draft) }}>
+    <form onSubmit={(event) => { event.preventDefault(); save() }}>
       <fieldset>
-        <legend>score penalties</legend>
-        <div className="settings-page__numbers">
-          {numberSettings.map((setting) => {
-            const disabled = setting.key === 'additionalCharacterPenalty' && draft.scoring.freeInitialCharacters >= 5
-            return <label key={setting.key} title={setting.description}>
-              <span>{setting.label}</span>
-              <input
-                type="number"
-                min="0"
-                max={setting.key === 'freeInitialCharacters' ? '5' : undefined}
-                step={setting.step ?? 'any'}
-                value={draft.scoring[setting.key]}
-                disabled={disabled}
-                aria-describedby={`${setting.key}-description`}
-                onChange={(event) => setNumber(setting.key, event.target.value)}
-              />
-              <small id={`${setting.key}-description`}>{setting.description}</small>
-            </label>
-          })}
-        </div>
+        <legend>search settings</legend>
+        {renderNumberSettings(searchSettings)}
+      </fieldset>
+      <fieldset>
+        <legend>junk settings</legend>
+        {renderNumberSettings(junkSettings)}
       </fieldset>
       <fieldset className="settings-page__catify">
         <legend>item textures</legend>
-        <label title="Use Fat Cat v2 textures for available Minecraft 26.1.2 items; every other icon stays unchanged.">
+        <label title="Use Fat Cat v2 textures for available items; every other icon stays unchanged.">
           <input
             type="checkbox"
+            role="switch"
+            className="settings-page__switch"
             checked={draft.catifyItems}
             disabled={!catifyAvailable}
-            onChange={(event) => setDraft((current) => ({ ...current, catifyItems: event.target.checked }))}
+            onChange={(event) => {
+              setSaved(false)
+              setDraft((current) => ({ ...current, catifyItems: event.target.checked }))
+            }}
           />
           <span>catify items</span>
         </label>
         <small>{catifyAvailable
           ? 'Use Fat Cat v2 textures where the pack provides an item image. Missing images keep the default texture.'
-          : 'Catify items is available while using Minecraft 26.1.2.'}</small>
+          : 'Catify items is available while item textures are loading.'}</small>
       </fieldset>
-      <button type="submit">save settings</button>
+      <div className="settings-page__save">
+        {saved && <p role="status">settings saved</p>}
+        <button type="submit">save settings</button>
+      </div>
     </form>
   </section>
 }

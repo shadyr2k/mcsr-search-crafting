@@ -20,7 +20,7 @@ import { useRowOptimizations } from './hooks/useRowOptimizations'
 import { useCraftingSheet } from './hooks/useCraftingSheet'
 import { useLanguageScores } from './hooks/useLanguageScores'
 import { clearCustomInventorySlot, clearLanguageScoreCache, loadAppSettings, loadCustomInventorySlots, loadGameVersionPreference, loadLanguagePreferences, loadTargetWorkspace, loadThemePreference, saveAppSettings, saveCustomInventorySlot, saveGameVersionPreference, saveLanguagePreferences, saveTargetWorkspace, saveThemePreference, type AppSettings, type ThemeColor, type ThemePreference } from './persistence/storage'
-import { normalizeScoringSettings } from './engine/scoring'
+import { junkSettingsFingerprint, normalizeScoringSettings } from './engine/scoring'
 import { ThemePicker } from './components/ThemePicker'
 import { VersionPicker } from './components/VersionPicker'
 import { draftFromEntry, newItemSetDraft } from './workspace/entryDraft'
@@ -135,7 +135,7 @@ function App() {
   const [pageTransitionDirection, setPageTransitionDirection] = useState<PageTransitionDirection>()
   const entries = useMemo(() => orderedEntries(workspace.entries), [workspace.entries])
   const gameVersion = gameVersionForId(gameVersionId)
-  const activeIcons = useMemo(() => icons && appSettings.catifyItems && gameVersion.id === '26.1.2' && catifiedIconOverrides
+  const activeIcons = useMemo(() => icons && appSettings.catifyItems && catifiedIconOverrides
     ? withIconOverrides(icons, catifiedIconOverrides)
     : icons, [appSettings.catifyItems, catifiedIconOverrides, gameVersion.id, icons])
   const { states, retry } = useRowOptimizations(data, workspace.entries, appSettings.scoring)
@@ -183,9 +183,7 @@ function App() {
       loadGeneratedData(gameVersion.packageBaseUrl),
       loadIconManifest(gameVersion.packageBaseUrl, gameVersion.id),
       loadLanguageMetadata(gameVersion.packageBaseUrl),
-      gameVersion.id === '26.1.2'
-        ? loadIconOverrides(gameVersion.packageBaseUrl, gameVersion.id).catch(() => undefined)
-        : Promise.resolve(undefined),
+      loadIconOverrides(gameVersion.packageBaseUrl, gameVersion.id).catch(() => undefined),
     ]).then(([loadedData, loadedIcons, loadedLanguages, loadedCatifiedOverrides]) => {
       if (!active) return
       assertIconCoverage(loadedIcons, loadedData)
@@ -362,9 +360,12 @@ function App() {
   function saveSettings(settings: AppSettings) {
     const nextSettings: AppSettings = { ...settings, scoring: normalizeScoringSettings(settings.scoring) }
     const saved = saveAppSettings(nextSettings)
-    const cacheWarnings = supportedGameVersions.map((version) => clearLanguageScoreCache(undefined, version.id).warning)
+    const junkSettingsChanged = junkSettingsFingerprint(appSettings.scoring) !== junkSettingsFingerprint(nextSettings.scoring)
+    const cacheWarnings = junkSettingsChanged
+      ? supportedGameVersions.map((version) => clearLanguageScoreCache(undefined, version.id).warning)
+      : []
     setAppSettings(nextSettings)
-    setScoringSettingsRevision((revision) => revision + 1)
+    if (junkSettingsChanged) setScoringSettingsRevision((revision) => revision + 1)
     setWarning((current) => combineWarnings(current, [saved.warning, ...cacheWarnings].filter(Boolean).join(' ') || undefined))
   }
 
@@ -467,7 +468,7 @@ function App() {
     </header>
     {warning && <p role="alert">{warning}</p>}{error && <p role="alert">{error}</p>}
     <div className={`page-transition${pageTransitionPhase === 'idle' ? '' : ` page-transition--${pageTransitionPhase}`}${pageTransitionDirection ? ` page-transition--slide-${pageTransitionDirection}` : ''}`}>
-    {page === 'settings' && <SettingsPage settings={appSettings} catifyAvailable={gameVersion.id === '26.1.2' && catifiedIconOverrides !== undefined} onSave={saveSettings} />}
+    {page === 'settings' && <SettingsPage settings={appSettings} catifyAvailable={catifiedIconOverrides !== undefined} onSave={saveSettings} />}
     {data && activeIcons && page === 'recipe-book-sim' && <RecipeBookSim
       key={gameVersion.id}
       data={data}

@@ -327,6 +327,8 @@ describe('App workspace composition', () => {
     expect(within(screen.getByRole('region', { name: 'Selected language' })).getByRole('button', { name: 'german - deutsch (deutschland)' }).getAttribute('aria-pressed')).toBe('true')
     expect(document.querySelector('.language-selector')).toBe(sharedLanguageSelector)
     expect(screen.getByText('Leicht')).toBeTruthy()
+    expect(screen.getByText('Video Settings')).toBeTruthy()
+    expect(screen.queryByText('Video Settings...')).toBeNull()
     expect(screen.getByText('Videoeinstellungen')).toBeTruthy()
     expect(screen.queryByText('Videoeinstellungen…')).toBeNull()
     fireEvent.pointerEnter(screen.getByText('Beschaffe dir Hardware').closest('.language-info-panel__row')!)

@@ -4,7 +4,7 @@ import { isBannedLocale } from '../components/LanguageSelector'
 import { loadLocalizedSearchPayload, parseLocalizedGeneratedData } from '../data/schema'
 import type { GeneratedData, LanguageMetadata, LanguageScoreState, TargetWorkspaceEntry } from '../domain/types'
 import { aggregateLocaleScore } from '../engine/optimizeWorkspace'
-import { DEFAULT_SCORING_SETTINGS, type ScoringSettings, scoringSettingsFingerprint } from '../engine/scoring'
+import { DEFAULT_SCORING_SETTINGS, junkSettingsFingerprint, type ScoringSettings } from '../engine/scoring'
 import { languageScoreCacheGeneration, LEGACY_GAME_VERSION_ID, loadLanguageScoreCache, saveLanguageScoreCache, type LanguageScoreCache } from '../persistence/storage'
 
 interface ScoringEntry {
@@ -64,7 +64,7 @@ export function useLanguageScores(
     itemSets: scoringEntries.map(({ cacheKey }) => cacheKey).sort(),
   }), [languages, scoringEntries])
   const enabledBannedLocalesFingerprint = useMemo(() => JSON.stringify([...enabledBannedLocales].sort()), [enabledBannedLocales])
-  const cacheIdentity = `${minecraftVersion}:${scoringSettingsFingerprint(scoringSettings)}:${cacheInvalidationKey}`
+  const cacheIdentity = `${minecraftVersion}:${junkSettingsFingerprint(scoringSettings)}:${cacheInvalidationKey}`
 
   useEffect(() => {
     cacheRef.current = loadLanguageScoreCache(undefined, minecraftVersion).value

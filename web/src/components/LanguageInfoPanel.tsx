@@ -85,7 +85,7 @@ export function LanguageInfoPanel({ locale, languageName, dataBaseUrl = import.m
             onFocus={isAdvancement ? () => setHoveredAdvancement(entry.id) : undefined}
             onBlur={isAdvancement ? () => setHoveredAdvancement(undefined) : undefined}
           >
-            <dt>{entry.english}</dt>
+            <dt>{displayTranslation(entry.id, entry.english)}</dt>
             <dd dir={direction}>{translation}</dd>
             {tooltipVisible && <span id={tooltipId} className="language-info-panel__tooltip" role="tooltip">{tooltipText}</span>}
           </div>

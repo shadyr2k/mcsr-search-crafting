@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 import {
   DEFAULT_SCORING_SETTINGS,
   incompleteScore,
+  junkSettingsFingerprint,
   maximumValidScore,
   scoreControlKeys,
   sequenceCharacterReuse,
@@ -60,6 +61,16 @@ describe('transitionTypingCost', () => {
     const settings = { ...DEFAULT_SCORING_SETTINGS, backspacePenalty: .5, shiftHomePenalty: 3 }
     expect(scoreControlKeys('bed', { retainedPrefix: 'b', freeBackspaceCount: 2 }, settings)).toEqual({ backspacePenalty: 1, shiftHomePenalty: 0, total: 1 })
     expect(scoreControlKeys('bed', { retainedPrefix: '', freeBackspaceCount: 3 }, settings)).toEqual({ backspacePenalty: 0, shiftHomePenalty: 3, total: 3 })
+  })
+})
+
+describe('junkSettingsFingerprint', () => {
+  test('changes only when a junk penalty changes', () => {
+    const baseline = junkSettingsFingerprint(DEFAULT_SCORING_SETTINGS)
+
+    expect(junkSettingsFingerprint({ ...DEFAULT_SCORING_SETTINGS, additionalCharacterPenalty: 2 })).toBe(baseline)
+    expect(junkSettingsFingerprint({ ...DEFAULT_SCORING_SETTINGS, backspacePenalty: 1 })).toBe(baseline)
+    expect(junkSettingsFingerprint({ ...DEFAULT_SCORING_SETTINGS, junkItemPenalty: 1 })).not.toBe(baseline)
   })
 })
 
