@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  DEFAULT_SCORING_SETTINGS,
   incompleteScore,
   maximumValidScore,
+  scoreControlKeys,
   sequenceCharacterReuse,
   scoreStep,
   transitionTypingCost,
@@ -26,6 +28,23 @@ describe('scoreStep', () => {
   test('charges each junk item after the junk-presence penalty', () => {
     expect(scoreStep(1, 2).total).toBe(3)
   })
+
+  test('uses the saved character and junk penalties', () => {
+    const settings = {
+      ...DEFAULT_SCORING_SETTINGS,
+      freeInitialCharacters: 1,
+      additionalCharacterPenalty: 1.5,
+      junkExistingPenalty: 4,
+      junkItemPenalty: .25,
+    }
+
+    expect(scoreStep(3, 2, settings)).toMatchObject({
+      lengthPenalty: 3,
+      junkPresencePenalty: 4,
+      junkCountPenalty: .5,
+      total: 7.5,
+    })
+  })
 })
 
 describe('transitionTypingCost', () => {
@@ -35,6 +54,12 @@ describe('transitionTypingCost', () => {
 
   test('treats backspacing to a prefix as free', () => {
     expect(transitionTypingCost('iron', 'iro')).toBe(0)
+  })
+
+  test('scores backspaces and Shift+Home independently', () => {
+    const settings = { ...DEFAULT_SCORING_SETTINGS, backspacePenalty: .5, shiftHomePenalty: 3 }
+    expect(scoreControlKeys('bed', { retainedPrefix: 'b', freeBackspaceCount: 2 }, settings)).toEqual({ backspacePenalty: 1, shiftHomePenalty: 0, total: 1 })
+    expect(scoreControlKeys('bed', { retainedPrefix: '', freeBackspaceCount: 3 }, settings)).toEqual({ backspacePenalty: 0, shiftHomePenalty: 3, total: 3 })
   })
 })
 

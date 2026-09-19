@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { CraftingSheetPreferences, CraftingSheetSelection, RowOptimizationState, TargetWorkspaceEntry } from '../domain/types'
 import { createCraftingSheetModel, type CraftingSheetModel } from '../engine/craftingSheet'
+import { DEFAULT_SCORING_SETTINGS, type ScoringSettings } from '../engine/scoring'
 import { loadCraftingSheetPreferences, saveCraftingSheetPreferences } from '../persistence/storage'
 
 export type {
@@ -100,6 +101,7 @@ export function useCraftingSheet(
   states: ReadonlyMap<string, RowOptimizationState>,
   minecraftVersion = '1.16.1',
   entriesReady = true,
+  scoringSettings: ScoringSettings = DEFAULT_SCORING_SETTINGS,
 ): CraftingSheetState {
   const [initial] = useState(() => loadCraftingSheetPreferences(undefined, minecraftVersion))
   const [preferences, setPreferences] = useState<CraftingSheetPreferences>(initial.value)
@@ -142,14 +144,14 @@ export function useCraftingSheet(
     if (optionId.length === 0) return
     const entry = entries.find((candidate) => candidate.id === entryId)
     if (!entry) return
-    const current = createCraftingSheetModel(entries, states, preferencesRef.current.selectionsByLocale[locale]).entries.find((entry) => entry.id === entryId)
+    const current = createCraftingSheetModel(entries, states, preferencesRef.current.selectionsByLocale[locale], scoringSettings).entries.find((entry) => entry.id === entryId)
     if (!current?.itemChoices.find((choice) => choice.itemId === itemId)?.options.some((option) => option.id === optionId)) return
     persist(updateLocaleSelection(preferencesRef.current, locale, entryId, entryFingerprint(entry), (selection) => ({
       disabled: selection.disabled,
       itemOrder: current.itemChoices.map((choice) => choice.itemId),
       itemCraftKeys: { ...Object.fromEntries(current.itemChoices.map((choice) => [choice.itemId, choice.selectedOptionId])), [itemId]: optionId },
     })))
-  }, [entries, states, locale, persist])
+  }, [entries, states, locale, persist, scoringSettings])
 
   const reset = useCallback(() => {
     persist(resetLocaleSelections(preferencesRef.current, locale))
@@ -158,7 +160,7 @@ export function useCraftingSheet(
   const moveItemCraft = useCallback((entryId: string, itemId: string, direction: -1 | 1) => {
     const entry = entries.find((candidate) => candidate.id === entryId)
     if (!entry) return
-    const current = createCraftingSheetModel(entries, states, preferencesRef.current.selectionsByLocale[locale]).entries.find((entry) => entry.id === entryId)
+    const current = createCraftingSheetModel(entries, states, preferencesRef.current.selectionsByLocale[locale], scoringSettings).entries.find((entry) => entry.id === entryId)
     if (!current) return
     const itemOrder = current.itemChoices.map((choice) => choice.itemId)
     const index = itemOrder.indexOf(itemId)
@@ -172,12 +174,12 @@ export function useCraftingSheet(
       itemOrder,
       itemCraftKeys: Object.fromEntries(current.itemChoices.map((choice) => [choice.itemId, choice.selectedOptionId])),
     })))
-  }, [entries, states, locale, persist])
+  }, [entries, states, locale, persist, scoringSettings])
 
   const selections = preferences.selectionsByLocale[locale] ?? {}
   const model = useMemo(
-    () => createCraftingSheetModel(entries, states, selections),
-    [entries, selections, states],
+    () => createCraftingSheetModel(entries, states, selections, scoringSettings),
+    [entries, selections, scoringSettings, states],
   )
   return { ...model, warning, selectItemCraft, moveItemCraft, setEntryDisabled, reset }
 }

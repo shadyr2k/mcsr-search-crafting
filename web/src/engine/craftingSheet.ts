@@ -5,7 +5,7 @@ import type {
   TargetWorkspaceEntry,
 } from '../domain/types'
 import { MAX_RECIPE_BOOK_RESULTS } from './resultLimit'
-import { scoreStep } from './scoring'
+import { DEFAULT_SCORING_SETTINGS, type ScoringSettings, scoreControlKeys, scoreStep } from './scoring'
 import { MAXIMUM_ORDINARY_BACKSPACES, transitionPresentation } from './overlapOptimizer'
 
 export interface CraftingSheetOption {
@@ -286,7 +286,7 @@ function queryTransition(previousQuery: string | undefined, query: string) {
   return { retainedPrefix: '', freeBackspaceCount: previousQuery.length, typedSuffix: query }
 }
 
-function composeItemSearch(candidate: CandidateEntry): RankedSearch | undefined {
+function composeItemSearch(candidate: CandidateEntry, scoringSettings: ScoringSettings): RankedSearch | undefined {
   const searches = candidate.itemChoices.map((choice) => choice.options.find((option) => option.id === choice.selectedOptionId)?.search)
   if (searches.some((search) => !search)) return undefined
   const steps: RankedSearch['steps'] = []
@@ -299,14 +299,19 @@ function composeItemSearch(candidate: CandidateEntry): RankedSearch | undefined 
       return
     }
     const transition = queryTransition(searches[index - 1]?.queries[0], source.query)
-    const junk = scoreStep(0, source.junkItemIds.length)
-    const typingPenalty = index === 0 ? Math.max(0, source.query.length - 2) : transition.typedSuffix.length
+    const junk = scoreStep(0, source.junkItemIds.length, scoringSettings)
+    const typingPenalty = index === 0
+      ? Math.max(0, source.query.length - scoringSettings.freeInitialCharacters) * scoringSettings.additionalCharacterPenalty
+      : transition.typedSuffix.length * scoringSettings.additionalCharacterPenalty
+    const controls = index === 0
+      ? { backspacePenalty: 0, shiftHomePenalty: 0, total: 0 }
+      : scoreControlKeys(searches[index - 1]?.queries[0] ?? '', transition, scoringSettings)
     steps.push({
       ...source,
       ...transition,
       coveredTargetIds: [candidate.itemChoices[index].itemId],
       newTargetIds: [candidate.itemChoices[index].itemId],
-      score: { typingPenalty, junkPresencePenalty: junk.junkPresencePenalty, junkCountPenalty: junk.junkCountPenalty, total: typingPenalty + junk.total },
+      score: { typingPenalty, junkPresencePenalty: junk.junkPresencePenalty, junkCountPenalty: junk.junkCountPenalty, backspacePenalty: controls.backspacePenalty, shiftHomePenalty: controls.shiftHomePenalty, total: typingPenalty + junk.total + controls.total },
     })
   })
   return {
@@ -320,16 +325,19 @@ function composeItemSearch(candidate: CandidateEntry): RankedSearch | undefined 
 }
 
 /** Compare per-item alternatives against the query immediately before this row. */
-function contextualItemChoices(candidate: CandidateEntry): CraftingSheetItemChoice[] {
+function contextualItemChoices(candidate: CandidateEntry, scoringSettings: ScoringSettings): CraftingSheetItemChoice[] {
   return candidate.itemChoices.map((choice, index) => {
     const previous = candidate.itemChoices[index - 1]
     const previousQuery = previous?.options.find((option) => option.id === previous.selectedOptionId)?.search.queries[0]
     const scored = choice.options.map((option) => {
       const query = option.search.queries[0]
       const transition = queryTransition(previousQuery, query)
-      const typingPenalty = index === 0 ? Math.max(0, query.length - 2) : transition.typedSuffix.length
+      const typingPenalty = index === 0
+        ? Math.max(0, query.length - scoringSettings.freeInitialCharacters) * scoringSettings.additionalCharacterPenalty
+        : transition.typedSuffix.length * scoringSettings.additionalCharacterPenalty
       const junkCount = query === previousQuery ? 0 : option.junkCount
-      return { ...option, junkCount, totalTypedCharacters: transition.typedSuffix.length, totalScore: typingPenalty + scoreStep(0, junkCount).total }
+      const controls = index === 0 ? { total: 0 } : scoreControlKeys(previousQuery ?? '', transition, scoringSettings)
+      return { ...option, junkCount, totalTypedCharacters: transition.typedSuffix.length, totalScore: typingPenalty + scoreStep(0, junkCount, scoringSettings).total + controls.total }
     })
     const bestScore = Math.min(...scored.map((option) => option.totalScore))
     const options = scored.map((option) => ({ ...option, scoreDelta: option.totalScore - bestScore, isOptimal: option.totalScore === bestScore }))
@@ -358,8 +366,8 @@ function editableCandidate(candidate: CandidateEntry, seed: SearchOption, saved?
   return { ...candidate, itemChoices }
 }
 
-function composedOption(candidate: CandidateEntry, seed: SearchOption): SearchOption {
-  const search = composeItemSearch(candidate)
+function composedOption(candidate: CandidateEntry, seed: SearchOption, scoringSettings: ScoringSettings): SearchOption {
+  const search = composeItemSearch(candidate, scoringSettings)
   return search ? optionsForSearches([search], candidate.options[0].totalScore)[0] ?? seed : seed
 }
 
@@ -372,6 +380,7 @@ export function createCraftingSheetModel(
   entries: readonly TargetWorkspaceEntry[],
   states: ReadonlyMap<string, RowOptimizationState>,
   selections: Readonly<Record<string, CraftingSheetSelection>> = {},
+  scoringSettings: ScoringSettings = DEFAULT_SCORING_SETTINGS,
 ): CraftingSheetModel {
   const candidates = candidateEntries(entries, states)
   const activeCandidates = candidates.entries.filter((candidate) => selections[candidate.entry.id]?.disabled !== true)
@@ -386,7 +395,7 @@ export function createCraftingSheetModel(
     const hasOverrides = saved?.mode === 'individual' || (saved?.mode !== 'combined' && (saved?.itemCraftKeys !== undefined || saved?.itemOrder !== undefined))
     if (!savedOption && !hasOverrides) return []
     const seed = savedOption ?? candidate.options.find((option) => option.id === defaults.get(candidate.entry.id)) ?? candidate.options[0]
-    return [[candidate.entry.id, composedOption(editableCandidate(candidate, seed, saved), seed)] as const]
+    return [[candidate.entry.id, composedOption(editableCandidate(candidate, seed, saved), seed, scoringSettings)] as const]
   }))
   const fixedOptions = new Map([...savedOptions].filter(([entryId]) => selections[entryId]?.disabled !== true))
   const defaultableEntries = candidates.entries.filter((candidate) => (
@@ -406,7 +415,7 @@ export function createCraftingSheetModel(
       ?? candidate.options.find((option) => option.id === selectedDefaults.get(candidate.entry.id))
       ?? candidate.options.find((option) => option.id === defaultOptionId)!
     const editable = editableCandidate(candidate, seed, saved)
-    const selected = savedOption ?? composedOption(editable, seed)
+    const selected = savedOption ?? composedOption(editable, seed, scoringSettings)
     const selectedOptionId = selected.id
     const disabled = saved?.disabled === true
     const entry: CraftingSheetEntry = {
@@ -419,7 +428,7 @@ export function createCraftingSheetModel(
       defaultOptionId,
       disabled,
       status: 'ready',
-      itemChoices: contextualItemChoices(editable),
+      itemChoices: contextualItemChoices(editable, scoringSettings),
       selectedSearch: selected.search,
       totalTypedCharacters: selected.totalTypedCharacters,
       totalScore: selected.totalScore,

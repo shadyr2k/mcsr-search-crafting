@@ -2517,7 +2517,7 @@ h3 {
 @media (max-width: 72rem) {
   .app-header__nav {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     width: auto;
     gap: .2rem;
     justify-content: center;

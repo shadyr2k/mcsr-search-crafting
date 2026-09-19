@@ -1,0 +1,113 @@
+import { useEffect, useState } from 'react'
+
+import type { AppSettings } from '../persistence/storage'
+
+import './SettingsPage.css'
+
+interface SettingsPageProps {
+  settings: AppSettings
+  catifyAvailable: boolean
+  onSave(settings: AppSettings): void
+}
+
+interface NumberSetting {
+  key: keyof AppSettings['scoring']
+  label: string
+  description: string
+  step?: string
+}
+
+const numberSettings: readonly NumberSetting[] = [
+  {
+    key: 'freeInitialCharacters',
+    label: 'free initial characters',
+    description: 'How many characters in the first search add no score before the additional character penalty begins.',
+    step: '1',
+  },
+  {
+    key: 'additionalCharacterPenalty',
+    label: 'additional character penalty',
+    description: 'Score penalty for each additional character.',
+  },
+  {
+    key: 'junkExistingPenalty',
+    label: 'junk existing penalty',
+    description: 'Score penalty for having junk in the result at all.',
+  },
+  {
+    key: 'junkItemPenalty',
+    label: 'junk item penalty',
+    description: 'Score penalty for each junk item in the result.',
+  },
+  {
+    key: 'backspacePenalty',
+    label: 'backspace penalty',
+    description: 'Score penalty for each backspace used when moving to the next search.',
+  },
+  {
+    key: 'shiftHomePenalty',
+    label: 'shift home penalty',
+    description: 'Score penalty for each Shift+Home used to replace a search.',
+  },
+]
+
+export function SettingsPage({ settings, catifyAvailable, onSave }: SettingsPageProps) {
+  const [draft, setDraft] = useState(settings)
+
+  useEffect(() => setDraft(settings), [settings])
+
+  function setNumber(key: keyof AppSettings['scoring'], value: string) {
+    const numericValue = Number(value)
+    setDraft((current) => ({
+      ...current,
+      scoring: { ...current.scoring, [key]: Number.isFinite(numericValue) ? numericValue : 0 },
+    }))
+  }
+
+  return <section className="settings-page" aria-labelledby="settings-heading">
+    <header>
+      <h2 id="settings-heading">scoring settings</h2>
+      <p>A language’s score estimates the effort needed to find every enabled item set in its recipe book. Lower scores are better.</p>
+    </header>
+    <form onSubmit={(event) => { event.preventDefault(); onSave(draft) }}>
+      <fieldset>
+        <legend>score penalties</legend>
+        <div className="settings-page__numbers">
+          {numberSettings.map((setting) => {
+            const disabled = setting.key === 'additionalCharacterPenalty' && draft.scoring.freeInitialCharacters >= 5
+            return <label key={setting.key} title={setting.description}>
+              <span>{setting.label}</span>
+              <input
+                type="number"
+                min="0"
+                max={setting.key === 'freeInitialCharacters' ? '5' : undefined}
+                step={setting.step ?? 'any'}
+                value={draft.scoring[setting.key]}
+                disabled={disabled}
+                aria-describedby={`${setting.key}-description`}
+                onChange={(event) => setNumber(setting.key, event.target.value)}
+              />
+              <small id={`${setting.key}-description`}>{setting.description}</small>
+            </label>
+          })}
+        </div>
+      </fieldset>
+      <fieldset className="settings-page__catify">
+        <legend>item textures</legend>
+        <label title="Use Fat Cat v2 textures for available Minecraft 26.1.2 items; every other icon stays unchanged.">
+          <input
+            type="checkbox"
+            checked={draft.catifyItems}
+            disabled={!catifyAvailable}
+            onChange={(event) => setDraft((current) => ({ ...current, catifyItems: event.target.checked }))}
+          />
+          <span>catify items</span>
+        </label>
+        <small>{catifyAvailable
+          ? 'Use Fat Cat v2 textures where the pack provides an item image. Missing images keep the default texture.'
+          : 'Catify items is available while using Minecraft 26.1.2.'}</small>
+      </fieldset>
+      <button type="submit">save settings</button>
+    </form>
+  </section>
+}

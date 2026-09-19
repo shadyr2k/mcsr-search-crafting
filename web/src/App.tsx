@@ -9,16 +9,18 @@ import { ItemSetEditor, type ItemSetEditorCommit, type ItemSetEditorState } from
 import { ItemSetWorkspace } from './components/ItemSetWorkspace'
 import { LanguageInfoPanel } from './components/LanguageInfoPanel'
 import { RecipeBookSim } from './components/RecipeBookSim'
+import { SettingsPage } from './components/SettingsPage'
 import { PageTutorial, pageTutorials } from './components/PageTutorial'
 import { englishLocaleName, isBannedLocale, isRtlLocale, LanguageSelector } from './components/LanguageSelector'
-import { assertIconCoverage, loadIconManifest, type IconManifest } from './data/iconManifest'
+import { assertIconCoverage, loadIconManifest, loadIconOverrides, type IconManifest, withIconOverrides } from './data/iconManifest'
 import { gameVersionForId, supportedGameVersions } from './data/gameVersions'
 import { loadGeneratedData, loadLanguageMetadata, loadLocalizedGeneratedData } from './data/schema'
 import type { CustomInventoryPreset, GeneratedData, ItemSetDraft, LanguageMetadata, TargetWorkspace, TargetWorkspaceEntry } from './domain/types'
 import { useRowOptimizations } from './hooks/useRowOptimizations'
 import { useCraftingSheet } from './hooks/useCraftingSheet'
 import { useLanguageScores } from './hooks/useLanguageScores'
-import { clearCustomInventorySlot, loadCustomInventorySlots, loadGameVersionPreference, loadLanguagePreferences, loadTargetWorkspace, loadThemePreference, saveCustomInventorySlot, saveGameVersionPreference, saveLanguagePreferences, saveTargetWorkspace, saveThemePreference, type ThemeColor, type ThemePreference } from './persistence/storage'
+import { clearCustomInventorySlot, clearLanguageScoreCache, loadAppSettings, loadCustomInventorySlots, loadGameVersionPreference, loadLanguagePreferences, loadTargetWorkspace, loadThemePreference, saveAppSettings, saveCustomInventorySlot, saveGameVersionPreference, saveLanguagePreferences, saveTargetWorkspace, saveThemePreference, type AppSettings, type ThemeColor, type ThemePreference } from './persistence/storage'
+import { normalizeScoringSettings } from './engine/scoring'
 import { ThemePicker } from './components/ThemePicker'
 import { VersionPicker } from './components/VersionPicker'
 import { draftFromEntry, newItemSetDraft } from './workspace/entryDraft'
@@ -26,7 +28,7 @@ import type { SharedItemSetDraft } from './workspace/itemSetShare'
 import { starterWorkspace } from './workspace/starterWorkspace'
 
 type OpenEditor = (ItemSetEditorState & { entryId?: string }) | null
-type AppPage = 'home' | 'language-info' | 'craft-lookup' | 'recipe-book-sim' | 'crafting-sheet'
+type AppPage = 'home' | 'language-info' | 'craft-lookup' | 'recipe-book-sim' | 'crafting-sheet' | 'settings'
 type PageTransitionPhase = 'idle' | 'exiting' | 'entering'
 type PageTransitionDirection = 'left' | 'right' | undefined
 
@@ -102,10 +104,14 @@ function App() {
   const [baseData, setBaseData] = useState<GeneratedData>()
   const [data, setData] = useState<GeneratedData>()
   const [icons, setIcons] = useState<IconManifest>()
+  const [catifiedIconOverrides, setCatifiedIconOverrides] = useState<IconManifest>()
   const [languages, setLanguages] = useState<LanguageMetadata[]>([])
   const [selectedLocale, setSelectedLocale] = useState('en_us')
   const [enabledBannedLocales, setEnabledBannedLocales] = useState<ReadonlySet<string>>(new Set())
   const [theme, setTheme] = useState<ThemePreference>({ mode: 'light', color: 'pink' })
+  const [initialAppSettings] = useState(() => loadAppSettings())
+  const [appSettings, setAppSettings] = useState<AppSettings>(initialAppSettings.value)
+  const [scoringSettingsRevision, setScoringSettingsRevision] = useState(0)
   const [page, setPage] = useState<AppPage>('home')
   const [pageTransitionPhase, setPageTransitionPhase] = useState<PageTransitionPhase>('idle')
   const [usesSharedLanguageTransition, setUsesSharedLanguageTransition] = useState(false)
@@ -129,9 +135,12 @@ function App() {
   const [pageTransitionDirection, setPageTransitionDirection] = useState<PageTransitionDirection>()
   const entries = useMemo(() => orderedEntries(workspace.entries), [workspace.entries])
   const gameVersion = gameVersionForId(gameVersionId)
-  const { states, retry } = useRowOptimizations(data, workspace.entries)
-  const craftingSheet = useCraftingSheet(selectedLocale, entries, states, gameVersion.id, workspaceLoaded)
-  const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.packageBaseUrl, gameVersion.id)
+  const activeIcons = useMemo(() => icons && appSettings.catifyItems && gameVersion.id === '26.1.2' && catifiedIconOverrides
+    ? withIconOverrides(icons, catifiedIconOverrides)
+    : icons, [appSettings.catifyItems, catifiedIconOverrides, gameVersion.id, icons])
+  const { states, retry } = useRowOptimizations(data, workspace.entries, appSettings.scoring)
+  const craftingSheet = useCraftingSheet(selectedLocale, entries, states, gameVersion.id, workspaceLoaded, appSettings.scoring)
+  const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.packageBaseUrl, gameVersion.id, appSettings.scoring, scoringSettingsRevision)
 
   useLayoutEffect(() => {
     if (tutorialIndex === null) return
@@ -166,6 +175,7 @@ function App() {
     setBaseData(undefined)
     setData(undefined)
     setIcons(undefined)
+    setCatifiedIconOverrides(undefined)
     setLanguages([])
     setEditor(null)
     setCraftLookupSession(newCraftLookupSession())
@@ -173,7 +183,10 @@ function App() {
       loadGeneratedData(gameVersion.packageBaseUrl),
       loadIconManifest(gameVersion.packageBaseUrl, gameVersion.id),
       loadLanguageMetadata(gameVersion.packageBaseUrl),
-    ]).then(([loadedData, loadedIcons, loadedLanguages]) => {
+      gameVersion.id === '26.1.2'
+        ? loadIconOverrides(gameVersion.packageBaseUrl, gameVersion.id).catch(() => undefined)
+        : Promise.resolve(undefined),
+    ]).then(([loadedData, loadedIcons, loadedLanguages, loadedCatifiedOverrides]) => {
       if (!active) return
       assertIconCoverage(loadedIcons, loadedData)
       const availableLocales = new Set(loadedLanguages.map((language) => language.locale))
@@ -188,10 +201,11 @@ function App() {
       setBaseData(loadedData)
       setData(loadedData)
       setIcons(loadedIcons)
+      setCatifiedIconOverrides(loadedCatifiedOverrides)
       setLanguages(loadedLanguages)
       setEnabledBannedLocales(enabledLocales)
       setSelectedLocale(locale)
-      setWarning([slots.warning, saved.warning, savedTheme.warning, languagePreferences.warning].filter(Boolean).join(' ') || undefined)
+      setWarning([initialAppSettings.warning, slots.warning, saved.warning, savedTheme.warning, languagePreferences.warning].filter(Boolean).join(' ') || undefined)
       if (locale !== 'en_us') {
         setLoadingLocale(locale)
         loadLocalizedGeneratedData(locale, loadedData, gameVersion.packageBaseUrl).then((localizedData) => {
@@ -345,6 +359,15 @@ function App() {
     setWarning((current) => combineWarnings(current, result.warning))
   }
 
+  function saveSettings(settings: AppSettings) {
+    const nextSettings: AppSettings = { ...settings, scoring: normalizeScoringSettings(settings.scoring) }
+    const saved = saveAppSettings(nextSettings)
+    const cacheWarnings = supportedGameVersions.map((version) => clearLanguageScoreCache(undefined, version.id).warning)
+    setAppSettings(nextSettings)
+    setScoringSettingsRevision((revision) => revision + 1)
+    setWarning((current) => combineWarnings(current, [saved.warning, ...cacheWarnings].filter(Boolean).join(' ') || undefined))
+  }
+
   function selectPage(nextPage: AppPage) {
     if (tutorialIndex !== null) closeTutorial()
     const clearPageTransitionTimer = () => {
@@ -411,7 +434,7 @@ function App() {
   return <main className={`app-shell${tutorialIndex !== null ? ' app-shell--tutorial' : ''}${page === 'crafting-sheet' ? ' app-shell--crafting-sheet' : ''}`}>
     <header className="app-header">
       <div className="app-header__brand">
-        {icons && <ItemIcon itemId="minecraft:smithing_table" name="smithing table" manifest={icons} size="detail" className="app-header__icon" />}
+        {activeIcons && <ItemIcon itemId="minecraft:smithing_table" name="smithing table" manifest={activeIcons} size="detail" className="app-header__icon" />}
         <div className="app-header__title">
           <h1>MCSR search crafting</h1>
           <p className="app-header__subtitle">optimize recipe book results</p>
@@ -421,12 +444,13 @@ function App() {
           <button type="button" aria-current={page === 'language-info' ? 'page' : undefined} onClick={() => selectPage('language-info')}>language info</button>
           <button type="button" aria-current={page === 'craft-lookup' ? 'page' : undefined} onClick={() => selectPage('craft-lookup')}>craft lookup</button>
           <button type="button" aria-current={page === 'recipe-book-sim' ? 'page' : undefined} onClick={() => selectPage('recipe-book-sim')}>recipe book sim</button>
+          <button type="button" aria-current={page === 'settings' ? 'page' : undefined} onClick={() => selectPage('settings')}>settings</button>
         </nav>
       </div>
       <div className="app-header__menu">
-        {pageTutorials[page] && <button ref={helpRef} type="button" className="app-header__help" aria-label={`Help for ${page === 'home' ? 'search crafting' : page.replaceAll('-', ' ')}`} disabled={!data || !icons || pageTransitionPhase !== 'idle'} onClick={() => { tutorialPriorView.current = { editor }; setTutorialIndex(0) }}>?</button>}
+        {pageTutorials[page] && <button ref={helpRef} type="button" className="app-header__help" aria-label={`Help for ${page === 'home' ? 'search crafting' : page.replaceAll('-', ' ')}`} disabled={!data || !activeIcons || pageTransitionPhase !== 'idle'} onClick={() => { tutorialPriorView.current = { editor }; setTutorialIndex(0) }}>?</button>}
         <VersionPicker versions={supportedGameVersions} selectedVersionId={gameVersion.id} onVersionChange={selectGameVersion} />
-        {icons && <ThemePicker theme={theme} icons={icons} onThemeColorChange={selectThemeColor} />}
+        {activeIcons && <ThemePicker theme={theme} icons={activeIcons} onThemeColorChange={selectThemeColor} />}
         <button
           type="button"
           className="theme-switch"
@@ -443,12 +467,13 @@ function App() {
     </header>
     {warning && <p role="alert">{warning}</p>}{error && <p role="alert">{error}</p>}
     <div className={`page-transition${pageTransitionPhase === 'idle' ? '' : ` page-transition--${pageTransitionPhase}`}${pageTransitionDirection ? ` page-transition--slide-${pageTransitionDirection}` : ''}`}>
-    {data && icons && page === 'recipe-book-sim' && <RecipeBookSim
+    {page === 'settings' && <SettingsPage settings={appSettings} catifyAvailable={gameVersion.id === '26.1.2' && catifiedIconOverrides !== undefined} onSave={saveSettings} />}
+    {data && activeIcons && page === 'recipe-book-sim' && <RecipeBookSim
       key={gameVersion.id}
       data={data}
       englishItems={baseData?.items ?? data.items}
       englishInventoryItems={baseData?.inventoryItems ?? data.inventoryItems}
-      icons={icons}
+      icons={activeIcons}
       customSlots={customSlots}
       languages={languages}
       selectedLocale={selectedLocale}
@@ -457,9 +482,9 @@ function App() {
       onLocaleChange={selectLocale}
       minecraftVersion={gameVersion.id}
     />}
-    {baseData && icons && page === 'craft-lookup' && <CraftLookup
+    {baseData && activeIcons && page === 'craft-lookup' && <CraftLookup
       data={baseData}
-      icons={icons}
+      icons={activeIcons}
       session={craftLookupSession}
       languages={languages}
       enabledBannedLocales={enabledBannedLocales}
@@ -469,7 +494,7 @@ function App() {
       onClearCustomSlot={clearSlot}
       dataBaseUrl={gameVersion.packageBaseUrl}
     />}
-    {data && icons && page === 'crafting-sheet' && <CraftingSheet
+    {data && activeIcons && page === 'crafting-sheet' && <CraftingSheet
       layout="page"
       onBack={() => selectPage('home')}
       languageName={selectedLanguageName}
@@ -482,7 +507,7 @@ function App() {
       totalScore={craftingSheet.totalScore}
       scoreDelta={craftingSheet.scoreDelta}
       items={data.items}
-      icons={icons}
+      icons={activeIcons}
       isCalculating={craftingSheet.isCalculating}
       warning={craftingSheet.warning}
       onSelectItemCraft={craftingSheet.selectItemCraft}
@@ -490,13 +515,13 @@ function App() {
       onSetEntryDisabled={craftingSheet.setEntryDisabled}
       onReset={craftingSheet.reset}
     />}
-    {data && icons && page !== 'recipe-book-sim' && page !== 'craft-lookup' && page !== 'crafting-sheet' && <div ref={workspaceTransitionRef} className={`workspace-grid workspace-transition workspace-transition--${page}${usesSharedLanguageTransition ? ' workspace-transition--shared-language' : ''}`}>
+    {data && activeIcons && page !== 'recipe-book-sim' && page !== 'craft-lookup' && page !== 'crafting-sheet' && page !== 'settings' && <div ref={workspaceTransitionRef} className={`workspace-grid workspace-transition workspace-transition--${page}${usesSharedLanguageTransition ? ' workspace-transition--shared-language' : ''}`}>
       <ItemSetWorkspace
         dir={isRtlLocale(selectedLocale) ? 'rtl' : 'ltr'}
         entries={workspace.entries}
         items={data.items}
         inventoryItems={data.inventoryItems}
-        icons={icons}
+        icons={activeIcons}
         onWorkspaceChange={setWorkspace}
         onImport={(drafts) => setWorkspace(normalizeWorkspaceGridSizes(workspaceFromSharedDrafts(drafts), data))}
         onEdit={openEdit}
@@ -517,7 +542,7 @@ function App() {
           totalScore={craftingSheet.totalScore}
           scoreDelta={craftingSheet.scoreDelta}
           items={data.items}
-          icons={icons}
+          icons={activeIcons}
           isCalculating={craftingSheet.isCalculating}
           warning={craftingSheet.warning}
           onSelectItemCraft={craftingSheet.selectItemCraft}
@@ -526,12 +551,12 @@ function App() {
           onReset={craftingSheet.reset}
         />
         {entries.map((entry, index) => <CalculatedSearchRow
-          key={entry.id} entry={entry} entryNumber={index + 1} state={states.get(entry.id)} items={data.items} icons={icons} collections={data.collections} onRetry={() => retry(entry.id)}
+          key={entry.id} entry={entry} entryNumber={index + 1} state={states.get(entry.id)} items={data.items} icons={activeIcons} collections={data.collections} onRetry={() => retry(entry.id)}
         />)}
       </section>
       {editor && <div className="item-set-editor-overlay">
         <ItemSetEditor
-          state={editor} entryNumber={editorNumber} data={data} pickerData={baseData} icons={icons} customSlots={customSlots}
+          state={editor} entryNumber={editorNumber} data={data} pickerData={baseData} icons={activeIcons} customSlots={customSlots}
           cancelOnOutsidePointer={tutorialIndex === null}
           onDraftChange={updateDraft}
           onSave={(commit) => { setWorkspace((current) => commitDraft(current, commit)); setEditor(null) }}

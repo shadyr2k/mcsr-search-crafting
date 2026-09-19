@@ -8,7 +8,7 @@ import type {
 
 import { eligibleRecipes } from './craftability'
 import { optimizeOverlapPreparedCooperatively, type OverlapResult } from './overlapOptimizer'
-import { incompleteScore, scoreStep } from './scoring'
+import { DEFAULT_SCORING_SETTINGS, type ScoringSettings, incompleteScore, scoreStep } from './scoring'
 import { compareRankedSearches, rankedFromSingle, rankSearches } from './rankedSearch'
 import { maximumJunkItems } from './resultLimit'
 import {
@@ -59,6 +59,7 @@ export interface OptimizeWorkspaceOptions {
   yieldControl?: () => Promise<void>
   workChunkSize?: number
   onProgress?: (progress: WorkspaceOptimizationProgress) => void
+  scoringSettings?: ScoringSettings
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
@@ -78,6 +79,7 @@ async function optimizeEntry(
   entryCount: number,
   options: Required<Pick<OptimizeWorkspaceOptions, 'yieldControl'>> & OptimizeWorkspaceOptions,
 ): Promise<WorkspaceEntryResult> {
+  const scoringSettings = options.scoringSettings ?? DEFAULT_SCORING_SETTINGS
   const eligible = eligibleRecipes(data.recipes, inventory, entry.gridSize)
   const visibleIds = new Set(eligible.map(({ outputItemId }) => outputItemId))
   const targetIds = [...new Set(entry.targetIds)]
@@ -104,7 +106,7 @@ async function optimizeEntry(
     preserveTargetOrder: entry.retainCraftOrder === true,
   })
   throwIfAborted(options.signal)
-  const single = optimizeSinglePrepared(prepared)
+  const single = optimizeSinglePrepared(prepared, scoringSettings)
   const itemSearches = Object.fromEntries(entry.targetIds.map((itemId) => [itemId,
     prepared.candidates.filter((candidate) => candidate.coveredTargetIds.includes(itemId)
       && candidate.query.length <= 5
@@ -112,8 +114,8 @@ async function optimizeEntry(
       .map((candidate) => rankedFromSingle({
         ...candidate,
         coveredTargetIds: [itemId],
-        score: scoreStep(candidate.query.length, candidate.junkItemIds.length),
-      })).sort(compareRankedSearches),
+        score: scoreStep(candidate.query.length, candidate.junkItemIds.length, scoringSettings),
+      }, scoringSettings)).sort(compareRankedSearches),
   ]))
   // One-step paths are single-query crafts. Keeping them out of this category
   // makes the independently displayed overlap alternative meaningful.
@@ -130,6 +132,7 @@ async function optimizeEntry(
           completed,
         }),
         retainTargetOrder: entry.retainCraftOrder === true,
+        scoringSettings,
       })).filter(({ steps }) => steps.length > 1)
     : []
   throwIfAborted(options.signal)
@@ -140,7 +143,7 @@ async function optimizeEntry(
   const incomplete = hasCompleteResult ? null : {
     matchedTargetIds,
     unmatchedTargetIds: targetIds.filter((targetId) => !matchedTargetIds.includes(targetId)),
-    score: incompleteScore(targetIds.length, visibleIds.size),
+    score: incompleteScore(targetIds.length, visibleIds.size, scoringSettings),
   }
 
   let availableCompleteMethod: WorkspaceEntryResult['availableCompleteMethod'] = null
@@ -184,7 +187,8 @@ export async function optimizeWorkspaceEntry(
     1,
     { ...options, yieldControl: options.yieldControl ?? yieldToBrowser },
   )
-  const rankedSearches = rankSearches(legacy.single, legacy.overlap)
+  const scoringSettings = options.scoringSettings ?? DEFAULT_SCORING_SETTINGS
+  const rankedSearches = rankSearches(legacy.single, legacy.overlap, scoringSettings)
   if (rankedSearches.length > 0) {
     return {
       kind: 'ranked',
@@ -199,7 +203,7 @@ export async function optimizeWorkspaceEntry(
     kind: 'no-viable',
     entryId: entry.id,
     rankedSearches: [],
-    bestScore: legacy.incomplete?.score ?? incompleteScore(legacy.targetIds.length, legacy.visibleItemIds.length),
+    bestScore: legacy.incomplete?.score ?? incompleteScore(legacy.targetIds.length, legacy.visibleItemIds.length, scoringSettings),
     visibleItemIds: legacy.visibleItemIds,
     matchedTargetIds: legacy.incomplete?.matchedTargetIds ?? [],
     unmatchedTargetIds: legacy.incomplete?.unmatchedTargetIds ?? legacy.targetIds,

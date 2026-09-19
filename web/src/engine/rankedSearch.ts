@@ -1,7 +1,7 @@
 import type { RankedSearch, RankedSearchStep } from '../domain/types'
 
 import type { OverlapResult } from './overlapOptimizer'
-import { scoreStep, sequenceCharacterReuse } from './scoring'
+import { DEFAULT_SCORING_SETTINGS, type ScoringSettings, scoreControlKeys, scoreStep, sequenceCharacterReuse } from './scoring'
 import type { SingleResult } from './singleOptimizer'
 
 function compareText(left: string, right: string): number {
@@ -30,7 +30,7 @@ function correctionKeyCount(search: RankedSearch): number {
   }, 0)
 }
 
-export function rankedFromSingle(result: SingleResult): RankedSearch {
+export function rankedFromSingle(result: SingleResult, _scoringSettings: ScoringSettings = DEFAULT_SCORING_SETTINGS): RankedSearch {
   const step: RankedSearchStep = {
     query: result.query,
     retainedPrefix: '',
@@ -58,12 +58,15 @@ export function rankedFromSingle(result: SingleResult): RankedSearch {
   }
 }
 
-export function rankedFromOverlap(result: OverlapResult): RankedSearch {
+export function rankedFromOverlap(result: OverlapResult, scoringSettings: ScoringSettings = DEFAULT_SCORING_SETTINGS): RankedSearch {
   const steps = result.steps.map((step, index): RankedSearchStep => {
-    const junkScore = scoreStep(0, step.junkItemIds.length)
+    const junkScore = scoreStep(0, step.junkItemIds.length, scoringSettings)
     const typingPenalty = index === 0
       ? result.score.initialLengthPenalty
-      : step.typedSuffix.length
+      : step.typedSuffix.length * scoringSettings.additionalCharacterPenalty
+    const controls = index === 0
+      ? { backspacePenalty: 0, shiftHomePenalty: 0, total: 0 }
+      : scoreControlKeys(result.steps[index - 1].query, step, scoringSettings)
     return {
       ...step,
       coveredTargetIds: [...step.coveredTargetIds],
@@ -74,7 +77,9 @@ export function rankedFromOverlap(result: OverlapResult): RankedSearch {
         typingPenalty,
         junkPresencePenalty: junkScore.junkPresencePenalty,
         junkCountPenalty: junkScore.junkCountPenalty,
-        total: typingPenalty + junkScore.junkPresencePenalty + junkScore.junkCountPenalty,
+        backspacePenalty: controls.backspacePenalty,
+        shiftHomePenalty: controls.shiftHomePenalty,
+        total: typingPenalty + junkScore.junkPresencePenalty + junkScore.junkCountPenalty + controls.total,
       },
     }
   })
@@ -148,10 +153,11 @@ function orderSimilarCrafts(searches: readonly RankedSearch[]): RankedSearch[] {
 export function rankSearches(
   single: readonly SingleResult[],
   overlap: readonly OverlapResult[],
+  scoringSettings: ScoringSettings = DEFAULT_SCORING_SETTINGS,
 ): RankedSearch[] {
   const ranked = [
-    ...single.map(rankedFromSingle),
-    ...overlap.map(rankedFromOverlap),
+    ...single.map((result) => rankedFromSingle(result, scoringSettings)),
+    ...overlap.map((result) => rankedFromOverlap(result, scoringSettings)),
   ].sort(compareRankedSearches)
   const result: RankedSearch[] = []
   for (let index = 0; index < ranked.length;) {

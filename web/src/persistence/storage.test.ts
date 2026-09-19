@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  clearLanguageScoreCache,
   clearCustomInventorySlot,
+  languageScoreCacheGeneration,
   loadCraftingSheetPreferences,
+  loadAppSettings,
   loadCustomInventorySlots,
   loadGameVersionPreference,
   loadLanguagePreferences,
@@ -12,6 +15,7 @@ import {
   loadTargetWorkspace,
   saveCustomInventorySlot,
   saveCraftingSheetPreferences,
+  saveAppSettings,
   saveGameVersionPreference,
   saveLanguagePreferences,
   saveLanguageScoreCache,
@@ -568,5 +572,39 @@ describe('version-scoped crafting records', () => {
       schemaVersion: 1,
       entryScores: cache.entryScores,
     })
+  })
+})
+
+describe('app settings persistence', () => {
+  test('saves score settings globally and clears a versioned score cache', () => {
+    const storage = new MemoryStorage()
+    const settings = {
+      scoring: {
+        freeInitialCharacters: 5,
+        additionalCharacterPenalty: 1,
+        junkExistingPenalty: 3,
+        junkItemPenalty: .25,
+        backspacePenalty: .5,
+        shiftHomePenalty: 2,
+      },
+      catifyItems: true,
+    }
+    saveAppSettings(settings, storage)
+    saveLanguageScoreCache({ entryScores: { itemSet: { en_us: 8 } } }, storage, '26.1.2')
+
+    expect(loadAppSettings(storage)).toEqual({ value: settings, warning: undefined })
+    clearLanguageScoreCache(storage, '26.1.2')
+    expect(loadLanguageScoreCache(storage, '26.1.2').value).toEqual({ entryScores: {} })
+  })
+
+  test('does not let a calculation that began before clearing restore a score cache', () => {
+    const storage = new MemoryStorage()
+    const minecraftVersion = 'test-cache-generation'
+    const generation = languageScoreCacheGeneration(minecraftVersion)
+
+    clearLanguageScoreCache(storage, minecraftVersion)
+    saveLanguageScoreCache({ entryScores: { stale: { en_us: 8 } } }, storage, minecraftVersion, generation)
+
+    expect(loadLanguageScoreCache(storage, minecraftVersion).value).toEqual({ entryScores: {} })
   })
 })

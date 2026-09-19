@@ -24,6 +24,8 @@ export interface IconManifest {
   height: 16
   icons: Map<string, string>
   assetBaseUrl?: string
+  overrideIcons?: ReadonlyMap<string, string>
+  overrideAssetBaseUrl?: string
 }
 
 export class IconManifestError extends Error {
@@ -123,6 +125,10 @@ export function iconUrl(
   itemId: string,
   baseUrl = manifest.assetBaseUrl ?? import.meta.env.BASE_URL,
 ): string | undefined {
+  const overridePath = manifest.overrideIcons?.get(itemId)
+  if (overridePath !== undefined && manifest.overrideAssetBaseUrl !== undefined) {
+    return `${normalizeBaseUrl(manifest.overrideAssetBaseUrl)}item-icons/${overridePath}`
+  }
   const path = manifest.icons.get(itemId)
   return path === undefined ? undefined : `${normalizeBaseUrl(baseUrl)}item-icons/${path}`
 }
@@ -145,4 +151,32 @@ export async function loadIconManifest(baseUrl = import.meta.env.BASE_URL, expec
     throw new IconManifestError(`${url}: response is not valid JSON`)
   }
   return { ...parseIconManifest(payload, expectedMinecraftVersion), assetBaseUrl: normalizeBaseUrl(baseUrl) }
+}
+
+/** Applies a partial icon pack, retaining default artwork for every missing item. */
+export function withIconOverrides(manifest: IconManifest, overrides: IconManifest): IconManifest {
+  return {
+    ...manifest,
+    overrideIcons: overrides.icons,
+    overrideAssetBaseUrl: overrides.assetBaseUrl,
+  }
+}
+
+export async function loadIconOverrides(baseUrl = import.meta.env.BASE_URL, expectedMinecraftVersion?: string): Promise<IconManifest> {
+  const packBaseUrl = `${normalizeBaseUrl(baseUrl)}cat-item-icons/`
+  const url = `${packBaseUrl}manifest.json`
+  let response: Response
+  try {
+    response = await fetch(url)
+  } catch (error) {
+    throw new IconManifestError(`${url}: fetch failed: ${String(error)}`)
+  }
+  if (!response.ok) throw new IconManifestError(`${url}: fetch failed with ${response.status} ${response.statusText}`)
+  let payload: unknown
+  try {
+    payload = await response.json()
+  } catch {
+    throw new IconManifestError(`${url}: response is not valid JSON`)
+  }
+  return { ...parseIconManifest(payload, expectedMinecraftVersion), assetBaseUrl: packBaseUrl }
 }

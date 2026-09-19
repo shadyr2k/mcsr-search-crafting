@@ -158,6 +158,8 @@ export interface RankedSearchStep {
     typingPenalty: number
     junkPresencePenalty: number
     junkCountPenalty: number
+    backspacePenalty?: number
+    shiftHomePenalty?: number
     total: number
   }
 }

@@ -7,7 +7,7 @@ import {
 } from './collectionSearch'
 import type { CollectionMatchExplanation } from './search'
 import { maximumJunkItems } from './resultLimit'
-import { type ScoreBreakdown, scoreStep } from './scoring'
+import { DEFAULT_SCORING_SETTINGS, type ScoreBreakdown, type ScoringSettings, scoreStep } from './scoring'
 
 export interface OptimizeInput {
   targetIds: ReadonlySet<string>
@@ -205,7 +205,7 @@ export async function prepareOptimizationCooperatively(
   return { targetIds: context.targetIds, candidates }
 }
 
-export function optimizeSinglePrepared(prepared: PreparedOptimization): SingleResult[] {
+export function optimizeSinglePrepared(prepared: PreparedOptimization, scoringSettings: ScoringSettings = DEFAULT_SCORING_SETTINGS): SingleResult[] {
   if (prepared.targetIds.length === 0) return []
   const completeMask = (1n << BigInt(prepared.targetIds.length)) - 1n
   const maximumJunk = maximumJunkItems(prepared.targetIds.length)
@@ -216,7 +216,7 @@ export function optimizeSinglePrepared(prepared: PreparedOptimization): SingleRe
       coveredTargetIds: candidate.coveredTargetIds,
       junkItemIds: candidate.junkItemIds,
       explanations: candidate.explanations,
-      score: scoreStep(candidate.query.length, candidate.junkItemIds.length),
+      score: scoreStep(candidate.query.length, candidate.junkItemIds.length, scoringSettings),
     }))
 
   return results.sort((left, right) =>
@@ -227,6 +227,6 @@ export function optimizeSinglePrepared(prepared: PreparedOptimization): SingleRe
   )
 }
 
-export function optimizeSingle(input: OptimizeInput): SingleResult[] {
-  return optimizeSinglePrepared(prepareOptimization(input))
+export function optimizeSingle(input: OptimizeInput, scoringSettings: ScoringSettings = DEFAULT_SCORING_SETTINGS): SingleResult[] {
+  return optimizeSinglePrepared(prepareOptimization(input), scoringSettings)
 }

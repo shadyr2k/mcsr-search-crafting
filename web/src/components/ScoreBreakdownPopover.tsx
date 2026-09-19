@@ -17,7 +17,11 @@ function stepText(search: RankedSearch): string[] {
   return search.steps.map((step) => {
     const count = step.junkItemIds.length
     const itemLabel = count === 1 ? 'junk item' : 'junk items'
-    return `${step.query}: typing +${scoreText(step.score.typingPenalty)}, junk present +${scoreText(step.score.junkPresencePenalty)}, ${count} ${itemLabel} +${scoreText(step.score.junkCountPenalty)}`
+    const controls = [
+      step.score.backspacePenalty ? `backspace +${scoreText(step.score.backspacePenalty)}` : undefined,
+      step.score.shiftHomePenalty ? `shift home +${scoreText(step.score.shiftHomePenalty)}` : undefined,
+    ].filter((value): value is string => value !== undefined)
+    return `${step.query}: typing +${scoreText(step.score.typingPenalty)}, junk present +${scoreText(step.score.junkPresencePenalty)}, ${count} ${itemLabel} +${scoreText(step.score.junkCountPenalty)}${controls.length > 0 ? `, ${controls.join(', ')}` : ''}`
   })
 }
 

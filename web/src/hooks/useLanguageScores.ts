@@ -4,7 +4,8 @@ import { isBannedLocale } from '../components/LanguageSelector'
 import { loadLocalizedSearchPayload, parseLocalizedGeneratedData } from '../data/schema'
 import type { GeneratedData, LanguageMetadata, LanguageScoreState, TargetWorkspaceEntry } from '../domain/types'
 import { aggregateLocaleScore } from '../engine/optimizeWorkspace'
-import { LEGACY_GAME_VERSION_ID, loadLanguageScoreCache, saveLanguageScoreCache, type LanguageScoreCache } from '../persistence/storage'
+import { DEFAULT_SCORING_SETTINGS, type ScoringSettings, scoringSettingsFingerprint } from '../engine/scoring'
+import { languageScoreCacheGeneration, LEGACY_GAME_VERSION_ID, loadLanguageScoreCache, saveLanguageScoreCache, type LanguageScoreCache } from '../persistence/storage'
 
 interface ScoringEntry {
   entry: TargetWorkspaceEntry
@@ -48,9 +49,12 @@ export function useLanguageScores(
   enabledBannedLocales: ReadonlySet<string>,
   dataBaseUrl = import.meta.env.BASE_URL,
   minecraftVersion = LEGACY_GAME_VERSION_ID,
+  scoringSettings: ScoringSettings = DEFAULT_SCORING_SETTINGS,
+  cacheInvalidationKey = 0,
 ): ReadonlyMap<string, LanguageScoreState> {
   const [scores, setScores] = useState<ReadonlyMap<string, LanguageScoreState>>(new Map())
-  const [loadedCacheVersion, setLoadedCacheVersion] = useState<string>()
+  const [loadedCacheIdentity, setLoadedCacheIdentity] = useState<string>()
+  const [loadedCacheGeneration, setLoadedCacheGeneration] = useState<number>()
   const cacheRef = useRef<LanguageScoreCache | undefined>(undefined)
   const scoringEntries = useMemo(() => entries
     .filter((entry) => entry.enabled && entry.targetIds.length > 0)
@@ -60,15 +64,17 @@ export function useLanguageScores(
     itemSets: scoringEntries.map(({ cacheKey }) => cacheKey).sort(),
   }), [languages, scoringEntries])
   const enabledBannedLocalesFingerprint = useMemo(() => JSON.stringify([...enabledBannedLocales].sort()), [enabledBannedLocales])
+  const cacheIdentity = `${minecraftVersion}:${scoringSettingsFingerprint(scoringSettings)}:${cacheInvalidationKey}`
 
   useEffect(() => {
     cacheRef.current = loadLanguageScoreCache(undefined, minecraftVersion).value
     setScores(new Map())
-    setLoadedCacheVersion(minecraftVersion)
-  }, [minecraftVersion])
+    setLoadedCacheGeneration(languageScoreCacheGeneration(minecraftVersion))
+    setLoadedCacheIdentity(cacheIdentity)
+  }, [cacheIdentity, minecraftVersion])
 
   useEffect(() => {
-    if (loadedCacheVersion !== minecraftVersion || !baseData || languages.length === 0 || scoringEntries.length === 0) {
+    if (loadedCacheIdentity !== cacheIdentity || loadedCacheGeneration === undefined || !baseData || languages.length === 0 || scoringEntries.length === 0) {
       setScores(new Map())
       return
     }
@@ -113,14 +119,14 @@ export function useLanguageScores(
         },
       }
       cacheRef.current = updatedCache
-      saveLanguageScoreCache(updatedCache, undefined, minecraftVersion)
+      saveLanguageScoreCache(updatedCache, undefined, minecraftVersion, loadedCacheGeneration)
     }
 
     async function calculate(locale: string, localeData: GeneratedData) {
       try {
         for (const { entry, cacheKey } of scoringEntries) {
           if (cachedAggregateScore(cacheRef.current, locale, [{ entry, cacheKey }]) !== undefined) continue
-          const score = await aggregateLocaleScore(localeData, [entry], { signal: controller.signal })
+          const score = await aggregateLocaleScore(localeData, [entry], { signal: controller.signal, scoringSettings })
           if (controller.signal.aborted) return
           if (score === undefined || !Number.isFinite(score)) throw new Error('No language score was available.')
           rememberScore(cacheKey, locale, score)
@@ -160,7 +166,7 @@ export function useLanguageScores(
     })()
 
     return () => controller.abort()
-  }, [baseData, dataBaseUrl, enabledBannedLocalesFingerprint, inputFingerprint, languages, loadedCacheVersion, minecraftVersion, scoringEntries])
+  }, [baseData, cacheIdentity, dataBaseUrl, enabledBannedLocalesFingerprint, inputFingerprint, languages, loadedCacheGeneration, loadedCacheIdentity, minecraftVersion, scoringEntries, scoringSettings])
 
   return scores
 }

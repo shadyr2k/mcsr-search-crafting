@@ -1,4 +1,5 @@
 import type { CraftingSheetPreferences, CraftingSheetSelection, CustomInventoryPreset, TargetWorkspace, TargetWorkspaceEntry } from '../domain/types'
+import { DEFAULT_SCORING_SETTINGS, type ScoringSettings } from '../engine/scoring'
 
 const INVENTORY_SLOTS_KEY = 'mcsr.inventory-slots.v1'
 const TARGET_WORKSPACE_KEY = 'mcsr.target-workspace.v1'
@@ -8,6 +9,7 @@ const RECIPE_BOOK_INVENTORY_KEY = 'mcsr.recipe-book-inventory.v1'
 const CRAFTING_SHEET_PREFERENCES_KEY = 'mcsr.crafting-sheet.v1'
 const GAME_VERSION_PREFERENCE_KEY = 'mcsr.game-version.v1'
 const LANGUAGE_SCORE_CACHE_KEY = 'mcsr.language-score-cache.v1'
+const APP_SETTINGS_KEY = 'mcsr.app-settings.v1'
 const SLOT_COUNT = 3
 export const LEGACY_GAME_VERSION_ID = '1.16.1'
 
@@ -72,6 +74,11 @@ interface VersionedThemePreference extends ThemePreference {
   schemaVersion: 2
 }
 
+export interface AppSettings {
+  scoring: ScoringSettings
+  catifyItems: boolean
+}
+
 interface VersionedGameVersionPreference {
   schemaVersion: 1
   versionId: string
@@ -94,8 +101,13 @@ interface VersionedLanguageScoreCache extends LanguageScoreCache {
   schemaVersion: 1
 }
 
+interface VersionedAppSettings extends AppSettings {
+  schemaVersion: 1
+}
+
 const volatileRecordsByStorage = new WeakMap<Storage, Map<string, string | null>>()
 const unavailableStorageRecords = new Map<string, string | null>()
+const languageScoreCacheGenerations = new Map<string, number>()
 
 function storageWarning(operation: 'access' | 'read' | 'write'): string {
   return `Browser storage could not be ${operation === 'access' ? 'accessed' : operation}. `
@@ -209,6 +221,14 @@ function defaultLanguageScoreCache(): LanguageScoreCache {
   return { entryScores: {} }
 }
 
+export function languageScoreCacheGeneration(minecraftVersion = LEGACY_GAME_VERSION_ID): number {
+  return languageScoreCacheGenerations.get(minecraftVersion) ?? 0
+}
+
+function defaultAppSettings(): AppSettings {
+  return { scoring: { ...DEFAULT_SCORING_SETTINGS }, catifyItems: false }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -223,6 +243,25 @@ function isLanguageScoreCache(value: unknown): value is VersionedLanguageScoreCa
     && Object.values(value.entryScores).every((scores) => (
       isRecord(scores) && Object.values(scores).every((score) => typeof score === 'number' && Number.isFinite(score))
     ))
+}
+
+function isScoringSettings(value: unknown): value is ScoringSettings {
+  if (!isRecord(value)) return false
+  const values = value as Record<keyof ScoringSettings, unknown>
+  return Object.keys(value).length === 6
+    && Number.isInteger(values.freeInitialCharacters)
+    && (values.freeInitialCharacters as number) >= 0
+    && (values.freeInitialCharacters as number) <= 5
+    && ['additionalCharacterPenalty', 'junkExistingPenalty', 'junkItemPenalty', 'backspacePenalty', 'shiftHomePenalty']
+      .every((key) => typeof values[key as keyof ScoringSettings] === 'number' && Number.isFinite(values[key as keyof ScoringSettings] as number) && (values[key as keyof ScoringSettings] as number) >= 0)
+}
+
+function isAppSettings(value: unknown): value is VersionedAppSettings {
+  return isRecord(value)
+    && value.schemaVersion === 1
+    && isScoringSettings(value.scoring)
+    && typeof value.catifyItems === 'boolean'
+    && Object.keys(value).every((key) => key === 'schemaVersion' || key === 'scoring' || key === 'catifyItems')
 }
 
 function isCustomInventoryPreset(value: unknown): value is CustomInventoryPreset {
@@ -558,12 +597,49 @@ export function saveLanguageScoreCache(
   cache: LanguageScoreCache,
   storage?: Storage,
   minecraftVersion = LEGACY_GAME_VERSION_ID,
+  expectedGeneration?: number,
 ): PersistenceSaveResult {
   if (!isLanguageScoreCache({ schemaVersion: 1, ...cache })) {
     throw new TypeError('Language score caches must contain finite scores for each item set and locale.')
   }
   const target = storageOrDefault(storage, minecraftVersion)
+  if (expectedGeneration !== undefined && expectedGeneration !== languageScoreCacheGeneration(minecraftVersion)) {
+    return { warning: target.warning }
+  }
   saveLanguageScoreCacheRecord(cache, target)
+  return { warning: target.warning }
+}
+
+export function clearLanguageScoreCache(
+  storage?: Storage,
+  minecraftVersion = LEGACY_GAME_VERSION_ID,
+): PersistenceSaveResult {
+  const target = storageOrDefault(storage, minecraftVersion)
+  languageScoreCacheGenerations.set(minecraftVersion, languageScoreCacheGeneration(minecraftVersion) + 1)
+  target.removeItem(LANGUAGE_SCORE_CACHE_KEY)
+  return { warning: target.warning }
+}
+
+export function loadAppSettings(storage?: Storage): PersistenceLoadResult<AppSettings> {
+  const target = storageOrDefault(storage)
+  const fallback = defaultAppSettings()
+  const raw = target.getItem(APP_SETTINGS_KEY)
+  if (raw === null) return { value: fallback, warning: target.warning }
+  try {
+    const parsed = parseJson(target, APP_SETTINGS_KEY)
+    if (!isAppSettings(parsed)) return recover(target, APP_SETTINGS_KEY, 'app-settings', raw, fallback)
+    return { value: { scoring: { ...parsed.scoring }, catifyItems: parsed.catifyItems }, warning: target.warning }
+  } catch {
+    return recover(target, APP_SETTINGS_KEY, 'app-settings', raw, fallback)
+  }
+}
+
+export function saveAppSettings(settings: AppSettings, storage?: Storage): PersistenceSaveResult {
+  if (!isAppSettings({ schemaVersion: 1, ...settings })) {
+    throw new TypeError('App settings must contain valid non-negative score penalties and a catify preference.')
+  }
+  const target = storageOrDefault(storage)
+  target.setItem(APP_SETTINGS_KEY, JSON.stringify({ schemaVersion: 1, scoring: settings.scoring, catifyItems: settings.catifyItems } satisfies VersionedAppSettings))
   return { warning: target.warning }
 }
 

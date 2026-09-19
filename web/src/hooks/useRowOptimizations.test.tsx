@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, test, vi } from 'vitest'
 
 import type { EntryOptimizationOutcome, GeneratedData, TargetWorkspaceEntry } from '../domain/types'
+import { DEFAULT_SCORING_SETTINGS } from '../engine/scoring'
 import { useRowOptimizations } from './useRowOptimizations'
 
 const data: GeneratedData = {
@@ -40,7 +41,7 @@ describe('useRowOptimizations', () => {
     const optimize = vi.fn(async (_data, current: TargetWorkspaceEntry) => outcome(current.id))
     const first = entry('a')
     const second = entry('b')
-    const { rerender } = renderHook(({ entries }) => useRowOptimizations(data, entries, optimize), {
+    const { rerender } = renderHook(({ entries }) => useRowOptimizations(data, entries, DEFAULT_SCORING_SETTINGS, optimize), {
       initialProps: { entries: [first, second] },
     })
     await waitFor(() => expect(optimize).toHaveBeenCalledTimes(2))
@@ -50,6 +51,18 @@ describe('useRowOptimizations', () => {
     expect(optimize.mock.calls.map(([, current]) => current.id)).toEqual(['a', 'b', 'a'])
   })
 
+  test('recalculates saved rows after the scoring settings change', async () => {
+    const optimize = vi.fn(async (_data, current: TargetWorkspaceEntry) => outcome(current.id))
+    const saved = entry('a')
+    const hook = renderHook(({ settings }) => useRowOptimizations(data, [saved], settings, optimize), {
+      initialProps: { settings: DEFAULT_SCORING_SETTINGS },
+    })
+    await waitFor(() => expect(optimize).toHaveBeenCalledTimes(1))
+
+    hook.rerender({ settings: { ...DEFAULT_SCORING_SETTINGS, junkItemPenalty: 1 } })
+    await waitFor(() => expect(optimize).toHaveBeenCalledTimes(2))
+  })
+
   test('aborts obsolete work and ignores its later resolution', async () => {
     let resolveFirst!: (value: EntryOptimizationOutcome) => void
     const first = new Promise<EntryOptimizationOutcome>((resolve) => { resolveFirst = resolve })
@@ -57,7 +70,7 @@ describe('useRowOptimizations', () => {
       .mockReturnValueOnce(first)
       .mockImplementation(async (_data, current: TargetWorkspaceEntry) => outcome(current.id, 0))
     const saved = entry('a')
-    const hook = renderHook(({ entries }) => useRowOptimizations(data, entries, optimize), {
+    const hook = renderHook(({ entries }) => useRowOptimizations(data, entries, DEFAULT_SCORING_SETTINGS, optimize), {
       initialProps: { entries: [saved] },
     })
     await waitFor(() => expect(optimize).toHaveBeenCalledTimes(1))
@@ -73,7 +86,7 @@ describe('useRowOptimizations', () => {
     const optimize = vi.fn(async (_data, current: TargetWorkspaceEntry) => outcome(current.id, current.id === 'a' ? 2 : 3))
     const first = entry('a', { order: 0 })
     const second = entry('b', { order: 1 })
-    const hook = renderHook(({ entries }) => useRowOptimizations(data, entries, optimize), {
+    const hook = renderHook(({ entries }) => useRowOptimizations(data, entries, DEFAULT_SCORING_SETTINGS, optimize), {
       initialProps: { entries: [first, second] },
     })
     await waitFor(() => expect(hook.result.current.aggregate).toEqual({ status: 'ready', score: 5 }))
@@ -87,7 +100,7 @@ describe('useRowOptimizations', () => {
     const optimize = vi.fn()
       .mockImplementationOnce(async () => { throw new Error('broken data') })
       .mockImplementation(async (_data, current: TargetWorkspaceEntry) => outcome(current.id, 1))
-    const hook = renderHook(() => useRowOptimizations(data, [entry('a')], optimize))
+    const hook = renderHook(() => useRowOptimizations(data, [entry('a')], DEFAULT_SCORING_SETTINGS, optimize))
     await waitFor(() => expect(hook.result.current.states.get('a')).toMatchObject({ status: 'error', message: 'broken data' }))
 
     act(() => hook.result.current.retry('a'))
@@ -106,7 +119,7 @@ describe('useRowOptimizations', () => {
       return new Promise<EntryOptimizationOutcome>(() => {})
     })
     const saved = entry('a')
-    const hook = renderHook(({ entries }) => useRowOptimizations(data, entries, optimize), {
+    const hook = renderHook(({ entries }) => useRowOptimizations(data, entries, DEFAULT_SCORING_SETTINGS, optimize), {
       initialProps: { entries: [saved] },
     })
     await waitFor(() => expect(hook.result.current.states.get('a')).toMatchObject({ status: 'pending' }))

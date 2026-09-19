@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import type { CraftingRecipe, RecipeResultCollection, SearchItem } from '../domain/types'
 import { MAXIMUM_ORDINARY_BACKSPACES, optimizeOverlap, optimizeOverlapPrepared, optimizeOverlapPreparedCooperatively, transitionPresentation, type OverlapResult } from './overlapOptimizer'
+import { DEFAULT_SCORING_SETTINGS } from './scoring'
 import type { OptimizeInput, PreparedCandidate } from './singleOptimizer'
 
 function item(id: string, text: string): SearchItem {
@@ -245,6 +246,19 @@ describe('optimizeOverlap', () => {
     expect(shared.steps[0].junkItemIds).toEqual([])
     expect(results.every((result) => result.steps.length <= targets.length)).toBe(true)
     expect(results.every((result) => result.steps.every(({ newTargetIds }) => newTargetIds.length > 0))).toBe(true)
+  })
+
+  test('adds a configured penalty for ordinary backspaces', () => {
+    const result = findSequence(
+      optimizeOverlapPrepared({
+        targetIds: ['target:0', 'target:1'],
+        candidates: [preparedCandidate('bed', 0), preparedCandidate('bow', 1)],
+      }, { scoringSettings: { ...DEFAULT_SCORING_SETTINGS, backspacePenalty: 1 } }),
+      ['bed', 'bow'],
+    )
+
+    // Initial `bed` costs one point, then `bow` types `ow` and uses two backspaces.
+    expect(result.score.total).toBe(5)
   })
 
   test('keeps the best junk-bearing sequence alongside a junkless one that ends on the same craft', async () => {

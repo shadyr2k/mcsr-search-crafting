@@ -4,8 +4,11 @@ import type { GeneratedData } from '../domain/types'
 import {
   IconManifestError,
   assertIconCoverage,
+  iconUrl,
   loadIconManifest,
+  loadIconOverrides,
   parseIconManifest,
+  withIconOverrides,
 } from './iconManifest'
 
 
@@ -154,5 +157,30 @@ describe('loadIconManifest', () => {
     })))
     await expect(loadIconManifest('/')).rejects.toBeInstanceOf(IconManifestError)
     vi.unstubAllGlobals()
+  })
+})
+
+describe('icon overrides', () => {
+  it('loads replacements from the cat item-icons package', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => validPayload,
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const overrides = await loadIconOverrides('/versions/26.1.2')
+
+    expect(fetchMock).toHaveBeenCalledWith('/versions/26.1.2/cat-item-icons/manifest.json')
+    expect(overrides.assetBaseUrl).toBe('/versions/26.1.2/cat-item-icons/')
+    vi.unstubAllGlobals()
+  })
+
+  it('uses a replacement only when the pack supplies that item', () => {
+    const base = { ...parseIconManifest(validPayload), assetBaseUrl: '/base/' }
+    const overrides = { ...parseIconManifest({ ...validPayload, icons: { 'minecraft:stick': 'minecraft/cat_stick.png' } }), assetBaseUrl: '/cats/' }
+    const merged = withIconOverrides(base, overrides)
+
+    expect(iconUrl(merged, 'minecraft:stick')).toBe('/cats/item-icons/minecraft/cat_stick.png')
+    expect(iconUrl(merged, 'minecraft:bucket')).toBe('/base/item-icons/minecraft/bucket.png')
   })
 })

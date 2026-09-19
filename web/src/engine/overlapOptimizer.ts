@@ -1,6 +1,6 @@
 import type { CollectionMatchExplanation } from './search'
 import { maximumJunkItems } from './resultLimit'
-import { scoreStep, sharedCharacterCount, transitionTypingCost } from './scoring'
+import { DEFAULT_SCORING_SETTINGS, type ScoringSettings, scoreControlKeys, scoreStep, sharedCharacterCount, transitionTypingCost } from './scoring'
 import {
   prepareOptimization,
   type OptimizeInput,
@@ -107,8 +107,8 @@ function targetIdsForMask(targetIds: readonly string[], mask: bigint): string[] 
   return targetIds.filter((_, index) => (mask & (1n << BigInt(index))) !== 0n)
 }
 
-function candidateJunkScore(candidate: PreparedCandidate) {
-  return scoreStep(0, candidate.junkItemIds.length)
+function candidateJunkScore(candidate: PreparedCandidate, scoringSettings: ScoringSettings) {
+  return scoreStep(0, candidate.junkItemIds.length, scoringSettings)
 }
 
 function coversInitialTargetRange(mask: bigint): boolean {
@@ -140,8 +140,8 @@ export function transitionPresentation(previousQuery: string, nextQuery: string)
   }
 }
 
-function initialState(candidate: PreparedCandidate): SearchState {
-  const stepScore = scoreStep(candidate.query.length, candidate.junkItemIds.length)
+function initialState(candidate: PreparedCandidate, scoringSettings: ScoringSettings): SearchState {
+  const stepScore = scoreStep(candidate.query.length, candidate.junkItemIds.length, scoringSettings)
 
   return {
     coveredMask: candidate.targetMask,
@@ -173,11 +173,13 @@ function transitionState(
   state: SearchState,
   candidate: PreparedCandidate,
   targetIds: readonly string[],
+  scoringSettings: ScoringSettings,
 ): SearchState {
   const newMask = candidate.targetMask & ~state.coveredMask
   const typedCharacterCount = transitionTypingCost(state.lastQuery, candidate.query)
   const presentation = transitionPresentation(state.lastQuery, candidate.query)
-  const junkScore = candidateJunkScore(candidate)
+  const junkScore = candidateJunkScore(candidate, scoringSettings)
+  const controls = scoreControlKeys(state.lastQuery, presentation, scoringSettings)
   const additionalCharacterReuse = state.steps.reduce(
     (count, step) => count + sharedCharacterCount(step.query, candidate.query),
     0,
@@ -199,10 +201,10 @@ function transitionState(
     characterReuseCount: state.characterReuseCount + additionalCharacterReuse,
     score: {
       initialLengthPenalty: state.score.initialLengthPenalty,
-      transitionTypingPenalty: state.score.transitionTypingPenalty + typedCharacterCount,
+      transitionTypingPenalty: state.score.transitionTypingPenalty + typedCharacterCount * scoringSettings.additionalCharacterPenalty,
       junkPresencePenalty: state.score.junkPresencePenalty + junkScore.junkPresencePenalty,
       junkCountPenalty: state.score.junkCountPenalty + junkScore.junkCountPenalty,
-      total: state.score.total + typedCharacterCount + junkScore.total,
+      total: state.score.total + typedCharacterCount * scoringSettings.additionalCharacterPenalty + controls.total + junkScore.total,
     },
   }
 }
@@ -261,17 +263,18 @@ function resultsFromBuckets(
 
 export function optimizeOverlapPrepared(
   prepared: PreparedOptimization,
-  options: Pick<CooperativeOverlapOptions, 'retainTargetOrder'> = {},
+  options: Pick<CooperativeOverlapOptions, 'retainTargetOrder' | 'scoringSettings'> = {},
 ): OverlapResult[] {
   const { targetIds, candidates } = prepared
   if (targetIds.length === 0) return []
   const maximumJunk = maximumJunkItems(targetIds.length)
+  const scoringSettings = options.scoringSettings ?? DEFAULT_SCORING_SETTINGS
 
   const statesByCoverage = createStateBuckets(targetIds.length)
 
   for (const candidate of candidates) {
     if (candidate.junkItemIds.length > maximumJunk) continue
-    const state = initialState(candidate)
+    const state = initialState(candidate, scoringSettings)
     if (options.retainTargetOrder && !coversInitialTargetRange(state.coveredMask)) continue
     retainBetterState(statesByCoverage[countBits(state.coveredMask)], state)
   }
@@ -284,7 +287,7 @@ export function optimizeOverlapPrepared(
         if (usesTooManyOrdinaryBackspaces(state.lastQuery, candidate.query)) continue
         if (options.retainTargetOrder && !coversInitialTargetRange(state.coveredMask | candidate.targetMask)) continue
 
-        const nextState = transitionState(state, candidate, targetIds)
+        const nextState = transitionState(state, candidate, targetIds, scoringSettings)
         retainBetterState(statesByCoverage[countBits(nextState.coveredMask)], nextState)
       }
     }
@@ -299,6 +302,7 @@ export interface CooperativeOverlapOptions {
   workChunkSize?: number
   onProgress?: (completed: number) => void
   retainTargetOrder?: boolean
+  scoringSettings?: ScoringSettings
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
@@ -316,6 +320,7 @@ export async function optimizeOverlapPreparedCooperatively(
   const { targetIds, candidates } = prepared
   if (targetIds.length === 0) return []
   const maximumJunk = maximumJunkItems(targetIds.length)
+  const scoringSettings = options.scoringSettings ?? DEFAULT_SCORING_SETTINGS
 
   const statesByCoverage = createStateBuckets(targetIds.length)
   const workChunkSize = boundedChunkSize(options.workChunkSize)
@@ -341,7 +346,7 @@ export async function optimizeOverlapPreparedCooperatively(
   options.onProgress?.(completed)
   for (const candidate of candidates) {
     if (candidate.junkItemIds.length > maximumJunk) continue
-    const state = initialState(candidate)
+    const state = initialState(candidate, scoringSettings)
     if (!options.retainTargetOrder || coversInitialTargetRange(state.coveredMask)) {
       retainBetterState(statesByCoverage[countBits(state.coveredMask)], state)
     }
@@ -356,7 +361,7 @@ export async function optimizeOverlapPreparedCooperatively(
           && state.totalJunkAppearances + candidate.junkItemIds.length <= maximumJunk
           && !usesTooManyOrdinaryBackspaces(state.lastQuery, candidate.query)
           && (!options.retainTargetOrder || coversInitialTargetRange(state.coveredMask | candidate.targetMask))) {
-          const nextState = transitionState(state, candidate, targetIds)
+          const nextState = transitionState(state, candidate, targetIds, scoringSettings)
           retainBetterState(statesByCoverage[countBits(nextState.coveredMask)], nextState)
         }
         const pendingYield = recordWork()
@@ -370,6 +375,6 @@ export async function optimizeOverlapPreparedCooperatively(
   return resultsFromBuckets(statesByCoverage, targetIds)
 }
 
-export function optimizeOverlap(input: OptimizeInput): OverlapResult[] {
-  return optimizeOverlapPrepared(prepareOptimization(input))
+export function optimizeOverlap(input: OptimizeInput, scoringSettings: ScoringSettings = DEFAULT_SCORING_SETTINGS): OverlapResult[] {
+  return optimizeOverlapPrepared(prepareOptimization(input), { scoringSettings })
 }
