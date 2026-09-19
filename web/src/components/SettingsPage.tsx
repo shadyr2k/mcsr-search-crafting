@@ -8,7 +8,6 @@ interface SettingsPageProps {
   settings: AppSettings
   catifyAvailable: boolean
   onSave(settings: AppSettings): void
-  onCatifyChange(enabled: boolean): void
 }
 
 interface NumberSetting {
@@ -55,7 +54,7 @@ const junkSettings: readonly NumberSetting[] = [
   },
 ]
 
-export function SettingsPage({ settings, catifyAvailable, onSave, onCatifyChange }: SettingsPageProps) {
+export function SettingsPage({ settings, catifyAvailable, onSave }: SettingsPageProps) {
   const [draft, setDraft] = useState(settings)
   const [saved, setSaved] = useState(false)
 
@@ -128,10 +127,8 @@ export function SettingsPage({ settings, catifyAvailable, onSave, onCatifyChange
             aria-checked={draft.catifyItems}
             disabled={!catifyAvailable}
             onClick={() => {
-              const enabled = !draft.catifyItems
               setSaved(false)
-              setDraft((current) => ({ ...current, catifyItems: enabled }))
-              onCatifyChange(enabled)
+              setDraft((current) => ({ ...current, catifyItems: !current.catifyItems }))
             }}
           />
           <span>catify items</span>

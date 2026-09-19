@@ -369,13 +369,6 @@ function App() {
     setWarning((current) => combineWarnings(current, [saved.warning, ...cacheWarnings].filter(Boolean).join(' ') || undefined))
   }
 
-  function setCatifyItems(catifyItems: boolean) {
-    const nextSettings: AppSettings = { ...appSettings, catifyItems }
-    const saved = saveAppSettings(nextSettings)
-    setAppSettings(nextSettings)
-    setWarning((current) => combineWarnings(current, saved.warning))
-  }
-
   function selectPage(nextPage: AppPage) {
     if (tutorialIndex !== null) closeTutorial()
     const clearPageTransitionTimer = () => {
@@ -475,7 +468,7 @@ function App() {
     </header>
     {warning && <p role="alert">{warning}</p>}{error && <p role="alert">{error}</p>}
     <div className={`page-transition${pageTransitionPhase === 'idle' ? '' : ` page-transition--${pageTransitionPhase}`}${pageTransitionDirection ? ` page-transition--slide-${pageTransitionDirection}` : ''}`}>
-    {page === 'settings' && <SettingsPage settings={appSettings} catifyAvailable={catifiedIconOverrides !== undefined} onSave={saveSettings} onCatifyChange={setCatifyItems} />}
+    {page === 'settings' && <SettingsPage settings={appSettings} catifyAvailable={catifiedIconOverrides !== undefined} onSave={saveSettings} />}
     {data && activeIcons && page === 'recipe-book-sim' && <RecipeBookSim
       key={gameVersion.id}
       data={data}

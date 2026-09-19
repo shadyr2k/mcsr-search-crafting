@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('clears cached language scores for every calculation setting and toggles Catify immediately', async ({ page }) => {
+test('clears cached language scores for every calculation setting and saves Catify from its switch', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('mcsr.language-score-cache.v1', JSON.stringify({
     schemaVersion: 1,
     entryScores: { saved: { en_us: 8 } },
@@ -45,6 +45,11 @@ test('clears cached language scores for every calculation setting and toggles Ca
   await expect(catifyItems).toBeEnabled()
   await catifyItems.click()
   await expect(catifyItems).toHaveAttribute('aria-checked', 'true')
+  expect(await page.evaluate(() => {
+    const settings = JSON.parse(localStorage.getItem('mcsr.app-settings.v1') ?? '{}') as { catifyItems?: boolean }
+    return settings.catifyItems
+  })).toBe(false)
+  await page.getByRole('button', { name: 'save settings' }).click()
 
   await expect.poll(() => page.evaluate(() => {
     const settings = JSON.parse(localStorage.getItem('mcsr.app-settings.v1') ?? '{}') as { catifyItems?: boolean }
