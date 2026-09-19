@@ -34,6 +34,7 @@
 .crafting-sheet__panel--page { width: 100%; max-width: none; min-height: min(48rem, calc(100dvh - 2.5rem)); max-height: min(48rem, calc(100dvh - 2.5rem)); grid-template-columns: minmax(20rem, 24rem) minmax(13rem, 17rem) minmax(22rem, 1fr); align-items: stretch; gap: 0; padding: 0; border-top: 0; background: transparent; }
 .crafting-sheet__page-info { display: grid; gap: .9rem; min-width: 0; }
 .crafting-sheet--page .crafting-sheet__page-info { width: auto; min-height: 0; align-content: start; gap: .55rem; padding: .65rem; overflow: auto; background: color-mix(in srgb, var(--panel) 82%, var(--page)); }
+.crafting-sheet--page .crafting-sheet__toggle { border-radius: .6rem; }
 .crafting-sheet--page .crafting-sheet__chart--page { min-width: 0; min-height: 0; padding: .65rem; overflow: auto; border-inline: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 72%, var(--page)); }
 .crafting-sheet--page .crafting-sheet__chart--page .crafting-sheet__hint { font-size: .68rem; }
 .crafting-sheet--page .crafting-sheet__chart--page li { grid-template-columns: 1rem minmax(0, 1fr) 1.1rem; gap: .25rem; min-height: 1.3rem; font-size: .63rem; }
@@ -138,7 +139,7 @@
   .crafting-sheet__totals > div:nth-child(2) { border-inline-end: 0; }
   .crafting-sheet__totals > div:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
 }
-@media (max-width: 72rem) {
+@media (max-width: 72rem), (max-height: 54rem) {
   .crafting-sheet__panel--page { width: 100%; min-height: 0; max-height: none; grid-template-columns: minmax(0, 1fr); }
   .crafting-sheet--page { width: 100%; }
   .crafting-sheet--page .crafting-sheet__page-info,
@@ -147,6 +148,10 @@
   .crafting-sheet--page .crafting-sheet__chart--page { border-inline: 0; border-block: 1px solid var(--border); }
   .crafting-sheet--page .crafting-sheet__set-columns { grid-auto-flow: row; grid-template-rows: none; grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr)); align-content: start; overflow: visible; }
   .crafting-sheet--page .crafting-sheet__set-column { display: contents; }
+}
+
+@media (min-width: 72.01rem) and (max-height: 54rem) {
+  .crafting-sheet--page .crafting-sheet__set-columns { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 32rem) {

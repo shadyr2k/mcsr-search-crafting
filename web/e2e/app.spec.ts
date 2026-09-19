@@ -664,8 +664,11 @@ test('keeps pixel icons proportional and mobile navigation on one row', async ({
     const header = await page.locator('.app-header').evaluate((element) => {
       const icon = element.querySelector<HTMLElement>('.app-header__icon')!
       const title = element.querySelector<HTMLElement>('h1')!
+      const nav = element.querySelector<HTMLElement>('.app-header__nav')!
       const buttons = [...element.querySelectorAll<HTMLElement>('.app-header__nav button')]
       const buttonTops = buttons.map((button) => Math.round(button.getBoundingClientRect().top))
+      const firstButton = buttons[0].getBoundingClientRect()
+      const lastButton = buttons.at(-1)!.getBoundingClientRect()
       return {
         scrollWidth: element.scrollWidth,
         clientWidth: element.clientWidth,
@@ -676,6 +679,8 @@ test('keeps pixel icons proportional and mobile navigation on one row', async ({
         position: getComputedStyle(element).position,
         iconWidth: icon.getBoundingClientRect().width,
         iconHeight: icon.getBoundingClientRect().height,
+        navCenter: nav.getBoundingClientRect().left + nav.getBoundingClientRect().width / 2,
+        buttonCenter: (firstButton.left + lastButton.right) / 2,
       }
     })
     expect(header.scrollWidth).toBeLessThanOrEqual(header.clientWidth)
@@ -684,6 +689,7 @@ test('keeps pixel icons proportional and mobile navigation on one row', async ({
     expect(header.navRows).toBe(1)
     expect(header.position).toBe('sticky')
     expect(header.iconWidth).toBeCloseTo(header.iconHeight, 2)
+    expect(header.buttonCenter).toBeCloseTo(header.navCenter, 0)
 
     await page.getByRole('button', { name: 'recipe book sim' }).click()
     await expect(page.getByRole('region', { name: 'Recipe book results' })).toBeVisible()

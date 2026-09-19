@@ -999,7 +999,7 @@ h3 {
 /* On wider screens the crafting sheet uses the exact space left beneath the
    site header. Its columns can then distribute their content without adding a
    document-level scroll area. */
-@media (min-width: 72.01rem) {
+@media (min-width: 72.01rem) and (min-height: 54.01rem) {
   .app-shell--crafting-sheet {
     display: flex;
     flex-direction: column;
@@ -2103,6 +2103,7 @@ h3 {
       'nav nav';
     grid-column: 1 / -1;
     gap: .45rem .55rem;
+    min-width: 0;
     width: 100%;
   }
 
@@ -2129,6 +2130,7 @@ h3 {
     grid-area: nav;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: .25rem;
+    min-width: 0;
     width: 100%;
     margin: 0;
   }
@@ -2515,8 +2517,8 @@ h3 {
 @media (max-width: 72rem) {
   .app-header__nav {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    width: 100%;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: auto;
     gap: .2rem;
     justify-content: center;
   }
@@ -2536,6 +2538,7 @@ h3 {
     position: relative;
     grid-column: 1 / -1;
     justify-self: center;
+    gap: .35rem;
   }
 
   .theme-picker { position: static; }

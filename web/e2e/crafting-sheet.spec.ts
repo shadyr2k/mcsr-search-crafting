@@ -6,7 +6,9 @@ test('keeps the header fixed while the crafting sheet opens and closes', async (
   const initialTop = await header.evaluate((element) => element.getBoundingClientRect().top)
 
   await page.getByRole('button', { name: /english.*search crafts/ }).click()
-  await expect(page.getByRole('button', { name: 'Back to english (us) crafts' })).toBeVisible()
+  const backToCrafts = page.getByRole('button', { name: 'Back to english (us) crafts' })
+  await expect(backToCrafts).toBeVisible()
+  expect(await backToCrafts.evaluate((element) => Number.parseFloat(getComputedStyle(element).borderTopLeftRadius))).toBeGreaterThan(0)
   expect(await header.evaluate((element) => element.getBoundingClientRect().top)).toBeCloseTo(initialTop, 0)
 
   await page.getByRole('button', { name: 'Back to english (us) crafts' }).click()
@@ -35,6 +37,28 @@ test('expands a sheet item set without clipping its controls inside a compact ro
   await entry.getByRole('button', { name: 'Collapse item set 1' }).click()
   await expect.poll(async () => (await entry.locator('.crafting-sheet__details').boundingBox())!.height).toBe(0)
   expect(await entry.evaluate((element) => element.getBoundingClientRect().width)).toBeCloseTo(collapsedWidth, 0)
+})
+
+test('stacks sheet item sets on short desktop displays', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.goto('/')
+  await page.getByRole('button', { name: /english.*search crafts/ }).waitFor()
+  await page.evaluate(() => {
+    const workspace = JSON.parse(localStorage.getItem('mcsr.target-workspace.v1')!)
+    const source = workspace.entries[0]
+    workspace.entries = Array.from({ length: 18 }, (_, index) => ({ ...source, id: `short-screen-${index}`, order: index }))
+    localStorage.setItem('mcsr.target-workspace.v1', JSON.stringify(workspace))
+  })
+  await page.reload()
+  await page.getByRole('button', { name: /english.*search crafts/ }).click()
+  await expect.poll(() => page.locator('.page-transition').getAttribute('class')).toBe('page-transition')
+  const first = page.getByRole('region', { name: 'item set 1', exact: true })
+  const second = page.getByRole('region', { name: 'item set 2', exact: true })
+  const positions = await Promise.all([first.boundingBox(), second.boundingBox()])
+
+  expect(positions[1]!.x).toBeCloseTo(positions[0]!.x, 0)
+  expect(positions[1]!.y).toBeGreaterThanOrEqual(positions[0]!.y + positions[0]!.height)
+  expect(await page.locator('.crafting-sheet').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
 })
 
 test('packs excluded sheet rows at their natural height', async ({ page }) => {
