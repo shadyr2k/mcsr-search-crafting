@@ -20,7 +20,7 @@ import { useRowOptimizations } from './hooks/useRowOptimizations'
 import { useCraftingSheet } from './hooks/useCraftingSheet'
 import { useLanguageScores } from './hooks/useLanguageScores'
 import { clearCustomInventorySlot, clearLanguageScoreCache, loadAppSettings, loadCustomInventorySlots, loadGameVersionPreference, loadLanguagePreferences, loadTargetWorkspace, loadThemePreference, saveAppSettings, saveCustomInventorySlot, saveGameVersionPreference, saveLanguagePreferences, saveTargetWorkspace, saveThemePreference, type AppSettings, type ThemeColor, type ThemePreference } from './persistence/storage'
-import { junkSettingsFingerprint, normalizeScoringSettings } from './engine/scoring'
+import { normalizeScoringSettings, scoringSettingsFingerprint } from './engine/scoring'
 import { ThemePicker } from './components/ThemePicker'
 import { VersionPicker } from './components/VersionPicker'
 import { draftFromEntry, newItemSetDraft } from './workspace/entryDraft'
@@ -360,13 +360,20 @@ function App() {
   function saveSettings(settings: AppSettings) {
     const nextSettings: AppSettings = { ...settings, scoring: normalizeScoringSettings(settings.scoring) }
     const saved = saveAppSettings(nextSettings)
-    const junkSettingsChanged = junkSettingsFingerprint(appSettings.scoring) !== junkSettingsFingerprint(nextSettings.scoring)
-    const cacheWarnings = junkSettingsChanged
+    const scoringSettingsChanged = scoringSettingsFingerprint(appSettings.scoring) !== scoringSettingsFingerprint(nextSettings.scoring)
+    const cacheWarnings = scoringSettingsChanged
       ? supportedGameVersions.map((version) => clearLanguageScoreCache(undefined, version.id).warning)
       : []
     setAppSettings(nextSettings)
-    if (junkSettingsChanged) setScoringSettingsRevision((revision) => revision + 1)
+    if (scoringSettingsChanged) setScoringSettingsRevision((revision) => revision + 1)
     setWarning((current) => combineWarnings(current, [saved.warning, ...cacheWarnings].filter(Boolean).join(' ') || undefined))
+  }
+
+  function setCatifyItems(catifyItems: boolean) {
+    const nextSettings: AppSettings = { ...appSettings, catifyItems }
+    const saved = saveAppSettings(nextSettings)
+    setAppSettings(nextSettings)
+    setWarning((current) => combineWarnings(current, saved.warning))
   }
 
   function selectPage(nextPage: AppPage) {
@@ -468,7 +475,7 @@ function App() {
     </header>
     {warning && <p role="alert">{warning}</p>}{error && <p role="alert">{error}</p>}
     <div className={`page-transition${pageTransitionPhase === 'idle' ? '' : ` page-transition--${pageTransitionPhase}`}${pageTransitionDirection ? ` page-transition--slide-${pageTransitionDirection}` : ''}`}>
-    {page === 'settings' && <SettingsPage settings={appSettings} catifyAvailable={catifiedIconOverrides !== undefined} onSave={saveSettings} />}
+    {page === 'settings' && <SettingsPage settings={appSettings} catifyAvailable={catifiedIconOverrides !== undefined} onSave={saveSettings} onCatifyChange={setCatifyItems} />}
     {data && activeIcons && page === 'recipe-book-sim' && <RecipeBookSim
       key={gameVersion.id}
       data={data}

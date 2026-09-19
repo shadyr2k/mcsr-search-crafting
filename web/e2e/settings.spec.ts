@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('keeps cached language scores for search settings and clears them for junk settings', async ({ page }) => {
+test('clears cached language scores for every calculation setting and toggles Catify immediately', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('mcsr.language-score-cache.v1', JSON.stringify({
     schemaVersion: 1,
     entryScores: { saved: { en_us: 8 } },
@@ -23,10 +23,10 @@ test('keeps cached language scores for search settings and clears them for junk 
     const settings = JSON.parse(localStorage.getItem('mcsr.app-settings.v1') ?? '{}') as { scoring?: { additionalCharacterPenalty?: number } }
     return settings.scoring?.additionalCharacterPenalty
   })).toBe(1.25)
-  expect(await page.evaluate(() => {
+  await expect.poll(() => page.evaluate(() => {
     const cached = JSON.parse(localStorage.getItem('mcsr.language-score-cache.v1') ?? '{}') as { entryScores?: Record<string, unknown> }
     return cached.entryScores?.saved ?? null
-  })).toEqual({ en_us: 8 })
+  })).toBeNull()
 
   await page.getByRole('spinbutton', { name: /junk item penalty/i }).fill('1.25')
   await page.getByRole('button', { name: 'save settings' }).click()
@@ -43,8 +43,8 @@ test('keeps cached language scores for search settings and clears them for junk 
 
   const catifyItems = page.getByRole('switch', { name: 'catify items' })
   await expect(catifyItems).toBeEnabled()
-  await catifyItems.check()
-  await page.getByRole('button', { name: 'save settings' }).click()
+  await catifyItems.click()
+  await expect(catifyItems).toHaveAttribute('aria-checked', 'true')
 
   await expect.poll(() => page.evaluate(() => {
     const settings = JSON.parse(localStorage.getItem('mcsr.app-settings.v1') ?? '{}') as { catifyItems?: boolean }

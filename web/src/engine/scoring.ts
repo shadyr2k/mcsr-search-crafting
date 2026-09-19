@@ -41,15 +41,6 @@ export function scoringSettingsFingerprint(settings: ScoringSettings): string {
   return JSON.stringify(normalizeScoringSettings(settings))
 }
 
-/** The two settings that can change which result sets count as junk. */
-export function junkSettingsFingerprint(settings: ScoringSettings): string {
-  const normalized = normalizeScoringSettings(settings)
-  return JSON.stringify({
-    junkExistingPenalty: normalized.junkExistingPenalty,
-    junkItemPenalty: normalized.junkItemPenalty,
-  })
-}
-
 export interface ScoreBreakdown {
   lengthPenalty: number
   junkPresencePenalty: number

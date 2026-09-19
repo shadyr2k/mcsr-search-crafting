@@ -8,6 +8,7 @@ interface SettingsPageProps {
   settings: AppSettings
   catifyAvailable: boolean
   onSave(settings: AppSettings): void
+  onCatifyChange(enabled: boolean): void
 }
 
 interface NumberSetting {
@@ -54,13 +55,17 @@ const junkSettings: readonly NumberSetting[] = [
   },
 ]
 
-export function SettingsPage({ settings, catifyAvailable, onSave }: SettingsPageProps) {
+export function SettingsPage({ settings, catifyAvailable, onSave, onCatifyChange }: SettingsPageProps) {
   const [draft, setDraft] = useState(settings)
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
-    setDraft(settings)
-  }, [settings])
+    setDraft((current) => current.scoring === settings.scoring ? current : { ...current, scoring: settings.scoring })
+  }, [settings.scoring])
+
+  useEffect(() => {
+    setDraft((current) => current.catifyItems === settings.catifyItems ? current : { ...current, catifyItems: settings.catifyItems })
+  }, [settings.catifyItems])
 
   function setNumber(key: keyof AppSettings['scoring'], value: string) {
     const numericValue = Number(value)
@@ -114,20 +119,23 @@ export function SettingsPage({ settings, catifyAvailable, onSave }: SettingsPage
       </fieldset>
       <fieldset className="settings-page__catify">
         <legend>item textures</legend>
-        <label title="Use Fat Cat v2 textures for available items; every other icon stays unchanged.">
-          <input
-            type="checkbox"
+        <div title="Use Fat Cat v2 textures for available items; every other icon stays unchanged.">
+          <button
+            type="button"
             role="switch"
             className="settings-page__switch"
-            checked={draft.catifyItems}
+            aria-label="catify items"
+            aria-checked={draft.catifyItems}
             disabled={!catifyAvailable}
-            onChange={(event) => {
+            onClick={() => {
+              const enabled = !draft.catifyItems
               setSaved(false)
-              setDraft((current) => ({ ...current, catifyItems: event.target.checked }))
+              setDraft((current) => ({ ...current, catifyItems: enabled }))
+              onCatifyChange(enabled)
             }}
           />
           <span>catify items</span>
-        </label>
+        </div>
         <small>{catifyAvailable
           ? 'Use Fat Cat v2 textures where the pack provides an item image. Missing images keep the default texture.'
           : 'Catify items is available while item textures are loading.'}</small>

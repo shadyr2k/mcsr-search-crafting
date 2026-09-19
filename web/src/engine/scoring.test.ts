@@ -3,8 +3,8 @@ import { describe, expect, test } from 'vitest'
 import {
   DEFAULT_SCORING_SETTINGS,
   incompleteScore,
-  junkSettingsFingerprint,
   maximumValidScore,
+  scoringSettingsFingerprint,
   scoreControlKeys,
   sequenceCharacterReuse,
   scoreStep,
@@ -64,13 +64,13 @@ describe('transitionTypingCost', () => {
   })
 })
 
-describe('junkSettingsFingerprint', () => {
-  test('changes only when a junk penalty changes', () => {
-    const baseline = junkSettingsFingerprint(DEFAULT_SCORING_SETTINGS)
+describe('scoringSettingsFingerprint', () => {
+  test('changes when any calculation setting changes', () => {
+    const baseline = scoringSettingsFingerprint(DEFAULT_SCORING_SETTINGS)
 
-    expect(junkSettingsFingerprint({ ...DEFAULT_SCORING_SETTINGS, additionalCharacterPenalty: 2 })).toBe(baseline)
-    expect(junkSettingsFingerprint({ ...DEFAULT_SCORING_SETTINGS, backspacePenalty: 1 })).toBe(baseline)
-    expect(junkSettingsFingerprint({ ...DEFAULT_SCORING_SETTINGS, junkItemPenalty: 1 })).not.toBe(baseline)
+    expect(scoringSettingsFingerprint({ ...DEFAULT_SCORING_SETTINGS, additionalCharacterPenalty: 2 })).not.toBe(baseline)
+    expect(scoringSettingsFingerprint({ ...DEFAULT_SCORING_SETTINGS, backspacePenalty: 1 })).not.toBe(baseline)
+    expect(scoringSettingsFingerprint({ ...DEFAULT_SCORING_SETTINGS, junkItemPenalty: 1 })).not.toBe(baseline)
   })
 })
 
