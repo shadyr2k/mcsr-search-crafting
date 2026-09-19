@@ -86,6 +86,29 @@ test('keeps all-enabled sheet rows stable after a resize', async ({ page }) => {
   expect(positions[1]!.y).toBeGreaterThanOrEqual(positions[0]!.y + positions[0]!.height)
 })
 
+test('stacks compact sheet item sets in one full-width column', async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 900 })
+  await page.goto('/')
+  await page.getByRole('button', { name: /english.*search crafts/ }).waitFor()
+  await page.evaluate(() => {
+    const workspace = JSON.parse(localStorage.getItem('mcsr.target-workspace.v1')!)
+    const source = workspace.entries[0]
+    workspace.entries = Array.from({ length: 18 }, (_, index) => ({ ...source, id: `compact-${index}`, order: index }))
+    localStorage.setItem('mcsr.target-workspace.v1', JSON.stringify(workspace))
+  })
+  await page.reload()
+  await page.getByRole('button', { name: /english.*search crafts/ }).click()
+  await expect.poll(() => page.locator('.page-transition').getAttribute('class')).toBe('page-transition')
+  const columns = page.locator('.crafting-sheet__set-columns')
+  await expect(columns).toHaveCSS('display', 'flex')
+  const first = page.getByRole('region', { name: 'item set 1', exact: true })
+  const second = page.getByRole('region', { name: 'item set 2', exact: true })
+  const positions = await Promise.all([columns.boundingBox(), first.boundingBox(), second.boundingBox()])
+  expect(positions[1]!.width).toBeCloseTo(positions[0]!.width, 0)
+  expect(positions[2]!.x).toBeCloseTo(positions[1]!.x, 0)
+  expect(positions[2]!.y).toBeGreaterThanOrEqual(positions[1]!.y + positions[1]!.height)
+})
+
 test('packs excluded sheet rows at their natural height', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: /english.*search crafts/ }).waitFor()

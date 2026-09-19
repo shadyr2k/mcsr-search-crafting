@@ -147,12 +147,12 @@
   .crafting-sheet--page .crafting-sheet__sets,
   .crafting-sheet--page .crafting-sheet__entry { width: 100%; max-width: none; }
   .crafting-sheet--page .crafting-sheet__chart--page { border-inline: 0; border-block: 1px solid var(--border); }
-  .crafting-sheet--page .crafting-sheet__set-columns { grid-auto-flow: row; grid-template-rows: none; grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr)); align-content: start; overflow: visible; }
+  .crafting-sheet--page .crafting-sheet__set-columns,
+  .crafting-sheet--page .crafting-sheet__set-columns--compact-rows { display: flex; flex-direction: column; align-items: stretch; gap: .65rem; overflow: visible; }
   .crafting-sheet--page .crafting-sheet__set-column { display: contents; }
-}
-
-@media (min-width: 72.01rem) and (max-height: 54rem) {
-  .crafting-sheet--page .crafting-sheet__set-columns { grid-template-columns: minmax(0, 1fr); }
+  .crafting-sheet--page .crafting-sheet__entry { flex: 0 0 auto; }
+  .crafting-sheet--page .crafting-sheet__entry-heading { flex-wrap: wrap; align-items: start; }
+  .crafting-sheet--page .crafting-sheet__entry-toggle { flex: 1 1 16rem; }
 }
 
 @media (max-width: 32rem) {
