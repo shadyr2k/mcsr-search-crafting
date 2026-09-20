@@ -231,8 +231,6 @@ function CraftItems({ contents, items, icons, showJunk = true }: {
 }) {
   const itemPreviewRef = useRef<HTMLSpanElement>(null)
   const maxVisibleJunkIcons = Math.min(contents.junkItemIds.length, MAX_COMPACT_JUNK_ICONS)
-  // -1 means even the aggregate count does not fit; show the full list only
-  // after the craft is expanded instead of clipping the card.
   const [visibleJunkIconCount, setVisibleJunkIconCount] = useState(maxVisibleJunkIcons)
 
   useLayoutEffect(() => {
@@ -253,11 +251,13 @@ function CraftItems({ contents, items, icons, showJunk = true }: {
         .find((iconCount) => {
           const sizer = preview.querySelector<HTMLElement>(`[data-junk-icon-count="${iconCount}"]`)
           // The measured strip mirrors the rendered divider and junk container.
-          // One extra pixel prevents fractional grid widths from clipping an icon
+          // Two pixels prevent fractional grid widths from clipping an icon
           // at a breakpoint.
-          return sizer !== null && targetWidth + gap + sizer.getBoundingClientRect().width + 1 <= availableWidth
+          return sizer !== null && targetWidth + gap + sizer.getBoundingClientRect().width + 2 <= availableWidth
         })
-      setVisibleJunkIconCount(nextVisibleCount ?? -1)
+      // Keep a junk signal in every compact row. When no icon fits, the zero
+      // icon variant renders the aggregate +n count instead.
+      setVisibleJunkIconCount(nextVisibleCount ?? 0)
     }
 
     // jsdom has no layout engine or ResizeObserver. Leave the complete preview

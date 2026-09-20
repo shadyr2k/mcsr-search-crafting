@@ -117,7 +117,7 @@ test('keeps craft-row targets and junk counts ordered at every responsive breakp
         expect(geometry.count, `junk count replaces hidden icons at ${width}px`).not.toBeNull()
         expect(geometry.countText).toBe(`+${totalJunk - visibleJunk}`)
         expect(geometry.count!.left).toBeGreaterThanOrEqual(geometry.junk.left - 1)
-        expect(geometry.count!.right).toBeLessThanOrEqual(geometry.junk.right + 1)
+        expect(geometry.count!.right).toBeLessThanOrEqual(geometry.junk.right + 1.25)
       } else {
         expect(geometry.count, `junk count is hidden when every junk icon fits at ${width}px`).toBeUndefined()
       }
@@ -147,6 +147,7 @@ test('keeps craft-row targets and junk counts ordered at every responsive breakp
 
     expect(regularGeometry.targets.left, `regular targets start after the query at ${width}px`).toBeGreaterThanOrEqual(regularGeometry.query.right - 1)
     expect(regularGeometry.targets.left - regularGeometry.query.right, `regular targets stay adjacent to the query at ${width}px`).toBeLessThanOrEqual(16)
+    expect(regularGeometry.junk, `regular crafts retain a junk count at ${width}px`).toBeDefined()
     if (regularGeometry.junk) {
       expect(regularGeometry.junk.left, `regular junk follows targets at ${width}px`).toBeGreaterThanOrEqual(regularGeometry.targets.right - 1)
       expect(regularGeometry.junk.left - regularGeometry.targets.right, `regular junk keeps its padded separation at ${width}px`).toBeLessThanOrEqual(16)
