@@ -78,6 +78,7 @@ test('keeps craft-row targets and junk counts ordered at every responsive breakp
         arrow: row.querySelector<HTMLElement>('.craft-result__toggle-mark')?.getBoundingClientRect().toJSON(),
         junkLabel: junk?.getAttribute('aria-label'),
         countText: count?.textContent,
+        junkIcons: [...junk?.querySelectorAll<HTMLElement>('.item-icon') ?? []].map((icon) => icon.getBoundingClientRect().toJSON()),
         itemsScrollWidth: items.scrollWidth,
         itemsClientWidth: items.clientWidth,
       }
@@ -108,6 +109,10 @@ test('keeps craft-row targets and junk counts ordered at every responsive breakp
       expect(geometry.divider, `a centered divider separates targets and junk at ${width}px`).not.toBeNull()
       expect(Math.abs((geometry.divider!.left - geometry.targets.right) - (geometry.junk.left - geometry.divider!.right)), `divider has matching gaps at ${width}px`).toBeLessThanOrEqual(1)
       expect(Math.abs((geometry.divider!.top + geometry.divider!.bottom) / 2 - (geometry.targetIcon!.top + geometry.targetIcon!.bottom) / 2), `divider is vertically centered on the icons at ${width}px`).toBeLessThanOrEqual(1)
+      for (const [index, icon] of geometry.junkIcons.entries()) {
+        expect(icon.left, `junk icon ${index + 1} remains inside its preview at ${width}px`).toBeGreaterThanOrEqual(geometry.junk.left - 1)
+        expect(icon.right, `junk icon ${index + 1} remains inside its preview at ${width}px`).toBeLessThanOrEqual(geometry.junk.right + 1)
+      }
       if (totalJunk > visibleJunk) {
         expect(geometry.count, `junk count replaces hidden icons at ${width}px`).not.toBeNull()
         expect(geometry.countText).toBe(`+${totalJunk - visibleJunk}`)
@@ -133,6 +138,7 @@ test('keeps craft-row targets and junk counts ordered at every responsive breakp
         targets: targets.getBoundingClientRect().toJSON(),
         divider: bar.querySelector<HTMLElement>('.craft-result__junk-divider')?.getBoundingClientRect().toJSON(),
         junk: junk?.getBoundingClientRect().toJSON(),
+        junkIcons: [...junk?.querySelectorAll<HTMLElement>('.item-icon') ?? []].map((icon) => icon.getBoundingClientRect().toJSON()),
         arrow: arrow.getBoundingClientRect().toJSON(),
         itemsScrollWidth: items.scrollWidth,
         itemsClientWidth: items.clientWidth,
@@ -146,6 +152,10 @@ test('keeps craft-row targets and junk counts ordered at every responsive breakp
       expect(regularGeometry.junk.left - regularGeometry.targets.right, `regular junk keeps its padded separation at ${width}px`).toBeLessThanOrEqual(16)
       expect(regularGeometry.divider, `regular crafts use a centered divider at ${width}px`).not.toBeNull()
       expect(Math.abs((regularGeometry.divider!.left - regularGeometry.targets.right) - (regularGeometry.junk.left - regularGeometry.divider!.right)), `regular divider has matching gaps at ${width}px`).toBeLessThanOrEqual(1)
+      for (const [index, icon] of regularGeometry.junkIcons.entries()) {
+        expect(icon.left, `regular junk icon ${index + 1} remains inside its preview at ${width}px`).toBeGreaterThanOrEqual(regularGeometry.junk.left - 1)
+        expect(icon.right, `regular junk icon ${index + 1} remains inside its preview at ${width}px`).toBeLessThanOrEqual(regularGeometry.junk.right + 1)
+      }
       expect(regularGeometry.arrow.left, `regular arrow stays last at ${width}px`).toBeGreaterThanOrEqual(regularGeometry.junk.right - 1)
     } else {
       expect(regularGeometry.arrow.left, `regular arrow stays after targets at ${width}px`).toBeGreaterThanOrEqual(regularGeometry.targets.right - 1)
@@ -153,6 +163,35 @@ test('keeps craft-row targets and junk counts ordered at every responsive breakp
     expect(regularGeometry.itemsScrollWidth, `regular item strip is not clipped at ${width}px`).toBeLessThanOrEqual(regularGeometry.itemsClientWidth)
     expect(regularGeometry.items.left).toBeGreaterThanOrEqual(regularGeometry.craft.left - 1)
     expect(regularGeometry.items.right).toBeLessThanOrEqual(regularGeometry.craft.right + 1)
+  }
+})
+
+test('prefers a complete overlap preview on narrow result cards', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 1000 })
+  await page.goto('/')
+
+  const row = page.locator('.calculated-search-row:has(.craft-preview--single):has(.craft-preview--overlap)').first()
+  await expect(row).toBeVisible()
+
+  const previewChoice = await row.locator('.craft-previews').evaluate((list) => {
+    const previews = [...list.querySelectorAll<HTMLElement>(':scope > .craft-preview')]
+    const visible = (preview: HTMLElement) => {
+      const style = getComputedStyle(preview)
+      return style.display !== 'none' && style.visibility !== 'hidden'
+    }
+    return {
+      fallsBackToRegular: list.classList.contains('craft-previews--overlap-too-wide'),
+      visibleSingles: previews.filter((preview) => preview.classList.contains('craft-preview--single') && visible(preview)).length,
+      visibleOverlap: previews.some((preview) => preview.classList.contains('craft-preview--overlap') && visible(preview)),
+    }
+  })
+
+  if (previewChoice.fallsBackToRegular) {
+    expect(previewChoice.visibleSingles).toBe(2)
+    expect(previewChoice.visibleOverlap).toBe(false)
+  } else {
+    expect(previewChoice.visibleSingles).toBe(1)
+    expect(previewChoice.visibleOverlap).toBe(true)
   }
 })
 

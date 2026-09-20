@@ -252,7 +252,10 @@ function CraftItems({ contents, items, icons, showJunk = true }: {
       const nextVisibleCount = Array.from({ length: maxVisibleJunkIcons + 1 }, (_, index) => maxVisibleJunkIcons - index)
         .find((iconCount) => {
           const sizer = preview.querySelector<HTMLElement>(`[data-junk-icon-count="${iconCount}"]`)
-          return sizer !== null && targetWidth + gap + sizer.getBoundingClientRect().width <= availableWidth
+          // The measured strip mirrors the rendered divider and junk container.
+          // One extra pixel prevents fractional grid widths from clipping an icon
+          // at a breakpoint.
+          return sizer !== null && targetWidth + gap + sizer.getBoundingClientRect().width + 1 <= availableWidth
         })
       setVisibleJunkIconCount(nextVisibleCount ?? -1)
     }
@@ -298,7 +301,9 @@ function CraftItems({ contents, items, icons, showJunk = true }: {
           data-junk-icon-count={iconCount}
         >
           <span className="craft-result__junk-divider" />
-          <JunkPreview itemIds={contents.junkItemIds} iconCount={iconCount} items={items} icons={icons} decorative />
+          <span className="craft-result__junk-sizer-content">
+            <JunkPreview itemIds={contents.junkItemIds} iconCount={iconCount} items={items} icons={icons} decorative />
+          </span>
         </span>)}
       </span>
     </>}
@@ -317,7 +322,10 @@ function CraftPreviews({
   hideOverflowingPreviews: boolean
 }) {
   const previewsRef = useRef<HTMLUListElement>(null)
+  const overlapPreviewRef = useRef<HTMLLIElement>(null)
   const [visiblePreviewCount, setVisiblePreviewCount] = useState(previews.length)
+  const [overlapIsTooWide, setOverlapIsTooWide] = useState(false)
+  const overlapPreview = previews.find((craft) => craft.kind === 'overlap')
 
   useLayoutEffect(() => {
     if (!hideOverflowingPreviews) {
@@ -331,7 +339,7 @@ function CraftPreviews({
       const gap = Number.parseFloat(getComputedStyle(list).gap) || 0
       let used = 0
       let visibleCount = 0
-      for (const preview of [...list.children] as HTMLElement[]) {
+      for (const preview of [...list.querySelectorAll<HTMLElement>(':scope > .craft-preview:not(.craft-preview--sizer)')]) {
         const nextWidth = preview.getBoundingClientRect().width
         if (nextWidth === 0 || used + (visibleCount === 0 ? 0 : gap) + nextWidth > list.clientWidth) break
         used += (visibleCount === 0 ? 0 : gap) + nextWidth
@@ -346,8 +354,28 @@ function CraftPreviews({
     return () => observer.disconnect()
   }, [hideOverflowingPreviews, previews])
 
-  return <ul ref={previewsRef} className="craft-previews" aria-label={`Craft previews for ${label}`}>
+  useLayoutEffect(() => {
+    const list = previewsRef.current
+    const overlap = overlapPreviewRef.current
+    if (!list || !overlap || typeof ResizeObserver === 'undefined') {
+      setOverlapIsTooWide(false)
+      return
+    }
+
+    const measure = () => {
+      const nextValue = overlap.scrollWidth > list.clientWidth
+      setOverlapIsTooWide((current) => current === nextValue ? current : nextValue)
+    }
+
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(list)
+    return () => observer.disconnect()
+  }, [overlapPreview])
+
+  return <ul ref={previewsRef} className={`craft-previews${overlapIsTooWide ? ' craft-previews--overlap-too-wide' : ''}`} aria-label={`Craft previews for ${label}`}>
     {previews.map((craft, index) => <li
+      ref={craft === overlapPreview ? overlapPreviewRef : undefined}
       key={`${craft.kind}:${craft.key}`}
       className={`craft-preview craft-preview--${craft.kind}${hideOverflowingPreviews && index >= visiblePreviewCount ? ' craft-preview--overflow-hidden' : ''}`}
       aria-label={`${categoryName(craft.kind)} craft: ${searchDescription(craft.search)}`}

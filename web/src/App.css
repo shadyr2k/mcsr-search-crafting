@@ -3170,3 +3170,44 @@ h3 {
 .results-column--editing > * { visibility: hidden !important; }
 .recipe-book-sim__characters li { padding: 0; border: 0; background: transparent; }
 .recipe-book-sim__characters li button { min-width: 2rem; min-height: 2rem; padding: .15rem .3rem; font-family: 'Monocraft', monospace; }
+
+.craft-result__junk-sizer-content {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  min-width: 0;
+  gap: .2rem;
+  overflow: visible;
+}
+
+/* On narrow cards, make the best regular craft and a complete overlap craft
+   the default pair. If the overlap cannot fit by itself, restore the two
+   regular previews instead. Wrapping avoids hiding either complete preview. */
+@container (max-width: 30rem) {
+  .calculated-search-row__summary .craft-previews {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+
+  .calculated-search-row__summary .craft-previews:has(.craft-preview--overlap) .craft-preview--single:not(:first-child) {
+    display: none;
+  }
+
+  .calculated-search-row__summary .craft-previews:has(.craft-preview--overlap) .craft-preview--overlap {
+    display: flex;
+  }
+
+  .calculated-search-row__summary .craft-previews--overlap-too-wide .craft-preview--overlap {
+    display: flex;
+    position: absolute;
+    visibility: hidden;
+    width: max-content;
+    overflow: visible;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  .calculated-search-row__summary .craft-previews--overlap-too-wide .craft-preview--single {
+    display: flex;
+  }
+}
