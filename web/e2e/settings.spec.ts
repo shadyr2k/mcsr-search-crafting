@@ -58,4 +58,6 @@ test('clears cached language scores for every calculation setting and saves Cati
   await page.getByRole('button', { name: 'Choose Minecraft version' }).click()
   await page.getByRole('menuitemradio', { name: 'Select Minecraft 26.1.2' }).click()
   await expect(catifyItems).toBeChecked()
+  await page.getByRole('button', { name: 'search crafting' }).click()
+  await expect(page.locator('img[src*="/versions/26.1.2/cat-item-icons/item-icons/"]').first()).toBeVisible()
 })
