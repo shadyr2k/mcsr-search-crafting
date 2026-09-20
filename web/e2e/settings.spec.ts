@@ -41,6 +41,24 @@ test('clears cached language scores for every calculation setting and saves Cati
     catifyItems: false,
   })
 
+  await page.evaluate(() => localStorage.setItem('mcsr.language-score-cache.v1', JSON.stringify({
+    schemaVersion: 1,
+    entryScores: { idSearch: { en_us: 4 } },
+  })))
+  const itemIdSearch = page.getByRole('switch', { name: 'item ID search' })
+  await itemIdSearch.click()
+  await expect(itemIdSearch).toHaveAttribute('aria-checked', 'true')
+  await page.getByRole('button', { name: 'save settings' }).click()
+  await expect(page.getByRole('status')).toHaveText('settings saved')
+  await expect.poll(() => page.evaluate(() => {
+    const settings = JSON.parse(localStorage.getItem('mcsr.app-settings.v1') ?? '{}') as { itemIdSearch?: boolean }
+    return settings.itemIdSearch
+  })).toBe(true)
+  await expect.poll(() => page.evaluate(() => {
+    const cached = JSON.parse(localStorage.getItem('mcsr.language-score-cache.v1') ?? '{}') as { entryScores?: Record<string, unknown> }
+    return cached.entryScores?.idSearch ?? null
+  })).toBeNull()
+
   const catifyItems = page.getByRole('switch', { name: 'catify items' })
   await expect(catifyItems).toBeEnabled()
   await catifyItems.click()

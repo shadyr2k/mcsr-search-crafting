@@ -36,6 +36,11 @@ export interface NormalizedSearchLine {
 }
 
 const MAX_QUERY_LENGTH = 5
+export const MAX_ITEM_ID_QUERY_LENGTH = 6
+
+export interface SearchOptions {
+  itemIdSearch?: boolean
+}
 
 export function normalizeSearchText(text: string): string {
   return text.toLowerCase()
@@ -69,13 +74,44 @@ export function normalizeSearchLine(line: string): NormalizedSearchLine {
   }
 }
 
-function isSupportedQuery(query: string): boolean {
+function isSupportedQuery(query: string, options: SearchOptions): boolean {
   const characterCount = Array.from(query).length
+  if (options.itemIdSearch && query.startsWith(':')) {
+    return characterCount >= 2 && characterCount <= MAX_ITEM_ID_QUERY_LENGTH
+  }
   return characterCount >= 1 && characterCount <= MAX_QUERY_LENGTH
 }
 
-export function matchItem(item: SearchItem, query: string): MatchExplanation[] {
-  if (!isSupportedQuery(query)) return []
+function resourcePath(itemId: string): string {
+  const separator = itemId.indexOf(':')
+  return separator === -1 ? itemId : itemId.slice(separator + 1)
+}
+
+export function matchesItemId(item: SearchItem, query: string): boolean {
+  if (!query.startsWith(':') || query.length === 1) return false
+  return normalizeSearchText(resourcePath(item.id)).includes(normalizeSearchText(query.slice(1)))
+}
+
+export function matchItem(item: SearchItem, query: string, options: SearchOptions = {}): MatchExplanation[] {
+  if (!isSupportedQuery(query, options)) return []
+
+  if (options.itemIdSearch && query.startsWith(':')) {
+    const normalizedQuery = normalizeSearchText(query.slice(1))
+    const line = resourcePath(item.id)
+    const start = normalizeSearchText(line).indexOf(normalizedQuery)
+    const matches: MatchExplanation[] = start === -1 ? [] : [{
+      itemId: item.id,
+      source: 'item_id',
+      line,
+      matchedSpan: {
+        start,
+        end: start + normalizedQuery.length,
+        text: line.slice(start, start + normalizedQuery.length),
+      },
+    }]
+    for (const match of matchItem(item, query.slice(1))) matches.push(match)
+    return matches
+  }
 
   const normalizedQuery = normalizeSearchText(query)
   const matches: MatchExplanation[] = []

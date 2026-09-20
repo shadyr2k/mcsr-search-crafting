@@ -19,6 +19,7 @@ interface CraftLookupProps {
   onSaveCustomSlot: (index: number, preset: CustomInventoryPreset) => void
   onClearCustomSlot: (index: number) => void
   dataBaseUrl?: string
+  itemIdSearch?: boolean
 }
 
 export interface CraftLookupSession {
@@ -101,11 +102,12 @@ export function CraftLookup({
   onSaveCustomSlot,
   onClearCustomSlot,
   dataBaseUrl,
+  itemIdSearch = false,
 }: CraftLookupProps) {
   const { draft, entry } = session
   const [languageSearch, setLanguageSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<CraftLookupLanguageCategory>('junkless-single')
-  const languageStates = useCraftLookupLanguages(data, languages, entry, enabledBannedLocales, dataBaseUrl)
+  const languageStates = useCraftLookupLanguages(data, languages, entry, enabledBannedLocales, dataBaseUrl, itemIdSearch)
   const languagesByLocale = useMemo(() => new Map(languages.map((language) => [language.locale, language])), [languages])
   const readyLanguages = useMemo<ReadyLookupLanguage[]>(() => [...languageStates.entries()].flatMap(([locale, state]) => (
     state.status === 'ready' ? [{ locale, state }] : []

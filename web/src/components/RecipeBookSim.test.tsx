@@ -251,6 +251,36 @@ describe('RecipeBookSim', () => {
     expect(onLocaleChange).toHaveBeenCalledWith('en_us')
   })
 
+  test('searches item IDs and tooltip text through the enabled colon-prefixed mode', () => {
+    const swordWithTooltip: GeneratedData = {
+      ...data,
+      items: new Map([...data.items, ['minecraft:iron_sword', {
+        ...data.items.get('minecraft:iron_sword')!,
+        searchLines: [
+          { source: 'name', text: 'Iron Sword' },
+          { source: 'attribute', text: 'When in Main Hand' },
+        ],
+      }]]),
+    }
+    render(<RecipeBookSim
+      data={swordWithTooltip}
+      icons={icons}
+      customSlots={[]}
+      languages={languages}
+      selectedLocale="en_us"
+      enabledBannedLocales={new Set()}
+      itemIdSearch
+      onLocaleChange={vi.fn()}
+    />)
+
+    const search = screen.getByRole('searchbox', { name: 'recipe book search' })
+    fireEvent.change(search, { target: { value: ':on_sw' } })
+    expect(within(screen.getByRole('region', { name: 'Recipe book results' })).getByRole('img', { name: 'Iron Sword' })).toBeTruthy()
+
+    fireEvent.change(search, { target: { value: ':main' } })
+    expect(within(screen.getByRole('region', { name: 'Recipe book results' })).getByRole('img', { name: 'Iron Sword' })).toBeTruthy()
+  })
+
   test('filters the simulator language menu', () => {
     const simulatorLanguages = [...languages, { locale: 'de_de', name: 'Deutsch', region: 'Deutschland', script: 'latin' as const }]
     render(<RecipeBookSim

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
+import { DEFAULT_SCORING_SETTINGS } from '../engine/scoring'
 import {
   clearLanguageScoreCache,
   clearCustomInventorySlot,
@@ -576,6 +577,17 @@ describe('version-scoped crafting records', () => {
 })
 
 describe('app settings persistence', () => {
+  test('loads saved settings from before item ID search as disabled', () => {
+    const storage = new MemoryStorage()
+    storage.setItem('mcsr.app-settings.v1', JSON.stringify({
+      schemaVersion: 1,
+      scoring: DEFAULT_SCORING_SETTINGS,
+      catifyItems: false,
+    }))
+
+    expect(loadAppSettings(storage).value.itemIdSearch).toBe(false)
+  })
+
   test('saves score settings globally and clears a versioned score cache', () => {
     const storage = new MemoryStorage()
     const settings = {
@@ -587,6 +599,7 @@ describe('app settings persistence', () => {
         backspacePenalty: .5,
         shiftHomePenalty: 2,
       },
+      itemIdSearch: true,
       catifyItems: true,
     }
     saveAppSettings(settings, storage)

@@ -66,6 +66,10 @@ export function SettingsPage({ settings, catifyAvailable, onSave }: SettingsPage
     setDraft((current) => current.catifyItems === settings.catifyItems ? current : { ...current, catifyItems: settings.catifyItems })
   }, [settings.catifyItems])
 
+  useEffect(() => {
+    setDraft((current) => current.itemIdSearch === settings.itemIdSearch ? current : { ...current, itemIdSearch: settings.itemIdSearch })
+  }, [settings.itemIdSearch])
+
   function setNumber(key: keyof AppSettings['scoring'], value: string) {
     const numericValue = Number(value)
     setSaved(false)
@@ -111,6 +115,21 @@ export function SettingsPage({ settings, catifyAvailable, onSave }: SettingsPage
       <fieldset>
         <legend>search settings</legend>
         {renderNumberSettings(searchSettings)}
+        <div className="settings-page__toggle" title="Allow colon-prefixed searches to match an item's resource ID, such as :on_sw for iron_sword, as well as its searchable tooltip text.">
+          <button
+            type="button"
+            role="switch"
+            className="settings-page__switch"
+            aria-label="item ID search"
+            aria-checked={draft.itemIdSearch}
+            onClick={() => {
+              setSaved(false)
+              setDraft((current) => ({ ...current, itemIdSearch: !current.itemIdSearch }))
+            }}
+          />
+          <span>item ID search</span>
+          <small>Allow colon-prefixed shortcuts from Minecraft item IDs and searchable tooltip text, such as :on_sw for iron_sword.</small>
+        </div>
       </fieldset>
       <fieldset>
         <legend>junk settings</legend>
@@ -118,7 +137,7 @@ export function SettingsPage({ settings, catifyAvailable, onSave }: SettingsPage
       </fieldset>
       <fieldset className="settings-page__catify">
         <legend>item textures</legend>
-        <div title="Use Fat Cat v2 textures for available items; every other icon stays unchanged.">
+        <div className="settings-page__toggle" title="Use Fat Cat v2 textures for available items; every other icon stays unchanged.">
           <button
             type="button"
             role="switch"

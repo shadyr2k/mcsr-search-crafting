@@ -10,7 +10,7 @@ import type { IconManifest } from '../data/iconManifest'
 import type { CraftingRecipe, CustomInventoryPreset, GeneratedData, IngredientSlot, InventoryItem, InventoryPreset, LanguageMetadata, LanguageScoreState, SearchItem } from '../domain/types'
 import { matchEligibleCollectionOutputs } from '../engine/collectionSearch'
 import { eligibleRecipes } from '../engine/craftability'
-import { normalizeSearchText } from '../engine/search'
+import { matchesItemId, normalizeSearchText } from '../engine/search'
 import { loadRecipeBookInventory, saveRecipeBookInventory } from '../persistence/storage'
 import { GridSizeSwitch } from './GridSizeSwitch'
 import { ItemIcon } from './ItemIcon'
@@ -29,6 +29,7 @@ interface RecipeBookSimProps {
   scores?: ReadonlyMap<string, LanguageScoreState>
   onLocaleChange: (locale: string) => void
   minecraftVersion?: string
+  itemIdSearch?: boolean
 }
 
 interface InventoryChoice extends InventoryPreset {
@@ -58,6 +59,12 @@ function scorePositions(scores: ReadonlyMap<string, LanguageScoreState>): Readon
 
 function matchesTooltip(item: SearchItem, query: string): boolean {
   return item.searchLines.some((line) => normalizeSearchText(line.text).includes(query))
+}
+
+function matchesRecipeBookSearch(item: SearchItem, query: string, itemIdSearch: boolean): boolean {
+  return itemIdSearch && query.startsWith(':')
+    ? matchesItemId(item, query) || matchesTooltip(item, query.slice(1))
+    : matchesTooltip(item, query)
 }
 
 function latinSpecialCharacters(items: ReadonlyMap<string, SearchItem>): string[] {
@@ -97,12 +104,12 @@ function itemName(itemId: string, data: GeneratedData): string {
   return data.items.get(itemId)?.name ?? data.inventoryItems.get(itemId)?.name ?? itemId.replace('minecraft:', '').replaceAll('_', ' ')
 }
 
-function matchedGroupItem(item: SearchItem, recipe: CraftingRecipe, data: GeneratedData, query: string): SearchItem | undefined {
-  if (query === '' || matchesTooltip(item, query)) return undefined
+function matchedGroupItem(item: SearchItem, recipe: CraftingRecipe, data: GeneratedData, query: string, itemIdSearch: boolean): SearchItem | undefined {
+  if (query === '' || matchesRecipeBookSearch(item, query, itemIdSearch)) return undefined
   const collection = data.collections.get(recipe.resultCollectionId)
   return collection?.outputItemIds
     .map((itemId) => data.items.get(itemId))
-    .find((candidate): candidate is SearchItem => candidate !== undefined && matchesTooltip(candidate, query))
+    .find((candidate): candidate is SearchItem => candidate !== undefined && matchesRecipeBookSearch(candidate, query, itemIdSearch))
 }
 
 function recipeGridCells(recipe: CraftingRecipe, gridSize: 2 | 3): Array<IngredientSlot | null> {
@@ -131,6 +138,7 @@ export function RecipeBookSim({
   scores = new Map(),
   onLocaleChange,
   minecraftVersion = '1.16.1',
+  itemIdSearch = false,
 }: RecipeBookSimProps) {
   const defaultInventory = data.presets.get('overworld')?.itemIds ?? []
   const [inventoryItemIds, setInventoryItemIds] = useState<string[]>(() => (
@@ -226,6 +234,15 @@ export function RecipeBookSim({
     let matchingOutputIds: Set<string>
     if (normalizedQuery === '') {
       matchingOutputIds = new Set(outputCounts.keys())
+    } else if (itemIdSearch && normalizedQuery.startsWith(':')) {
+      matchingOutputIds = new Set(eligible.flatMap((recipe) => {
+        const collection = data.collections.get(recipe.resultCollectionId)
+        const collectionMatches = collection?.outputItemIds.some((itemId) => {
+          const item = data.items.get(itemId)
+          return item !== undefined && matchesRecipeBookSearch(item, normalizedQuery, itemIdSearch)
+        })
+        return collectionMatches ? [recipe.outputItemId] : []
+      }))
     } else if (Array.from(normalizedQuery).length <= 5) {
       matchingOutputIds = new Set(matchEligibleCollectionOutputs(
         normalizedQuery,
@@ -240,7 +257,7 @@ export function RecipeBookSim({
         const collection = data.collections.get(recipe.resultCollectionId)
         const collectionMatches = collection?.outputItemIds.some((itemId) => {
           const item = data.items.get(itemId)
-          return item !== undefined && matchesTooltip(item, normalizedQuery)
+          return item !== undefined && matchesRecipeBookSearch(item, normalizedQuery, itemIdSearch)
         })
         return collectionMatches ? [recipe.outputItemId] : []
       }))
@@ -253,10 +270,10 @@ export function RecipeBookSim({
         item,
         outputCount,
         recipe,
-        matchedGroupItem: matchedGroupItem(item, recipe, data, normalizedQuery),
+        matchedGroupItem: matchedGroupItem(item, recipe, data, normalizedQuery, itemIdSearch),
       }] : []
     }).sort((left, right) => left.item.name.localeCompare(right.item.name) || left.item.id.localeCompare(right.item.id))
-  }, [data.collections, data.items, data.recipes, gridSize, inventory, normalizedQuery])
+  }, [data.collections, data.items, data.recipes, gridSize, inventory, itemIdSearch, normalizedQuery])
   const pageCount = Math.max(1, Math.ceil(results.length / 20))
   const currentPage = Math.min(page, pageCount - 1)
   const pageResults = results.slice(currentPage * 20, (currentPage + 1) * 20)

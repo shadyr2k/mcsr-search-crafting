@@ -60,6 +60,7 @@ export interface OptimizeWorkspaceOptions {
   workChunkSize?: number
   onProgress?: (progress: WorkspaceOptimizationProgress) => void
   scoringSettings?: ScoringSettings
+  itemIdSearch?: boolean
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
@@ -104,12 +105,13 @@ async function optimizeEntry(
       total,
     }),
     preserveTargetOrder: entry.retainCraftOrder === true,
+    itemIdSearch: options.itemIdSearch,
   })
   throwIfAborted(options.signal)
   const single = optimizeSinglePrepared(prepared, scoringSettings)
   const itemSearches = Object.fromEntries(entry.targetIds.map((itemId) => [itemId,
     prepared.candidates.filter((candidate) => candidate.coveredTargetIds.includes(itemId)
-      && candidate.query.length <= 5
+      && (candidate.query.length <= 5 || (options.itemIdSearch === true && candidate.query.startsWith(':')))
       && candidate.junkItemIds.length <= maximumJunkItems(candidate.coveredTargetIds.length))
       .map((candidate) => rankedFromSingle({
         ...candidate,

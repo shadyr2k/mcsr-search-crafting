@@ -4,6 +4,7 @@ import {
   type CollectionMatchExplanation,
   type MatchExplanation,
   matchItem,
+  type SearchOptions,
 } from './search'
 
 function compareExplanations(
@@ -81,13 +82,14 @@ function matchCollectionMembers(
   query: string,
   collection: RecipeResultCollection,
   items: ReadonlyMap<string, SearchItem>,
+  options: SearchOptions,
 ): MemberMatch[] {
   return collection.outputItemIds
     .slice()
     .sort()
     .flatMap((memberItemId) => {
       const member = getItem(memberItemId, collection.id, items)
-      return matchItem(member, query).map((match) => ({ member, match }))
+      return matchItem(member, query, options).map((match) => ({ member, match }))
     })
 }
 
@@ -96,13 +98,14 @@ async function matchCollectionMembersCooperatively(
   collection: RecipeResultCollection,
   items: ReadonlyMap<string, SearchItem>,
   checkpointBetweenMembers: () => Promise<void>,
+  options: SearchOptions,
 ): Promise<MemberMatch[]> {
   const memberItemIds = collection.outputItemIds.slice().sort()
   const memberMatches: MemberMatch[] = []
 
   for (const [index, memberItemId] of memberItemIds.entries()) {
     const member = getItem(memberItemId, collection.id, items)
-    memberMatches.push(...matchItem(member, query).map((match) => ({ member, match })))
+    memberMatches.push(...matchItem(member, query, options).map((match) => ({ member, match })))
     if (index < memberItemIds.length - 1) await checkpointBetweenMembers()
   }
 
@@ -170,6 +173,7 @@ export function matchEligibleCollectionOutputs(
   eligible: readonly CraftingRecipe[],
   collections: ReadonlyMap<string, RecipeResultCollection>,
   items: ReadonlyMap<string, SearchItem>,
+  options: SearchOptions = {},
 ): Map<string, CollectionMatchExplanation[]> {
   const eligibleByCollection = groupEligibleRecipes(eligible)
   const accumulator = matchAccumulator()
@@ -180,7 +184,7 @@ export function matchEligibleCollectionOutputs(
       query,
       collection,
       eligibleByCollection.get(collectionId)!,
-      matchCollectionMembers(query, collection, items),
+      matchCollectionMembers(query, collection, items, options),
       items,
       accumulator,
     )
@@ -195,6 +199,7 @@ export async function matchEligibleCollectionOutputsCooperatively(
   collections: ReadonlyMap<string, RecipeResultCollection>,
   items: ReadonlyMap<string, SearchItem>,
   checkpointBetweenMembers: () => Promise<void>,
+  options: SearchOptions = {},
 ): Promise<Map<string, CollectionMatchExplanation[]>> {
   const eligibleByCollection = groupEligibleRecipes(eligible)
   const accumulator = matchAccumulator()
@@ -210,6 +215,7 @@ export async function matchEligibleCollectionOutputsCooperatively(
         collection,
         items,
         checkpointBetweenMembers,
+        options,
       ),
       items,
       accumulator,

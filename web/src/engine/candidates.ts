@@ -1,10 +1,19 @@
 import type { CraftingRecipe, RecipeResultCollection, SearchItem } from '../domain/types'
 
-import { normalizeSearchLine } from './search'
+import { MAX_ITEM_ID_QUERY_LENGTH, normalizeSearchLine, type SearchOptions } from './search'
 
 const MAX_QUERY_LENGTH = 5
 
-export function candidateQueries(targets: Iterable<SearchItem>, maxLength = MAX_QUERY_LENGTH): string[] {
+function resourcePath(itemId: string): string {
+  const separator = itemId.indexOf(':')
+  return separator === -1 ? itemId : itemId.slice(separator + 1)
+}
+
+export function candidateQueries(
+  targets: Iterable<SearchItem>,
+  maxLength = MAX_QUERY_LENGTH,
+  options: SearchOptions = {},
+): string[] {
   const effectiveMaxLength = Math.min(Math.max(0, maxLength), MAX_QUERY_LENGTH)
   const candidates = new Set<string>()
 
@@ -14,6 +23,23 @@ export function candidateQueries(targets: Iterable<SearchItem>, maxLength = MAX_
       for (const start of line.originalCharacterStarts) {
         for (let length = 1; length <= effectiveMaxLength && start + length <= line.text.length; length += 1) {
           candidates.add(line.text.slice(start, start + length))
+        }
+      }
+    }
+    if (options.itemIdSearch) {
+      const path = normalizeSearchLine(resourcePath(target.id))
+      const idMaxLength = Math.min(MAX_ITEM_ID_QUERY_LENGTH - 1, path.text.length)
+      for (const start of path.originalCharacterStarts) {
+        for (let length = 1; length <= idMaxLength && start + length <= path.text.length; length += 1) {
+          candidates.add(`:${path.text.slice(start, start + length)}`)
+        }
+      }
+      for (const { text } of target.searchLines) {
+        const line = normalizeSearchLine(text)
+        for (const start of line.originalCharacterStarts) {
+          for (let length = 1; length <= effectiveMaxLength && start + length <= line.text.length; length += 1) {
+            candidates.add(`:${line.text.slice(start, start + length)}`)
+          }
         }
       }
     }
@@ -28,6 +54,7 @@ export function candidateQueriesForTargets(
   collections: ReadonlyMap<string, RecipeResultCollection>,
   items: ReadonlyMap<string, SearchItem>,
   maxLength = MAX_QUERY_LENGTH,
+  options: SearchOptions = {},
 ): string[] {
   const targetCollections = new Set<string>()
   for (const recipe of recipes) {
@@ -51,5 +78,5 @@ export function candidateQueriesForTargets(
     }
   }
 
-  return candidateQueries(memberItems, maxLength)
+  return candidateQueries(memberItems, maxLength, options)
 }

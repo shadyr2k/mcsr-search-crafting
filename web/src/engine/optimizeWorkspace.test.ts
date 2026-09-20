@@ -151,6 +151,18 @@ describe('optimizeWorkspace', () => {
     })
   })
 
+  test('adds colon-prefixed item-ID alternatives only when the setting is enabled', async () => {
+    const ironSword = item('minecraft:iron_sword', 'Iron Sword')
+    const fixture = generatedData([ironSword], [recipe(ironSword.id, true)])
+    const result = await optimizeWorkspaceEntry(fixture, entry('sword', [ironSword.id], {
+      inventoryItemIds: ['ingredient:shared'],
+    }), { itemIdSearch: true })
+
+    expect(result.kind).toBe('ranked')
+    if (result.kind !== 'ranked') throw new Error('Expected complete craft choices')
+    expect(result.itemSearches?.[ironSword.id].some((search) => search.queries[0] === ':on_sw')).toBe(true)
+  })
+
   test('optimizes each entry from only its own exact inventory', async () => {
     const craftable = await optimizeWorkspaceEntry(data, entry('craftable', [alpha.id], {
       inventoryItemIds: ['ingredient:shared'],

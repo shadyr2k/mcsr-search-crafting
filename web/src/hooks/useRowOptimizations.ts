@@ -31,13 +31,18 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
 }
 
-export function entryOptimizationFingerprint(entry: TargetWorkspaceEntry, scoringSettings: ScoringSettings = DEFAULT_SCORING_SETTINGS): string {
+export function entryOptimizationFingerprint(
+  entry: TargetWorkspaceEntry,
+  scoringSettings: ScoringSettings = DEFAULT_SCORING_SETTINGS,
+  itemIdSearch = false,
+): string {
   return JSON.stringify({
     targetIds: entry.retainCraftOrder ? [...new Set(entry.targetIds)] : [...new Set(entry.targetIds)].sort(),
     inventoryItemIds: [...new Set(entry.inventoryItemIds)].sort(),
     gridSize: entry.gridSize,
     retainCraftOrder: entry.retainCraftOrder === true,
     scoring: scoringSettingsFingerprint(scoringSettings),
+    itemIdSearch,
   })
 }
 
@@ -45,6 +50,7 @@ export function useRowOptimizations(
   data: GeneratedData | undefined,
   entries: readonly TargetWorkspaceEntry[],
   scoringSettings: ScoringSettings = DEFAULT_SCORING_SETTINGS,
+  itemIdSearch = false,
   optimize: typeof optimizeWorkspaceEntry = optimizeWorkspaceEntry,
 ): {
   states: ReadonlyMap<string, RowOptimizationState>
@@ -78,7 +84,7 @@ export function useRowOptimizations(
     }
 
     for (const entry of entries) {
-      const fingerprint = entryOptimizationFingerprint(entry, scoringSettings)
+      const fingerprint = entryOptimizationFingerprint(entry, scoringSettings, itemIdSearch)
       const retryToken = retryTokens.get(entry.id) ?? 0
       const active = data !== undefined && entry.enabled && entry.targetIds.length > 0
       const current = statesRef.current.get(entry.id)
@@ -115,7 +121,7 @@ export function useRowOptimizations(
       const requestId = ++nextRequestId.current
       requestsRef.current.set(entry.id, { requestId, fingerprint, retryToken, data, controller })
       publish(entry.id, { status: 'pending', fingerprint })
-      const options: OptimizeWorkspaceOptions = { signal: controller.signal, scoringSettings }
+      const options: OptimizeWorkspaceOptions = { signal: controller.signal, scoringSettings, itemIdSearch }
 
       optimize(data, entry, options).then((outcome) => {
         const latest = requestsRef.current.get(entry.id)
@@ -135,7 +141,7 @@ export function useRowOptimizations(
         })
       })
     }
-  }, [data, entries, optimize, retryTokens, scoringSettings])
+  }, [data, entries, itemIdSearch, optimize, retryTokens, scoringSettings])
 
   useEffect(() => () => {
     for (const request of requestsRef.current.values()) request.controller.abort()

@@ -5,7 +5,7 @@ import {
   matchEligibleCollectionOutputs,
   matchEligibleCollectionOutputsCooperatively,
 } from './collectionSearch'
-import type { CollectionMatchExplanation } from './search'
+import type { CollectionMatchExplanation, SearchOptions } from './search'
 import { maximumJunkItems } from './resultLimit'
 import { DEFAULT_SCORING_SETTINGS, type ScoreBreakdown, type ScoringSettings, scoreStep } from './scoring'
 
@@ -44,6 +44,7 @@ export interface CooperativePreparationOptions {
   workChunkSize?: number
   onProgress?: (completed: number, total: number) => void
   preserveTargetOrder?: boolean
+  itemIdSearch?: boolean
 }
 
 function compareText(left: string, right: string): number {
@@ -58,7 +59,7 @@ function chunkSize(value: number | undefined): number {
   return Number.isInteger(value) && (value ?? 0) > 0 ? value! : 4096
 }
 
-function preparationContext(input: OptimizeInput, preserveTargetOrder = false) {
+function preparationContext(input: OptimizeInput, preserveTargetOrder = false, options: SearchOptions = {}) {
   const targetIds = [...input.targetIds]
   if (!preserveTargetOrder) targetIds.sort(compareText)
   const targetIdSet = new Set(targetIds)
@@ -77,6 +78,8 @@ function preparationContext(input: OptimizeInput, preserveTargetOrder = false) {
     input.recipes,
     input.collections,
     input.items,
+    undefined,
+    options,
   )
   return { targetIds, targetIdSet, targetIndexes, eligibleCollections, queries }
 }
@@ -87,9 +90,10 @@ function addCollectionMatches(
   eligibleRecipes: readonly CraftingRecipe[],
   matchedItemIds: Set<string>,
   explanations: CollectionMatchExplanation[],
+  options: SearchOptions,
 ): void {
   addMatches(
-    matchEligibleCollectionOutputs(query, eligibleRecipes, input.collections, input.items),
+    matchEligibleCollectionOutputs(query, eligibleRecipes, input.collections, input.items, options),
     matchedItemIds,
     explanations,
   )
@@ -133,15 +137,16 @@ function preparedCandidateFromMatches(
 
 export function prepareOptimization(
   input: OptimizeInput,
-  options: Pick<CooperativePreparationOptions, 'preserveTargetOrder'> = {},
+  options: Pick<CooperativePreparationOptions, 'preserveTargetOrder' | 'itemIdSearch'> = {},
 ): PreparedOptimization {
-  const context = preparationContext(input, options.preserveTargetOrder)
+  const searchOptions = { itemIdSearch: options.itemIdSearch }
+  const context = preparationContext(input, options.preserveTargetOrder, searchOptions)
   const candidates: PreparedCandidate[] = []
   for (const query of context.queries) {
     const matchedItemIds = new Set<string>()
     const explanations: CollectionMatchExplanation[] = []
     for (const { recipes } of context.eligibleCollections) {
-      addCollectionMatches(input, query, recipes, matchedItemIds, explanations)
+      addCollectionMatches(input, query, recipes, matchedItemIds, explanations, searchOptions)
     }
     const candidate = preparedCandidateFromMatches(context, query, matchedItemIds, explanations)
     if (candidate !== undefined) candidates.push(candidate)
@@ -153,7 +158,8 @@ export async function prepareOptimizationCooperatively(
   input: OptimizeInput,
   options: CooperativePreparationOptions,
 ): Promise<PreparedOptimization> {
-  const context = preparationContext(input, options.preserveTargetOrder)
+  const searchOptions = { itemIdSearch: options.itemIdSearch }
+  const context = preparationContext(input, options.preserveTargetOrder, searchOptions)
   const candidates: PreparedCandidate[] = []
   const total = context.queries.length * context.eligibleCollections.length
   const boundedChunkSize = chunkSize(options.workChunkSize)
@@ -182,6 +188,7 @@ export async function prepareOptimizationCooperatively(
           throwIfAborted(options.signal)
           membersSinceYield = 0
         },
+        searchOptions,
       )
       addMatches(matches, matchedItemIds, explanations)
 

@@ -32,6 +32,23 @@ describe('matchItem', () => {
     }])
   })
 
+  test('combines item ID and tooltip matches for enabled colon-prefixed searches', () => {
+    const ironSword = { ...item, id: 'minecraft:iron_sword' }
+    expect(matchItem(ironSword, ':on_sw', { itemIdSearch: true })).toEqual([{
+      itemId: 'minecraft:iron_sword',
+      source: 'item_id',
+      line: 'iron_sword',
+      matchedSpan: { start: 2, end: 7, text: 'on_sw' },
+    }])
+    expect(matchItem(ironSword, ':att', { itemIdSearch: true })).toEqual([{
+      itemId: 'minecraft:iron_sword',
+      source: 'attribute',
+      line: '+8 Attack Damage!',
+      matchedSpan: { start: 3, end: 6, text: 'Att' },
+    }])
+    expect(matchItem(ironSword, ':on_s')).toEqual([])
+  })
+
   test('does not match a query formed by adjacent search lines', () => {
     const splitItem: SearchItem = {
       ...item,

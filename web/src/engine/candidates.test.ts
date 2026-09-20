@@ -40,6 +40,15 @@ describe('candidateQueries', () => {
     expect(candidates).not.toContain('̇')
     expect(candidates).not.toContain('̇x')
   })
+
+  test('adds colon-prefixed item ID candidates only when enabled', () => {
+    const ironSword = target('minecraft:iron_sword', ['Iron Sword', 'When in Main Hand'])
+
+    expect(candidateQueries([ironSword], 5)).not.toContain(':on_sw')
+    const candidates = candidateQueries([ironSword], 5, { itemIdSearch: true })
+    expect(candidates).toContain(':on_sw')
+    expect(candidates).toContain(':main')
+  })
 })
 
 function recipe(

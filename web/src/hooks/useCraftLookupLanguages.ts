@@ -35,9 +35,10 @@ export function useCraftLookupLanguages(
   entry: TargetWorkspaceEntry | undefined,
   enabledBannedLocales: ReadonlySet<string>,
   dataBaseUrl = import.meta.env.BASE_URL,
+  itemIdSearch = false,
 ): ReadonlyMap<string, CraftLookupLanguageState> {
   const [states, setStates] = useState<ReadonlyMap<string, CraftLookupLanguageState>>(new Map())
-  const fingerprint = useMemo(() => entry ? entryOptimizationFingerprint(entry) : '', [entry])
+  const fingerprint = useMemo(() => entry ? entryOptimizationFingerprint(entry, undefined, itemIdSearch) : '', [entry, itemIdSearch])
 
   useEffect(() => {
     if (!baseData || !entry || entry.targetIds.length === 0) {
@@ -62,7 +63,7 @@ export function useCraftLookupLanguages(
 
     const calculate = async (locale: string, localeData: GeneratedData) => {
       try {
-        const outcome = await optimizeWorkspaceEntry(localeData, entry, { signal: controller.signal })
+        const outcome = await optimizeWorkspaceEntry(localeData, entry, { signal: controller.signal, itemIdSearch })
         publish(locale, { status: 'ready', category: classify(outcome), data: localeData, outcome })
       } catch (error) {
         if (!isAbortError(error)) publish(locale, { status: 'unavailable' })
@@ -93,7 +94,7 @@ export function useCraftLookupLanguages(
     })()
 
     return () => controller.abort()
-  }, [baseData, dataBaseUrl, enabledBannedLocales, entry, fingerprint, languages])
+  }, [baseData, dataBaseUrl, enabledBannedLocales, entry, fingerprint, itemIdSearch, languages])
 
   return states
 }

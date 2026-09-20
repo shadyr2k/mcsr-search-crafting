@@ -138,9 +138,9 @@ function App() {
   const activeIcons = useMemo(() => icons && appSettings.catifyItems && catifiedIconOverrides
     ? withIconOverrides(icons, catifiedIconOverrides)
     : icons, [appSettings.catifyItems, catifiedIconOverrides, gameVersion.id, icons])
-  const { states, retry } = useRowOptimizations(data, workspace.entries, appSettings.scoring)
+  const { states, retry } = useRowOptimizations(data, workspace.entries, appSettings.scoring, appSettings.itemIdSearch)
   const craftingSheet = useCraftingSheet(selectedLocale, entries, states, gameVersion.id, workspaceLoaded, appSettings.scoring)
-  const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.packageBaseUrl, gameVersion.id, appSettings.scoring, scoringSettingsRevision)
+  const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.packageBaseUrl, gameVersion.id, appSettings.scoring, appSettings.itemIdSearch, scoringSettingsRevision)
 
   useLayoutEffect(() => {
     if (tutorialIndex === null) return
@@ -361,11 +361,12 @@ function App() {
     const nextSettings: AppSettings = { ...settings, scoring: normalizeScoringSettings(settings.scoring) }
     const saved = saveAppSettings(nextSettings)
     const scoringSettingsChanged = scoringSettingsFingerprint(appSettings.scoring) !== scoringSettingsFingerprint(nextSettings.scoring)
-    const cacheWarnings = scoringSettingsChanged
+    const calculationSettingsChanged = scoringSettingsChanged || appSettings.itemIdSearch !== nextSettings.itemIdSearch
+    const cacheWarnings = calculationSettingsChanged
       ? supportedGameVersions.map((version) => clearLanguageScoreCache(undefined, version.id).warning)
       : []
     setAppSettings(nextSettings)
-    if (scoringSettingsChanged) setScoringSettingsRevision((revision) => revision + 1)
+    if (calculationSettingsChanged) setScoringSettingsRevision((revision) => revision + 1)
     setWarning((current) => combineWarnings(current, [saved.warning, ...cacheWarnings].filter(Boolean).join(' ') || undefined))
   }
 
@@ -480,6 +481,7 @@ function App() {
       selectedLocale={selectedLocale}
       enabledBannedLocales={enabledBannedLocales}
       scores={languageScores}
+      itemIdSearch={appSettings.itemIdSearch}
       onLocaleChange={selectLocale}
       minecraftVersion={gameVersion.id}
     />}
@@ -494,6 +496,7 @@ function App() {
       onSaveCustomSlot={saveSlot}
       onClearCustomSlot={clearSlot}
       dataBaseUrl={gameVersion.packageBaseUrl}
+      itemIdSearch={appSettings.itemIdSearch}
     />}
     {data && activeIcons && page === 'crafting-sheet' && <CraftingSheet
       layout="page"
