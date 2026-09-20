@@ -800,9 +800,10 @@ test('keeps the recipe book pager centered and its summary below the book', asyn
       summaryTop: summaryBox.top,
       bookBottom: bookBox.bottom,
       controlsFontFamily: getComputedStyle(simulator.querySelector<HTMLElement>('.recipe-book-sim__controls')!).fontFamily,
-      resultCountFontFamily: getComputedStyle(summary).fontFamily,
-      searchColor: getComputedStyle(search).color,
-      searchTextAlign: getComputedStyle(search).textAlign,
+       resultCountFontFamily: getComputedStyle(summary).fontFamily,
+       searchColor: getComputedStyle(search).color,
+       searchPlaceholderColor: getComputedStyle(search, '::placeholder').color,
+       searchTextAlign: getComputedStyle(search).textAlign,
       searchTextShadow: getComputedStyle(search).textShadow,
       fontFamily: getComputedStyle(search).fontFamily,
       resultCountFontWeight: getComputedStyle(summary).fontWeight,
@@ -832,6 +833,7 @@ test('keeps the recipe book pager centered and its summary below the book', asyn
   expect(geometry.arrowWidth).toBeCloseTo(33.6, 0)
   expect(geometry.arrowCenterOffset).toBeLessThanOrEqual(1)
   expect(geometry.searchColor).toBe('rgb(255, 255, 255)')
+  expect(geometry.searchPlaceholderColor).toBe('rgb(189, 189, 189)')
   expect(geometry.searchTextAlign).toBe('left')
   expect(geometry.searchTextShadow).not.toBe('none')
   expect(geometry.controlsFontFamily).not.toContain('Monocraft')

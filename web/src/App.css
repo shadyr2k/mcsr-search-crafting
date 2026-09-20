@@ -1992,7 +1992,7 @@ h3 {
 }
 
 :root[data-theme] .recipe-book-sim__book-search input::placeholder {
-  color: #fff;
+  color: #bdbdbd;
   opacity: 1;
 }
 
