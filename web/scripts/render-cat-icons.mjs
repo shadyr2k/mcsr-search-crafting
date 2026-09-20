@@ -24,6 +24,38 @@ function itemIdForRenderer(itemId) {
   return itemId.slice('minecraft:'.length)
 }
 
+async function readAssetJson(path, assets) {
+  const source = await readAssetFile(path, assets)
+  return source ? JSON.parse(Buffer.from(source).toString('utf8')) : undefined
+}
+
+function referencesItemModel(value) {
+  if (typeof value === 'string') {
+    return value.startsWith('minecraft:item/') || value.startsWith('item/')
+  }
+  if (Array.isArray(value)) return value.some(referencesItemModel)
+  if (value && typeof value === 'object') return Object.values(value).some(referencesItemModel)
+  return false
+}
+
+async function rendererFor(itemId, assets) {
+  const bareItemId = itemIdForRenderer(itemId)
+  const modernItemDefinition = await readAssetJson(`assets/minecraft/items/${bareItemId}.json`, assets)
+
+  if (modernItemDefinition) {
+    // Newer versions explicitly point block inventory entries at block models.
+    // Composite and special definitions describe inventory-only items such as beds.
+    return referencesItemModel(modernItemDefinition.model) ? renderItem : renderBlock
+  }
+
+  const legacyItemModel = await readAssetJson(`assets/minecraft/models/item/${bareItemId}.json`, assets)
+  if (legacyItemModel && referencesItemModel(legacyItemModel.parent)) return renderItem
+
+  return await readAssetFile(`assets/minecraft/blockstates/${bareItemId}.json`, assets)
+    ? renderBlock
+    : renderItem
+}
+
 const { values } = parseArgs({
   options: {
     version: { type: 'string' },
@@ -66,9 +98,7 @@ try {
     if (typeof iconPath !== 'string' || iconPath.includes('..')) throw new Error(`Unsafe icon path for ${itemId}.`)
     const outputPath = join(stagingIconsDirectory, iconPath)
     await mkdir(dirname(outputPath), { recursive: true })
-    const renderer = await readAssetFile(`assets/minecraft/blockstates/${itemIdForRenderer(itemId)}.json`, assets)
-      ? renderBlock
-      : renderItem
+    const renderer = await rendererFor(itemId, assets)
     await renderer({
       id: itemIdForRenderer(itemId),
       assets,
