@@ -105,6 +105,24 @@ describe('CraftingSheet', () => {
     expect(screen.getByText('SH', { selector: '.crafting-sheet__key' })).toHaveAttribute('title', 'Select the previous query, then replace it')
   })
 
+  test('uses Minecraft keyboard sprites when text keycaps are disabled', () => {
+    const input = props()
+    const first = search('aw', 'anchor')
+    const replacementStep = search('bed').steps[0]
+    const replacement: RankedSearch = {
+      ...first,
+      kind: 'overlap',
+      queries: ['aw', 'bed'],
+      steps: [first.steps[0], { ...replacementStep, retainedPrefix: '', freeBackspaceCount: 2, typedSuffix: 'bed' }],
+    }
+
+    const { container } = render(<CraftingSheet {...input} entries={[{ ...input.entries[0], selectedSearch: replacement }]} layout="page" textControlKeycaps={false} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Expand item set 1' }))
+    expect(container.querySelector('.crafting-sheet__sequence .arrow-sprite--shift')).toBeTruthy()
+    expect(container.querySelector('.crafting-sheet__sequence .arrow-sprite--home')).toBeTruthy()
+    expect(screen.queryByText('SH', { selector: '.query-control-keycap' })).not.toBeInTheDocument()
+  })
+
   test('scales the total score from green at best to red at the furthest available score', () => {
     const input = props()
     const bestOption = input.entries[0].options.reduce((best, option) => option.totalScore < best.totalScore ? option : best)

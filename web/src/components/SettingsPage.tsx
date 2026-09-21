@@ -70,6 +70,10 @@ export function SettingsPage({ settings, catifyAvailable, onSave }: SettingsPage
     setDraft((current) => current.itemIdSearch === settings.itemIdSearch ? current : { ...current, itemIdSearch: settings.itemIdSearch })
   }, [settings.itemIdSearch])
 
+  useEffect(() => {
+    setDraft((current) => current.textControlKeycaps === settings.textControlKeycaps ? current : { ...current, textControlKeycaps: settings.textControlKeycaps })
+  }, [settings.textControlKeycaps])
+
   function setNumber(key: keyof AppSettings['scoring'], value: string) {
     const numericValue = Number(value)
     setSaved(false)
@@ -128,12 +132,30 @@ export function SettingsPage({ settings, catifyAvailable, onSave }: SettingsPage
             }}
           />
           <span>item ID search</span>
-          <small>A colon also checks Minecraft’s English item ID, such as :on_sw for iron_sword. It still matches the selected language’s name and searchable tooltip text.</small>
+          <small>Allows : to match Minecraft’s English item IDs while still matching the selected language’s name and searchable tooltip text.</small>
         </div>
       </fieldset>
       <fieldset>
         <legend>junk settings</legend>
         {renderNumberSettings(junkSettings)}
+      </fieldset>
+      <fieldset>
+        <legend>site settings</legend>
+        <div className="settings-page__toggle" title="Show Shift+Home and Backspace as text keycaps instead of Minecraft keyboard sprites.">
+          <button
+            type="button"
+            role="switch"
+            className="settings-page__switch"
+            aria-label="text control keycaps"
+            aria-checked={draft.textControlKeycaps}
+            onClick={() => {
+              setSaved(false)
+              setDraft((current) => ({ ...current, textControlKeycaps: !current.textControlKeycaps }))
+            }}
+          />
+          <span>text control keycaps</span>
+          <small>Show Shift+Home and Backspace as SH and ← keycaps. Turn this off to use Minecraft keyboard sprites.</small>
+        </div>
       </fieldset>
       {catifyAvailable !== undefined && <fieldset className="settings-page__catify">
         <legend>item textures</legend>

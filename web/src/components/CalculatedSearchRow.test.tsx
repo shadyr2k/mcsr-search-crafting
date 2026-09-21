@@ -518,6 +518,24 @@ describe('CalculatedSearchRow', () => {
     expect(within(previews).getByRole('listitem', { name: 'Regular craft: three' })).toBeTruthy()
   })
 
+  test('uses text keycaps for Shift+Home and backspace when requested', () => {
+    const overlap = search(['first', 'second', 'third'], 1, 'overlap')
+    overlap.steps[1] = { ...overlap.steps[1], retainedPrefix: 'f', freeBackspaceCount: 1, typedSuffix: 'second' }
+    overlap.steps[2] = { ...overlap.steps[2], retainedPrefix: '', freeBackspaceCount: 6, typedSuffix: 'third' }
+    render(<CalculatedSearchRow
+      entry={entry}
+      entryNumber={1}
+      state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [overlap], bestScore: 1, visibleItemIds: [] } }}
+      items={items}
+      icons={icons}
+      textControlKeycaps
+    />)
+
+    expect(document.querySelectorAll('.query-control-keycap')).toHaveLength(2)
+    expect(screen.getByText('SH')).toBeTruthy()
+    expect(screen.getByText('←')).toBeTruthy()
+  })
+
   test('renders no-viable and calculation errors distinctly', () => {
     const { rerender } = render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'no-viable', entryId: 'a', rankedSearches: [], bestScore: 7, visibleItemIds: [], matchedTargetIds: [], unmatchedTargetIds: ['minecraft:bow'] } }} items={items} icons={icons} />)
     expect(screen.getByText('No viable search')).toBeTruthy()

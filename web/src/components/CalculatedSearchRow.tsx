@@ -7,6 +7,7 @@ import { removeRedundantItemIdSearches } from '../engine/rankedSearch'
 import { ArrowSprite } from './ArrowSprite'
 import { ItemIcon } from './ItemIcon'
 import { MatchEvidence } from './MatchEvidence'
+import { QueryControl } from './QueryControl'
 
 interface CalculatedSearchRowProps {
   entry: TargetWorkspaceEntry
@@ -22,6 +23,7 @@ interface CalculatedSearchRowProps {
   hideOutcomeScore?: boolean
   previewMode?: 'default' | 'junkless-single' | 'junkless-overlap'
   hideOverflowingPreviews?: boolean
+  textControlKeycaps?: boolean
   className?: string
 }
 
@@ -67,15 +69,13 @@ function searchDescription(search: RankedSearch): string {
     : `${replacesWholeQuery(step, search.steps[index - 1]?.query) ? 'Shift+Home' : `${step.freeBackspaceCount} backspace${step.freeBackspaceCount === 1 ? '' : 's'}`}, ${displayQuery(step.typedSuffix)}`).join(', ')
 }
 
-function SearchQuery({ search }: { search: RankedSearch }) {
+function SearchQuery({ search, textControlKeycaps = false }: { search: RankedSearch; textControlKeycaps?: boolean }) {
   return <span className="craft-query" aria-label={searchDescription(search)}>
     {search.steps.map((step, index) => <Fragment key={`${step.query}-${index}`}>
       {index > 0 && (replacesWholeQuery(step, search.steps[index - 1]?.query)
-        ? <span className="craft-query__shortcut" aria-label="Shift+Home"><ArrowSprite direction="shift" /><ArrowSprite direction="home" /></span>
+        ? <QueryControl kind="shift-home" textKeycaps={textControlKeycaps} />
         : step.freeBackspaceCount > 0
-        ? <span className="craft-query__backspaces" aria-label={`${step.freeBackspaceCount} backspaces`}>
-          {Array.from({ length: step.freeBackspaceCount }, (_, arrowIndex) => <ArrowSprite key={arrowIndex} direction="backspace" />)}
-        </span>
+        ? <QueryControl kind="backspace" backspaceCount={step.freeBackspaceCount} textKeycaps={textControlKeycaps} />
         : <ArrowSprite direction="right" className="craft-query__advance" />)}
       <span className="craft-query__term">{displayQuery(index === 0 ? step.query : step.typedSuffix)}</span>
     </Fragment>)}
@@ -316,11 +316,13 @@ function CraftPreviews({
   label,
   hidePreviewDecorations,
   hideOverflowingPreviews,
+  textControlKeycaps,
 }: {
   previews: readonly CraftGroup[]
   label: string
   hidePreviewDecorations: boolean
   hideOverflowingPreviews: boolean
+  textControlKeycaps: boolean
 }) {
   const previewsRef = useRef<HTMLUListElement>(null)
   const overlapPreviewRef = useRef<HTMLLIElement>(null)
@@ -382,7 +384,7 @@ function CraftPreviews({
       aria-label={`${categoryName(craft.kind)} craft: ${searchDescription(craft.search)}`}
       aria-hidden={hideOverflowingPreviews && index >= visiblePreviewCount ? true : undefined}
     >
-      <SearchQuery search={craft.search} />
+      <SearchQuery search={craft.search} textControlKeycaps={textControlKeycaps} />
       {!hidePreviewDecorations && craftContents(craft).junkItemIds.length === 0 && <span className="craft-preview__star" aria-label="Junkless craft">★</span>}
     </li>)}
   </ul>
@@ -397,33 +399,32 @@ function RemainingJunk({ itemIds, items, icons, label = `All junk: ${itemIds.len
   </span>
 }
 
-function StepQuery({ search, index }: { search: RankedSearch; index: number }) {
+function StepQuery({ search, index, textControlKeycaps }: { search: RankedSearch; index: number; textControlKeycaps: boolean }) {
   const step = search.steps[index]
   const previousQuery = search.steps[index - 1]?.query
   return <span className="craft-query" aria-label={`Search ${index + 1}: ${searchDescription({ ...search, steps: search.steps.slice(0, index + 1) })}`}>
     {index > 0 && (replacesWholeQuery(step, previousQuery)
-      ? <span className="craft-query__shortcut" aria-label="Shift+Home"><ArrowSprite direction="shift" /><ArrowSprite direction="home" /></span>
+      ? <QueryControl kind="shift-home" textKeycaps={textControlKeycaps} />
       : step.freeBackspaceCount > 0
-      ? <span className="craft-query__backspaces" aria-label={`${step.freeBackspaceCount} backspaces`}>
-        {Array.from({ length: step.freeBackspaceCount }, (_, arrowIndex) => <ArrowSprite key={arrowIndex} direction="backspace" />)}
-      </span>
+      ? <QueryControl kind="backspace" backspaceCount={step.freeBackspaceCount} textKeycaps={textControlKeycaps} />
       : <ArrowSprite direction="right" className="craft-query__advance" />)}
     <span className="craft-query__term">{displayQuery(index === 0 ? step.query : step.typedSuffix)}</span>
   </span>
 }
 
-function OverlapCraftSteps({ search, items, icons, expanded }: {
+function OverlapCraftSteps({ search, items, icons, expanded, textControlKeycaps }: {
   search: RankedSearch
   items: ReadonlyMap<string, SearchItem>
   icons: IconManifest
   expanded: boolean
+  textControlKeycaps: boolean
 }) {
   return <div className="craft-result__steps">
     {search.steps.map((step, index) => {
       const contents = { targetItemIds: step.newTargetIds, junkItemIds: step.junkItemIds }
       return <div key={`${step.query}-${index}`} className="craft-result__step" aria-label={`Search step ${index + 1}`}>
         <div className="craft-result__step-bar">
-          <StepQuery search={search} index={index} />
+          <StepQuery search={search} index={index} textControlKeycaps={textControlKeycaps} />
           <CraftItems contents={contents} items={items} icons={icons} showJunk={!expanded} />
         </div>
         {step.junkItemIds.length > 0 && <div className={`craft-result__step-details${expanded ? ' craft-result__step-details--open' : ''}`} aria-hidden={!expanded}>
@@ -463,11 +464,12 @@ function CollectionEvidence({ explanation, itemIds, items, icons }: Extract<Craf
   </span>
 }
 
-function CraftDetail({ craft, items, icons, collections }: {
+function CraftDetail({ craft, items, icons, collections, textControlKeycaps }: {
   craft: CraftGroup
   items: ReadonlyMap<string, SearchItem>
   icons: IconManifest
   collections: ReadonlyMap<string, RecipeResultCollection> | undefined
+  textControlKeycaps: boolean
 }) {
   const [showEvidence, setShowEvidence] = useState(false)
   const [hasShownEvidence, setHasShownEvidence] = useState(false)
@@ -486,9 +488,9 @@ function CraftDetail({ craft, items, icons, collections }: {
   }
 
   const bar = usesStepRows
-    ? <OverlapCraftSteps search={craft.search} items={items} icons={icons} expanded={showEvidence} />
+    ? <OverlapCraftSteps search={craft.search} items={items} icons={icons} expanded={showEvidence} textControlKeycaps={textControlKeycaps} />
     : <>
-      <SearchQuery search={craft.search} />
+      <SearchQuery search={craft.search} textControlKeycaps={textControlKeycaps} />
       <span className="craft-result__item-preview"><CraftItems contents={contents} items={items} icons={icons} showJunk={!showEvidence} /></span>
     </>
 
@@ -519,11 +521,12 @@ function CraftDetail({ craft, items, icons, collections }: {
   </li>
 }
 
-function CraftCategory({ category, items, icons, collections, showMore: controlledShowMore, onShowMoreChange }: {
+function CraftCategory({ category, items, icons, collections, textControlKeycaps, showMore: controlledShowMore, onShowMoreChange }: {
   category: SearchCategory
   items: ReadonlyMap<string, SearchItem>
   icons: IconManifest
   collections: ReadonlyMap<string, RecipeResultCollection> | undefined
+  textControlKeycaps: boolean
   showMore?: boolean
   onShowMoreChange?: (showMore: boolean) => void
 }) {
@@ -539,7 +542,7 @@ function CraftCategory({ category, items, icons, collections, showMore: controll
       {category.headerControl}
     </header>}
     <ol>
-      {visibleCrafts.map((craft) => <CraftDetail key={craft.key} craft={craft} items={items} icons={icons} collections={collections} />)}
+      {visibleCrafts.map((craft) => <CraftDetail key={craft.key} craft={craft} items={items} icons={icons} collections={collections} textControlKeycaps={textControlKeycaps} />)}
     </ol>
     {category.crafts.length > 3 && <button
       type="button"
@@ -579,6 +582,7 @@ export function CalculatedSearchRow({
   hideOutcomeScore = false,
   previewMode = 'default',
   hideOverflowingPreviews = false,
+  textControlKeycaps = false,
   className,
 }: CalculatedSearchRowProps) {
   const [expanded, setExpanded] = useState(false)
@@ -701,6 +705,7 @@ export function CalculatedSearchRow({
         label={label}
         hidePreviewDecorations={hidePreviewDecorations}
         hideOverflowingPreviews={hideOverflowingPreviews}
+        textControlKeycaps={textControlKeycaps}
       />
       <button
         type="button"
@@ -732,6 +737,7 @@ export function CalculatedSearchRow({
         items={items}
         icons={icons}
         collections={collections}
+        textControlKeycaps={textControlKeycaps}
         showMore={expandedRegularViews[visibleRegularView]}
         onShowMoreChange={(showMore) => setExpandedRegularViews((current) => ({ ...current, [visibleRegularView]: showMore }))}
       />}
@@ -740,6 +746,7 @@ export function CalculatedSearchRow({
         items={items}
         icons={icons}
         collections={collections}
+        textControlKeycaps={textControlKeycaps}
         showMore={expandedOverlapViews[visibleOverlapView]}
         onShowMoreChange={(showMore) => setExpandedOverlapViews((current) => ({ ...current, [visibleOverlapView]: showMore }))}
       />}

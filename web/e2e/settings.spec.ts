@@ -57,4 +57,22 @@ test('clears cached language scores for every calculation setting', async ({ pag
     const cached = JSON.parse(localStorage.getItem('mcsr.language-score-cache.v1') ?? '{}') as { entryScores?: Record<string, unknown> }
     return cached.entryScores?.idSearch ?? null
   })).toBeNull()
+
+  await page.evaluate(() => localStorage.setItem('mcsr.language-score-cache.v1', JSON.stringify({
+    schemaVersion: 1,
+    entryScores: { display: { en_us: 4 } },
+  })))
+  const textControlKeycaps = page.getByRole('switch', { name: 'text control keycaps' })
+  await textControlKeycaps.click()
+  await expect(textControlKeycaps).toHaveAttribute('aria-checked', 'false')
+  await page.getByRole('button', { name: 'save settings' }).click()
+  await expect(page.getByRole('status')).toHaveText('settings saved')
+  await expect.poll(() => page.evaluate(() => {
+    const settings = JSON.parse(localStorage.getItem('mcsr.app-settings.v1') ?? '{}') as { textControlKeycaps?: boolean }
+    return settings.textControlKeycaps
+  })).toBe(false)
+  await expect.poll(() => page.evaluate(() => {
+    const cached = JSON.parse(localStorage.getItem('mcsr.language-score-cache.v1') ?? '{}') as { entryScores?: Record<string, unknown> }
+    return cached.entryScores?.display?.en_us ?? null
+  })).toBe(4)
 })

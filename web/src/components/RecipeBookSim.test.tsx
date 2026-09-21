@@ -251,7 +251,7 @@ describe('RecipeBookSim', () => {
     expect(onLocaleChange).toHaveBeenCalledWith('en_us')
   })
 
-  test('searches item IDs and tooltip text through the enabled colon-prefixed mode', () => {
+  test('always searches item IDs and tooltip text through colon-prefixed queries', () => {
     const swordWithTooltip: GeneratedData = {
       ...data,
       items: new Map([...data.items, ['minecraft:iron_sword', {
@@ -269,7 +269,6 @@ describe('RecipeBookSim', () => {
       languages={languages}
       selectedLocale="en_us"
       enabledBannedLocales={new Set()}
-      itemIdSearch
       onLocaleChange={vi.fn()}
     />)
 

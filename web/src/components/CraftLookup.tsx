@@ -20,6 +20,7 @@ interface CraftLookupProps {
   onClearCustomSlot: (index: number) => void
   dataBaseUrl?: string
   itemIdSearch?: boolean
+  textControlKeycaps?: boolean
 }
 
 export interface CraftLookupSession {
@@ -103,6 +104,7 @@ export function CraftLookup({
   onClearCustomSlot,
   dataBaseUrl,
   itemIdSearch = false,
+  textControlKeycaps = false,
 }: CraftLookupProps) {
   const { draft, entry } = session
   const [languageSearch, setLanguageSearch] = useState('')
@@ -205,6 +207,7 @@ export function CraftLookup({
                           hideOutcomeScore
                           hideOverflowingPreviews
                           previewMode={previewMode(visibleCategory.category)}
+                          textControlKeycaps={textControlKeycaps}
                           className="calculated-search-row--craft-lookup"
                         /></li>
                       })}</ol>

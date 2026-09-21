@@ -494,7 +494,6 @@ function App() {
       selectedLocale={selectedLocale}
       enabledBannedLocales={enabledBannedLocales}
       scores={languageScores}
-      itemIdSearch={appSettings.itemIdSearch}
       onLocaleChange={selectLocale}
       minecraftVersion={gameVersion.id}
     />}
@@ -510,6 +509,7 @@ function App() {
       onClearCustomSlot={clearSlot}
       dataBaseUrl={gameVersion.packageBaseUrl}
       itemIdSearch={appSettings.itemIdSearch}
+      textControlKeycaps={appSettings.textControlKeycaps}
     />}
     {data && activeIcons && page === 'crafting-sheet' && <CraftingSheet
       layout="page"
@@ -527,6 +527,7 @@ function App() {
       icons={activeIcons}
       isCalculating={craftingSheet.isCalculating}
       warning={craftingSheet.warning}
+      textControlKeycaps={appSettings.textControlKeycaps}
       onSelectItemCraft={craftingSheet.selectItemCraft}
       onMoveItemCraft={craftingSheet.moveItemCraft}
       onSetEntryDisabled={craftingSheet.setEntryDisabled}
@@ -562,13 +563,14 @@ function App() {
           icons={activeIcons}
           isCalculating={craftingSheet.isCalculating}
           warning={craftingSheet.warning}
+          textControlKeycaps={appSettings.textControlKeycaps}
           onSelectItemCraft={craftingSheet.selectItemCraft}
           onMoveItemCraft={craftingSheet.moveItemCraft}
           onSetEntryDisabled={craftingSheet.setEntryDisabled}
           onReset={craftingSheet.reset}
         />
         {entries.map((entry, index) => <CalculatedSearchRow
-          key={entry.id} entry={entry} entryNumber={index + 1} state={states.get(entry.id)} items={data.items} icons={activeIcons} collections={data.collections} onRetry={() => retry(entry.id)}
+          key={entry.id} entry={entry} entryNumber={index + 1} state={states.get(entry.id)} items={data.items} icons={activeIcons} collections={data.collections} textControlKeycaps={appSettings.textControlKeycaps} onRetry={() => retry(entry.id)}
         />)}
       </section>
       {editor && <div className="item-set-editor-overlay">

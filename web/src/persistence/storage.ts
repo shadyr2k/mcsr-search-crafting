@@ -77,6 +77,7 @@ interface VersionedThemePreference extends ThemePreference {
 export interface AppSettings {
   scoring: ScoringSettings
   itemIdSearch: boolean
+  textControlKeycaps: boolean
   catifyItems: boolean
 }
 
@@ -102,9 +103,10 @@ interface VersionedLanguageScoreCache extends LanguageScoreCache {
   schemaVersion: 1
 }
 
-interface VersionedAppSettings extends Omit<AppSettings, 'itemIdSearch'> {
+interface VersionedAppSettings extends Omit<AppSettings, 'itemIdSearch' | 'textControlKeycaps'> {
   schemaVersion: 1
   itemIdSearch?: boolean
+  textControlKeycaps?: boolean
 }
 
 const volatileRecordsByStorage = new WeakMap<Storage, Map<string, string | null>>()
@@ -228,7 +230,7 @@ export function languageScoreCacheGeneration(minecraftVersion = LEGACY_GAME_VERS
 }
 
 function defaultAppSettings(): AppSettings {
-  return { scoring: { ...DEFAULT_SCORING_SETTINGS }, itemIdSearch: false, catifyItems: false }
+  return { scoring: { ...DEFAULT_SCORING_SETTINGS }, itemIdSearch: false, textControlKeycaps: true, catifyItems: false }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -263,8 +265,9 @@ function isAppSettings(value: unknown): value is VersionedAppSettings {
     && value.schemaVersion === 1
     && isScoringSettings(value.scoring)
     && (value.itemIdSearch === undefined || typeof value.itemIdSearch === 'boolean')
+    && (value.textControlKeycaps === undefined || typeof value.textControlKeycaps === 'boolean')
     && typeof value.catifyItems === 'boolean'
-    && Object.keys(value).every((key) => key === 'schemaVersion' || key === 'scoring' || key === 'itemIdSearch' || key === 'catifyItems')
+    && Object.keys(value).every((key) => key === 'schemaVersion' || key === 'scoring' || key === 'itemIdSearch' || key === 'textControlKeycaps' || key === 'catifyItems')
 }
 
 function isCustomInventoryPreset(value: unknown): value is CustomInventoryPreset {
@@ -631,7 +634,7 @@ export function loadAppSettings(storage?: Storage): PersistenceLoadResult<AppSet
   try {
     const parsed = parseJson(target, APP_SETTINGS_KEY)
     if (!isAppSettings(parsed)) return recover(target, APP_SETTINGS_KEY, 'app-settings', raw, fallback)
-    return { value: { scoring: { ...parsed.scoring }, itemIdSearch: parsed.itemIdSearch ?? false, catifyItems: parsed.catifyItems }, warning: target.warning }
+    return { value: { scoring: { ...parsed.scoring }, itemIdSearch: parsed.itemIdSearch ?? false, textControlKeycaps: parsed.textControlKeycaps ?? true, catifyItems: parsed.catifyItems }, warning: target.warning }
   } catch {
     return recover(target, APP_SETTINGS_KEY, 'app-settings', raw, fallback)
   }
@@ -639,10 +642,10 @@ export function loadAppSettings(storage?: Storage): PersistenceLoadResult<AppSet
 
 export function saveAppSettings(settings: AppSettings, storage?: Storage): PersistenceSaveResult {
   if (!isAppSettings({ schemaVersion: 1, ...settings })) {
-    throw new TypeError('App settings must contain valid non-negative score penalties and valid search and texture preferences.')
+    throw new TypeError('App settings must contain valid non-negative score penalties and valid search, display, and texture preferences.')
   }
   const target = storageOrDefault(storage)
-  target.setItem(APP_SETTINGS_KEY, JSON.stringify({ schemaVersion: 1, scoring: settings.scoring, itemIdSearch: settings.itemIdSearch, catifyItems: settings.catifyItems } satisfies VersionedAppSettings))
+  target.setItem(APP_SETTINGS_KEY, JSON.stringify({ schemaVersion: 1, scoring: settings.scoring, itemIdSearch: settings.itemIdSearch, textControlKeycaps: settings.textControlKeycaps, catifyItems: settings.catifyItems } satisfies VersionedAppSettings))
   return { warning: target.warning }
 }
 

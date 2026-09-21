@@ -103,6 +103,8 @@
 .crafting-sheet__plan { display: grid; gap: .5rem; padding: .65rem .75rem; border-inline-start: 3px solid var(--accent); background: color-mix(in srgb, var(--panel) 55%, var(--page)); border-radius: .2rem .45rem .45rem .2rem; }
 .crafting-sheet__sequence { display: inline-flex; align-items: center; flex-wrap: wrap; gap: .4rem; min-width: 0; }
 .crafting-sheet__key { display: inline-flex; align-items: center; padding: .15rem .3rem; border: 1px solid var(--border); border-radius: .25rem; color: var(--muted); background: var(--page); font: inherit; font-size: .66rem; white-space: nowrap; }
+.crafting-sheet__sequence .craft-query__shortcut, .crafting-sheet__sequence .craft-query__backspaces { display: inline-flex; align-items: center; gap: 0; }
+.crafting-sheet__sequence .arrow-sprite { width: auto !important; height: 1.5rem !important; }
 .crafting-sheet__picker { min-width: 0; }
 .crafting-sheet__choice-toggle { display: inline-flex; align-items: center; gap: .45rem; min-height: 2rem; padding: .3rem .5rem; font-size: .76rem; }
 .crafting-sheet__option-count { color: var(--muted); padding-inline: .25rem; border-inline-start: 1px solid var(--border); font-size: .68rem; }

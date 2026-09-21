@@ -996,6 +996,21 @@ h3 {
   min-width: 0;
 }
 
+.query-control-keycap {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.55rem;
+  padding: .15rem .35rem;
+  border: 1px solid var(--border);
+  border-radius: .3rem;
+  color: var(--muted);
+  background: var(--page);
+  font: inherit;
+  font-size: .72rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 /* On wider screens the crafting sheet uses the exact space left beneath the
    site header. Its columns can then distribute their content without adding a
    document-level scroll area. */
