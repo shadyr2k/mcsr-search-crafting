@@ -23,7 +23,7 @@ interface CalculatedSearchRowProps {
   hideOutcomeScore?: boolean
   previewMode?: 'default' | 'junkless-single' | 'junkless-overlap'
   hideOverflowingPreviews?: boolean
-  textControlKeycaps?: boolean
+  compactLayout?: boolean
   hideNumberCraftsByDefault?: boolean
   removeAnimations?: boolean
   className?: string
@@ -466,12 +466,13 @@ function CollectionEvidence({ explanation, itemIds, items, icons, removeAnimatio
   </span>
 }
 
-function CraftDetail({ craft, items, icons, collections, textControlKeycaps, removeAnimations }: {
+function CraftDetail({ craft, items, icons, collections, textControlKeycaps, compactLayout, removeAnimations }: {
   craft: CraftGroup
   items: ReadonlyMap<string, SearchItem>
   icons: IconManifest
   collections: ReadonlyMap<string, RecipeResultCollection> | undefined
   textControlKeycaps: boolean
+  compactLayout: boolean
   removeAnimations: boolean
 }) {
   const [showEvidence, setShowEvidence] = useState(false)
@@ -480,7 +481,7 @@ function CraftDetail({ craft, items, icons, collections, textControlKeycaps, rem
   const contents = useMemo(() => craftContents(craft), [craft])
   const explanations = useMemo(() => craftExplanations(craft, contents.targetItemIds, collections), [craft, contents.targetItemIds, collections])
   const name = `${categoryName(craft.kind)} craft: ${searchDescription(craft.search)}`
-  const canExpand = contents.junkItemIds.length > 0 || explanations.length > 0
+  const canExpand = compactLayout || contents.junkItemIds.length > 0 || explanations.length > 0
   const usesStepRows = craft.kind === 'overlap' && contents.junkItemIds.length > 0
   const toggleEvidence = () => {
     setShowEvidence((current) => {
@@ -497,7 +498,9 @@ function CraftDetail({ craft, items, icons, collections, textControlKeycaps, rem
       <span className="craft-result__item-preview"><CraftItems contents={contents} items={items} icons={icons} showJunk={!showEvidence} /></span>
     </>
 
-  return <li className={`craft-result craft-result--${craft.kind}-craft${usesStepRows ? ' craft-result--overlap' : ''}`} aria-label={name}>
+  const compactBar = <SearchQuery search={craft.search} textControlKeycaps={textControlKeycaps} />
+
+  return <li className={`craft-result craft-result--${craft.kind}-craft${usesStepRows ? ' craft-result--overlap' : ''}${compactLayout ? ' craft-result--compact' : ''}`} aria-label={name}>
     {canExpand
       ? <button
         type="button"
@@ -507,12 +510,13 @@ function CraftDetail({ craft, items, icons, collections, textControlKeycaps, rem
         aria-expanded={showEvidence}
         onClick={toggleEvidence}
       >
-        {bar}
+        {compactLayout ? compactBar : bar}
         <span className="craft-result__toggle-mark"><ArrowSprite direction={showEvidence ? 'up' : 'down'} compact /></span>
       </button>
       : <div className="craft-result__bar">{bar}</div>}
     {hasShownEvidence && <div id={evidenceId} className={`craft-result__details${showEvidence ? ' craft-result__details--open' : ''}`} aria-hidden={!showEvidence}>
       <div className="craft-result__details-content">
+      {compactLayout && <div className="craft-result__compact-expanded">{bar}</div>}
       {!usesStepRows && contents.junkItemIds.length > 0 && <RemainingJunk itemIds={contents.junkItemIds} items={items} icons={icons} />}
       {explanations.length > 0 && <div className="craft-result__evidence">
         {explanations.map((explanation) => explanation.kind === 'collection'
@@ -524,12 +528,13 @@ function CraftDetail({ craft, items, icons, collections, textControlKeycaps, rem
   </li>
 }
 
-function CraftCategory({ category, items, icons, collections, textControlKeycaps, removeAnimations, showMore: controlledShowMore, onShowMoreChange }: {
+function CraftCategory({ category, items, icons, collections, textControlKeycaps, compactLayout, removeAnimations, showMore: controlledShowMore, onShowMoreChange }: {
   category: SearchCategory
   items: ReadonlyMap<string, SearchItem>
   icons: IconManifest
   collections: ReadonlyMap<string, RecipeResultCollection> | undefined
   textControlKeycaps: boolean
+  compactLayout: boolean
   removeAnimations: boolean
   showMore?: boolean
   onShowMoreChange?: (showMore: boolean) => void
@@ -546,7 +551,7 @@ function CraftCategory({ category, items, icons, collections, textControlKeycaps
       {category.headerControl}
     </header>}
     <ol>
-      {visibleCrafts.map((craft) => <CraftDetail key={craft.key} craft={craft} items={items} icons={icons} collections={collections} textControlKeycaps={textControlKeycaps} removeAnimations={removeAnimations} />)}
+      {visibleCrafts.map((craft) => <CraftDetail key={craft.key} craft={craft} items={items} icons={icons} collections={collections} textControlKeycaps={textControlKeycaps} compactLayout={compactLayout} removeAnimations={removeAnimations} />)}
     </ol>
     {category.crafts.length > 3 && <button
       type="button"
@@ -586,7 +591,7 @@ export function CalculatedSearchRow({
   hideOutcomeScore = false,
   previewMode = 'default',
   hideOverflowingPreviews = false,
-  textControlKeycaps = false,
+  compactLayout = false,
   hideNumberCraftsByDefault = false,
   removeAnimations = false,
   className,
@@ -601,6 +606,7 @@ export function CalculatedSearchRow({
   const [expandedRegularViews, setExpandedRegularViews] = useState({ junkless: false, other: false })
   const [expandedOverlapViews, setExpandedOverlapViews] = useState({ junkless: false, other: false })
   const [showNumberCrafts, setShowNumberCrafts] = useState(!hideNumberCraftsByDefault)
+  const textControlKeycaps = compactLayout
   const listId = useId()
   const label = summaryLabel ?? `item set ${entryNumber}`
   const rowClassName = `calculated-search-row${className ? ` ${className}` : ''}`
@@ -762,6 +768,7 @@ export function CalculatedSearchRow({
         icons={icons}
         collections={collections}
         textControlKeycaps={textControlKeycaps}
+        compactLayout={compactLayout}
         removeAnimations={removeAnimations}
         showMore={expandedRegularViews[visibleRegularView]}
         onShowMoreChange={(showMore) => setExpandedRegularViews((current) => ({ ...current, [visibleRegularView]: showMore }))}
@@ -772,6 +779,7 @@ export function CalculatedSearchRow({
         icons={icons}
         collections={collections}
         textControlKeycaps={textControlKeycaps}
+        compactLayout={compactLayout}
         removeAnimations={removeAnimations}
         showMore={expandedOverlapViews[visibleOverlapView]}
         onShowMoreChange={(showMore) => setExpandedOverlapViews((current) => ({ ...current, [visibleOverlapView]: showMore }))}

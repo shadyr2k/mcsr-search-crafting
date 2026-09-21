@@ -554,7 +554,7 @@ describe('CalculatedSearchRow', () => {
     expect(within(previews).getByRole('listitem', { name: 'Regular craft: three' })).toBeTruthy()
   })
 
-  test('uses text keycaps for Shift+Home and backspace when requested', () => {
+  test('uses text keycaps for Shift+Home and backspace in compact layout', () => {
     const overlap = search(['first', 'second', 'third'], 1, 'overlap')
     overlap.steps[1] = { ...overlap.steps[1], retainedPrefix: 'f', freeBackspaceCount: 1, typedSuffix: 'second' }
     overlap.steps[2] = { ...overlap.steps[2], retainedPrefix: '', freeBackspaceCount: 6, typedSuffix: 'third' }
@@ -564,12 +564,33 @@ describe('CalculatedSearchRow', () => {
       state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [overlap], bestScore: 1, visibleItemIds: [] } }}
       items={items}
       icons={icons}
-      textControlKeycaps
+      compactLayout
     />)
 
     expect(document.querySelectorAll('.query-control-keycap')).toHaveLength(2)
     expect(screen.getByText('SH')).toBeTruthy()
     expect(screen.getByText('←')).toBeTruthy()
+  })
+
+  test('keeps compact craft rows to a query until their details are expanded', () => {
+    const craft = search(['bow'], 1)
+    render(<CalculatedSearchRow
+      entry={entry}
+      entryNumber={1}
+      state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [craft], bestScore: 1, visibleItemIds: [] } }}
+      items={items}
+      icons={icons}
+      compactLayout
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
+    const craftRow = screen.getAllByRole('listitem', { name: 'Regular craft: bow' }).find((row) => row.classList.contains('craft-result'))!
+    expect(craftRow.classList.contains('craft-result--compact')).toBe(true)
+    expect(craftRow.querySelector('.craft-result__item-preview')).toBeNull()
+
+    fireEvent.click(within(craftRow).getByRole('button', { name: 'Show why Regular craft: bow' }))
+    expect(craftRow.querySelector('.craft-result__item-preview')).toBeTruthy()
+    expect(within(craftRow).getByRole('img', { name: 'Bow' })).toBeTruthy()
   })
 
   test('renders no-viable and calculation errors distinctly', () => {

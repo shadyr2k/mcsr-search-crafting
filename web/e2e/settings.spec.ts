@@ -62,9 +62,6 @@ test('clears cached language scores for every calculation setting', async ({ pag
     schemaVersion: 1,
     entryScores: { display: { en_us: 4 } },
   })))
-  const textControlKeycaps = page.getByRole('switch', { name: 'text control keycaps' })
-  await textControlKeycaps.click()
-  await expect(textControlKeycaps).toHaveAttribute('aria-checked', 'false')
   const hideCraftNumbers = page.getByRole('switch', { name: 'hide craft numbers by default' })
   const compactLayout = page.getByRole('switch', { name: 'compact layout' })
   const removeAnimations = page.getByRole('switch', { name: 'remove animations' })
@@ -77,13 +74,12 @@ test('clears cached language scores for every calculation setting', async ({ pag
   await expect(page.getByRole('status')).toHaveText('settings saved')
   await expect.poll(() => page.evaluate(() => {
     const settings = JSON.parse(localStorage.getItem('mcsr.app-settings.v1') ?? '{}') as {
-      textControlKeycaps?: boolean
       hideNumberCraftsByDefault?: boolean
       compactLayout?: boolean
       removeAnimations?: boolean
     }
     return settings
-  })).toMatchObject({ textControlKeycaps: false, hideNumberCraftsByDefault: true, compactLayout: true, removeAnimations: true })
+  })).toMatchObject({ hideNumberCraftsByDefault: true, compactLayout: true, removeAnimations: true })
   await expect(page.locator('.app-shell')).toHaveClass(/app-shell--compact-layout/)
   await expect(page.locator('.app-shell')).toHaveClass(/app-shell--remove-animations/)
   await expect.poll(() => page.evaluate(() => {

@@ -592,7 +592,7 @@ function App() {
           onReset={craftingSheet.reset}
         />
         {entries.map((entry, index) => <CalculatedSearchRow
-          key={entry.id} entry={entry} entryNumber={index + 1} state={states.get(entry.id)} items={data.items} icons={activeIcons} collections={data.collections} textControlKeycaps={appSettings.textControlKeycaps} hideNumberCraftsByDefault={appSettings.hideNumberCraftsByDefault} removeAnimations={appSettings.removeAnimations} onRetry={() => retry(entry.id)}
+          key={entry.id} entry={entry} entryNumber={index + 1} state={states.get(entry.id)} items={data.items} icons={activeIcons} collections={data.collections} compactLayout={appSettings.compactLayout} hideNumberCraftsByDefault={appSettings.hideNumberCraftsByDefault} removeAnimations={appSettings.removeAnimations} onRetry={() => retry(entry.id)}
         />)}
       </section>
       {editor && <div className="item-set-editor-overlay">

@@ -78,7 +78,6 @@ export interface AppSettings {
   scoring: ScoringSettings
   itemIdSearch: boolean
   hideNumberCraftsByDefault: boolean
-  textControlKeycaps: boolean
   removeAnimations: boolean
   compactLayout: boolean
   catifyItems: boolean
@@ -106,10 +105,12 @@ interface VersionedLanguageScoreCache extends LanguageScoreCache {
   schemaVersion: 1
 }
 
-interface VersionedAppSettings extends Omit<AppSettings, 'itemIdSearch' | 'hideNumberCraftsByDefault' | 'textControlKeycaps' | 'removeAnimations' | 'compactLayout'> {
+interface VersionedAppSettings extends Omit<AppSettings, 'itemIdSearch' | 'hideNumberCraftsByDefault' | 'removeAnimations' | 'compactLayout'> {
   schemaVersion: 1
   itemIdSearch?: boolean
   hideNumberCraftsByDefault?: boolean
+  // Retain compatibility with the short-lived separate setting while users'
+  // existing records are migrated on their next save.
   textControlKeycaps?: boolean
   removeAnimations?: boolean
   compactLayout?: boolean
@@ -240,7 +241,6 @@ function defaultAppSettings(): AppSettings {
     scoring: { ...DEFAULT_SCORING_SETTINGS },
     itemIdSearch: false,
     hideNumberCraftsByDefault: false,
-    textControlKeycaps: true,
     removeAnimations: false,
     compactLayout: false,
     catifyItems: false,
@@ -656,7 +656,6 @@ export function loadAppSettings(storage?: Storage): PersistenceLoadResult<AppSet
         scoring: { ...parsed.scoring },
         itemIdSearch: parsed.itemIdSearch ?? false,
         hideNumberCraftsByDefault: parsed.hideNumberCraftsByDefault ?? false,
-        textControlKeycaps: parsed.textControlKeycaps ?? true,
         removeAnimations: parsed.removeAnimations ?? false,
         compactLayout: parsed.compactLayout ?? false,
         catifyItems: parsed.catifyItems,
@@ -678,7 +677,6 @@ export function saveAppSettings(settings: AppSettings, storage?: Storage): Persi
     scoring: settings.scoring,
     itemIdSearch: settings.itemIdSearch,
     hideNumberCraftsByDefault: settings.hideNumberCraftsByDefault,
-    textControlKeycaps: settings.textControlKeycaps,
     removeAnimations: settings.removeAnimations,
     compactLayout: settings.compactLayout,
     catifyItems: settings.catifyItems,

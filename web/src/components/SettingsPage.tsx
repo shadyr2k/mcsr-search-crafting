@@ -75,10 +75,6 @@ export function SettingsPage({ settings, catifyAvailable, onSave }: SettingsPage
   }, [settings.hideNumberCraftsByDefault])
 
   useEffect(() => {
-    setDraft((current) => current.textControlKeycaps === settings.textControlKeycaps ? current : { ...current, textControlKeycaps: settings.textControlKeycaps })
-  }, [settings.textControlKeycaps])
-
-  useEffect(() => {
     setDraft((current) => current.removeAnimations === settings.removeAnimations ? current : { ...current, removeAnimations: settings.removeAnimations })
   }, [settings.removeAnimations])
 
@@ -168,21 +164,6 @@ export function SettingsPage({ settings, catifyAvailable, onSave }: SettingsPage
       </fieldset>
       <fieldset>
         <legend>site settings</legend>
-        <div className="settings-page__toggle" title="Show Shift+Home and Backspace as text keycaps in the main craft results.">
-          <button
-            type="button"
-            role="switch"
-            className="settings-page__switch"
-            aria-label="text control keycaps"
-            aria-checked={draft.textControlKeycaps}
-            onClick={() => {
-              setSaved(false)
-              setDraft((current) => ({ ...current, textControlKeycaps: !current.textControlKeycaps }))
-            }}
-          />
-          <span>text control keycaps</span>
-          <small>Show Shift+Home and Backspace as SH and ← keycaps in the main craft results. The craft sheet always uses text controls.</small>
-        </div>
         <div className="settings-page__toggle" title="Show every site state immediately.">
           <button
             type="button"
@@ -198,7 +179,7 @@ export function SettingsPage({ settings, catifyAvailable, onSave }: SettingsPage
           <span>remove animations</span>
           <small>Removes page, panel, disclosure, and icon animations throughout the site.</small>
         </div>
-        <div className="settings-page__toggle" title="Use smaller type, spacing, and controls in the main craft views.">
+        <div className="settings-page__toggle" title="Use smaller type, spacing, and controls in the main craft workspace.">
           <button
             type="button"
             role="switch"
@@ -211,7 +192,7 @@ export function SettingsPage({ settings, catifyAvailable, onSave }: SettingsPage
             }}
           />
           <span>compact layout</span>
-          <small>Uses smaller type, spacing, and controls in the main craft views while keeping your text control keycap preference.</small>
+          <small>Uses smaller type, rows, icons, and controls in the main craft workspace. It also shows Shift+Home and Backspace as text keycaps there.</small>
         </div>
       </fieldset>
       {catifyAvailable !== undefined && <fieldset className="settings-page__catify">
