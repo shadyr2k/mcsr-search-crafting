@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('clears cached language scores for every calculation setting and saves Catify from its switch', async ({ page }) => {
+test('clears cached language scores for every calculation setting', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('mcsr.language-score-cache.v1', JSON.stringify({
     schemaVersion: 1,
     entryScores: { saved: { en_us: 8 } },
@@ -38,7 +38,6 @@ test('clears cached language scores for every calculation setting and saves Cati
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('mcsr.app-settings.v1') ?? '{}'))).toMatchObject({
     schemaVersion: 1,
     scoring: { freeInitialCharacters: 2, additionalCharacterPenalty: 1.25, junkItemPenalty: 1.25 },
-    catifyItems: false,
   })
 
   await page.evaluate(() => localStorage.setItem('mcsr.language-score-cache.v1', JSON.stringify({
@@ -58,24 +57,4 @@ test('clears cached language scores for every calculation setting and saves Cati
     const cached = JSON.parse(localStorage.getItem('mcsr.language-score-cache.v1') ?? '{}') as { entryScores?: Record<string, unknown> }
     return cached.entryScores?.idSearch ?? null
   })).toBeNull()
-
-  const catifyItems = page.getByRole('switch', { name: 'catify items' })
-  await expect(catifyItems).toBeEnabled()
-  await catifyItems.click()
-  await expect(catifyItems).toHaveAttribute('aria-checked', 'true')
-  expect(await page.evaluate(() => {
-    const settings = JSON.parse(localStorage.getItem('mcsr.app-settings.v1') ?? '{}') as { catifyItems?: boolean }
-    return settings.catifyItems
-  })).toBe(false)
-  await page.getByRole('button', { name: 'save settings' }).click()
-
-  await expect.poll(() => page.evaluate(() => {
-    const settings = JSON.parse(localStorage.getItem('mcsr.app-settings.v1') ?? '{}') as { catifyItems?: boolean }
-    return settings.catifyItems
-  })).toBe(true)
-  await page.getByRole('button', { name: 'Choose Minecraft version' }).click()
-  await page.getByRole('menuitemradio', { name: 'Select Minecraft 26.1.2' }).click()
-  await expect(catifyItems).toBeChecked()
-  await page.getByRole('button', { name: 'search crafting' }).click()
-  await expect(page.locator('img[src*="/versions/26.1.2/cat-item-icons/item-icons/"]').first()).toBeVisible()
 })

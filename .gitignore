@@ -8,6 +8,8 @@ web/node_modules/
 web/dist/
 web/test-results/
 web/playwright-report/
+web/public/cat-item-icons/
+web/public/versions/*/cat-item-icons/
 minecraft-data/
 .pnpm-store/
 .vite/

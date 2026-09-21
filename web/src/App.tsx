@@ -27,6 +27,8 @@ import { draftFromEntry, newItemSetDraft } from './workspace/entryDraft'
 import type { SharedItemSetDraft } from './workspace/itemSetShare'
 import { starterWorkspace } from './workspace/starterWorkspace'
 
+const catifySupportedLocally = import.meta.env.DEV
+
 type OpenEditor = (ItemSetEditorState & { entryId?: string }) | null
 type AppPage = 'home' | 'language-info' | 'craft-lookup' | 'recipe-book-sim' | 'crafting-sheet' | 'settings'
 type PageTransitionPhase = 'idle' | 'exiting' | 'entering'
@@ -105,6 +107,7 @@ function App() {
   const [data, setData] = useState<GeneratedData>()
   const [icons, setIcons] = useState<IconManifest>()
   const [catifiedIconOverrides, setCatifiedIconOverrides] = useState<IconManifest>()
+  const [catifyOverridesResolved, setCatifyOverridesResolved] = useState(false)
   const [languages, setLanguages] = useState<LanguageMetadata[]>([])
   const [selectedLocale, setSelectedLocale] = useState('en_us')
   const [enabledBannedLocales, setEnabledBannedLocales] = useState<ReadonlySet<string>>(new Set())
@@ -135,7 +138,7 @@ function App() {
   const [pageTransitionDirection, setPageTransitionDirection] = useState<PageTransitionDirection>()
   const entries = useMemo(() => orderedEntries(workspace.entries), [workspace.entries])
   const gameVersion = gameVersionForId(gameVersionId)
-  const activeIcons = useMemo(() => icons && appSettings.catifyItems && catifiedIconOverrides
+  const activeIcons = useMemo(() => icons && catifySupportedLocally && appSettings.catifyItems && catifiedIconOverrides
     ? withIconOverrides(icons, catifiedIconOverrides)
     : icons, [appSettings.catifyItems, catifiedIconOverrides, gameVersion.id, icons])
   const { states, retry } = useRowOptimizations(data, workspace.entries, appSettings.scoring, appSettings.itemIdSearch)
@@ -176,6 +179,7 @@ function App() {
     setData(undefined)
     setIcons(undefined)
     setCatifiedIconOverrides(undefined)
+    setCatifyOverridesResolved(false)
     setLanguages([])
     setEditor(null)
     setCraftLookupSession(newCraftLookupSession())
@@ -183,7 +187,9 @@ function App() {
       loadGeneratedData(gameVersion.packageBaseUrl),
       loadIconManifest(gameVersion.packageBaseUrl, gameVersion.id),
       loadLanguageMetadata(gameVersion.packageBaseUrl),
-      loadIconOverrides(gameVersion.packageBaseUrl, gameVersion.id).catch(() => undefined),
+      catifySupportedLocally
+        ? loadIconOverrides(gameVersion.packageBaseUrl, gameVersion.id).catch(() => undefined)
+        : Promise.resolve(undefined),
     ]).then(([loadedData, loadedIcons, loadedLanguages, loadedCatifiedOverrides]) => {
       if (!active) return
       assertIconCoverage(loadedIcons, loadedData)
@@ -200,6 +206,7 @@ function App() {
       setData(loadedData)
       setIcons(loadedIcons)
       setCatifiedIconOverrides(loadedCatifiedOverrides)
+      setCatifyOverridesResolved(true)
       setLanguages(loadedLanguages)
       setEnabledBannedLocales(enabledLocales)
       setSelectedLocale(locale)
@@ -469,7 +476,13 @@ function App() {
     </header>
     {warning && <p role="alert">{warning}</p>}{error && <p role="alert">{error}</p>}
     <div className={`page-transition${pageTransitionPhase === 'idle' ? '' : ` page-transition--${pageTransitionPhase}`}${pageTransitionDirection ? ` page-transition--slide-${pageTransitionDirection}` : ''}`}>
-    {page === 'settings' && <SettingsPage settings={appSettings} catifyAvailable={catifiedIconOverrides !== undefined} onSave={saveSettings} />}
+    {page === 'settings' && <SettingsPage
+      settings={appSettings}
+      catifyAvailable={catifySupportedLocally && (!catifyOverridesResolved || catifiedIconOverrides !== undefined)
+        ? catifiedIconOverrides !== undefined
+        : undefined}
+      onSave={saveSettings}
+    />}
     {data && activeIcons && page === 'recipe-book-sim' && <RecipeBookSim
       key={gameVersion.id}
       data={data}

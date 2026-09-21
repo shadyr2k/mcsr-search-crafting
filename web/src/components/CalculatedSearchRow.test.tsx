@@ -72,6 +72,17 @@ describe('CalculatedSearchRow', () => {
     expect(screen.getByRole('button', { name: 'Hide crafts for item set 1' }).getAttribute('aria-expanded')).toBe('true')
   })
 
+  test('hides a longer regular craft with the same visible targets and junk', () => {
+    const shorter = search(['lla'], 3)
+    const longer = search([':lla'], 4)
+    render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [longer, shorter], bestScore: 3, visibleItemIds: [] } }} items={items} icons={icons} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
+    const regularCategory = screen.getByRole('region', { name: 'Regular crafts' })
+    expect(within(regularCategory).getByRole('listitem', { name: 'Regular craft: lla' })).toBeTruthy()
+    expect(within(regularCategory).queryByRole('listitem', { name: 'Regular craft: :lla' })).toBeNull()
+  })
+
   test('uses a junkless Shift+Home overlap when every ordinary-backspace overlap has junk', () => {
     const backspaceWithJunk = search(['junk', 'mask'], 1, 'overlap')
     const shiftHomeJunkless = search(['move', 'home'], 2, 'overlap')

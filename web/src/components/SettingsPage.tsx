@@ -6,7 +6,7 @@ import './SettingsPage.css'
 
 interface SettingsPageProps {
   settings: AppSettings
-  catifyAvailable: boolean
+  catifyAvailable?: boolean
   onSave(settings: AppSettings): void
 }
 
@@ -115,7 +115,7 @@ export function SettingsPage({ settings, catifyAvailable, onSave }: SettingsPage
       <fieldset>
         <legend>search settings</legend>
         {renderNumberSettings(searchSettings)}
-        <div className="settings-page__toggle" title="Allow colon-prefixed searches to match an item's resource ID, such as :on_sw for iron_sword, as well as its searchable tooltip text.">
+        <div className="settings-page__toggle" title="A colon also checks Minecraft's English item ID, then keeps matching the selected language's normal searchable text.">
           <button
             type="button"
             role="switch"
@@ -128,14 +128,14 @@ export function SettingsPage({ settings, catifyAvailable, onSave }: SettingsPage
             }}
           />
           <span>item ID search</span>
-          <small>Allow colon-prefixed shortcuts from Minecraft item IDs and searchable tooltip text, such as :on_sw for iron_sword.</small>
+          <small>A colon also checks Minecraft’s English item ID, such as :on_sw for iron_sword. It still matches the selected language’s name and searchable tooltip text.</small>
         </div>
       </fieldset>
       <fieldset>
         <legend>junk settings</legend>
         {renderNumberSettings(junkSettings)}
       </fieldset>
-      <fieldset className="settings-page__catify">
+      {catifyAvailable !== undefined && <fieldset className="settings-page__catify">
         <legend>item textures</legend>
         <div className="settings-page__toggle" title="Use Fat Cat v2 textures for available items; every other icon stays unchanged.">
           <button
@@ -155,7 +155,7 @@ export function SettingsPage({ settings, catifyAvailable, onSave }: SettingsPage
         <small>{catifyAvailable
           ? 'Use Fat Cat v2 textures where the pack provides an item image. Missing images keep the default texture.'
           : 'Catify items is available while item textures are loading.'}</small>
-      </fieldset>
+      </fieldset>}
       <div className="settings-page__save">
         {saved && <p role="status">settings saved</p>}
         <button type="submit">save settings</button>

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import type { OverlapResult } from './overlapOptimizer'
 import type { SingleResult } from './singleOptimizer'
-import { compareRankedSearches, rankedFromOverlap, rankedFromSingle, rankSearches } from './rankedSearch'
+import { compareRankedSearches, rankedFromOverlap, rankedFromSingle, rankSearches, removeRedundantItemIdSearches } from './rankedSearch'
 
 function single(query: string, total: number, junk: string[] = []): SingleResult {
   return {
@@ -65,6 +65,14 @@ describe('ranked search adapters', () => {
     )
 
     expect(ranked.map((result) => result.queries.join('→'))).toEqual(['b→bo', 'z', 'a→ax', 'abc'])
+  })
+
+  test('hides a longer regular query with identical visible results and junk', () => {
+    const shorter = rankedFromSingle(single('lla', 3, ['minecraft:iron_helmet']))
+    const longer = rankedFromSingle(single(':lla', 4, ['minecraft:iron_helmet']))
+    const overlapCraft = rankedFromOverlap(overlap(['lla', ':lla'], 6))
+
+    expect(removeRedundantItemIdSearches([longer, overlapCraft, shorter])).toEqual([overlapCraft, shorter])
   })
 
   test('breaks equal scores by junk, steps, typed characters, then lexical sequence', () => {

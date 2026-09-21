@@ -3,6 +3,7 @@ import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState,
 import type { IconManifest } from '../data/iconManifest'
 import type { RankedSearch, RecipeResultCollection, RowOptimizationState, SearchItem, TargetWorkspaceEntry } from '../domain/types'
 import type { CollectionMatchExplanation } from '../engine/search'
+import { removeRedundantItemIdSearches } from '../engine/rankedSearch'
 import { ArrowSprite } from './ArrowSprite'
 import { ItemIcon } from './ItemIcon'
 import { MatchEvidence } from './MatchEvidence'
@@ -613,7 +614,7 @@ export function CalculatedSearchRow({
     </div>
   </section>
 
-  const regular = groupCrafts(state.outcome.rankedSearches, 'single')
+  const regular = groupCrafts(removeRedundantItemIdSearches(state.outcome.rankedSearches), 'single')
   const overlap = groupCrafts(state.outcome.rankedSearches, 'overlap')
   const hasNumberCrafts = [...regular, ...overlap].some(usesNumberQuery)
   const displayedRegular = showNumberCrafts ? regular : regular.filter((craft) => !usesNumberQuery(craft))

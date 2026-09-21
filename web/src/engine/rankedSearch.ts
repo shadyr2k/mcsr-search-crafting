@@ -21,6 +21,29 @@ function totalQueryCharacters(search: RankedSearch): number {
   return search.queries.reduce((total, query) => total + query.length, 0)
 }
 
+function singleSearchResultKey(search: RankedSearch): string {
+  return [
+    [...search.coveredTargetIds].sort(compareText).join('\u0000'),
+    search.steps.flatMap((step) => step.junkItemIds).sort(compareText).join('\u0000'),
+  ].join('\u0001')
+}
+
+/**
+ * A colon adds item-ID matching without replacing localized text matches.
+ * Hide an item-ID regular craft only when a shorter ordinary query produces
+ * the exact same visible targets and junk.
+ */
+export function removeRedundantItemIdSearches(searches: readonly RankedSearch[]): RankedSearch[] {
+  return searches.filter((search) => {
+    if (search.kind !== 'single' || !search.queries[0]?.startsWith(':')) return true
+    const key = singleSearchResultKey(search)
+    return !searches.some((ordinarySearch) => ordinarySearch.kind === 'single'
+      && !ordinarySearch.queries[0]?.startsWith(':')
+      && singleSearchResultKey(ordinarySearch) === key
+      && ordinarySearch.totalTypedCharacters < search.totalTypedCharacters)
+  })
+}
+
 function correctionKeyCount(search: RankedSearch): number {
   return search.steps.slice(1).reduce((total, step, index) => {
     const previousQuery = search.steps[index].query

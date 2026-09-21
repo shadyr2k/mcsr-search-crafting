@@ -7,6 +7,7 @@ import type {
 import { MAX_RECIPE_BOOK_RESULTS } from './resultLimit'
 import { DEFAULT_SCORING_SETTINGS, type ScoringSettings, scoreControlKeys, scoreStep } from './scoring'
 import { MAXIMUM_ORDINARY_BACKSPACES, transitionPresentation } from './overlapOptimizer'
+import { removeRedundantItemIdSearches } from './rankedSearch'
 
 export interface CraftingSheetOption {
   /** Stable across a rank-order change as long as the calculated craft is the same. */
@@ -132,7 +133,7 @@ function displayedCharacters(search: RankedSearch): ReadonlySet<string> {
 function optionsForSearches(searches: readonly RankedSearch[], bestScore: number): SearchOption[] {
   const seen = new Set<string>()
   const options: SearchOption[] = []
-  for (const search of searches) {
+  for (const search of removeRedundantItemIdSearches(searches)) {
     if (search.steps.some((step) => step.query.length > 5
       || step.junkItemIds.length + Math.max(1, step.coveredTargetIds.length) > MAX_RECIPE_BOOK_RESULTS)) continue
     const id = craftingSheetCraftKey(search)
