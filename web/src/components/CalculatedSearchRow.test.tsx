@@ -201,6 +201,22 @@ describe('CalculatedSearchRow', () => {
     expect(categories.classList.contains('craft-categories--closing')).toBe(true)
   })
 
+  test('removes collapsed craft categories immediately when animations are disabled', () => {
+    render(<CalculatedSearchRow
+      entry={entry}
+      entryNumber={1}
+      state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [search(['bow'], 1)], bestScore: 1, visibleItemIds: [] } }}
+      items={items}
+      icons={icons}
+      removeAnimations
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
+    expect(screen.getByRole('region', { name: 'Regular crafts' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Hide crafts for item set 1' }))
+    expect(screen.queryByRole('region', { name: 'Regular crafts' })).toBeNull()
+  })
+
   test('combines repeated regular queries and reveals their match evidence on demand', () => {
     const first = search(['wn'], 1)
     first.steps[0].explanations = [explanation('Brown Bed', 3)]
@@ -485,6 +501,26 @@ describe('CalculatedSearchRow', () => {
     expect(within(regularCategory).getByRole('listitem', { name: 'Regular craft: sword' })).toBeTruthy()
     expect(within(overlapCategory).getByRole('listitem', { name: 'Overlap craft: stone, 1 backspace, axe' })).toBeTruthy()
     expect(within(filter).getByRole('button', { name: 'hide' }).getAttribute('aria-pressed')).toBe('true')
+  })
+
+  test('starts with digit-containing crafts hidden when configured', () => {
+    const numeric = search(['3'], 1)
+    const text = search(['sword'], 2)
+    render(<CalculatedSearchRow
+      entry={entry}
+      entryNumber={1}
+      state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [numeric, text], bestScore: 1, visibleItemIds: [] } }}
+      items={items}
+      icons={icons}
+      hideNumberCraftsByDefault
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
+    const filter = screen.getByRole('group', { name: 'Number craft filter' })
+    const regularCategory = screen.getByRole('region', { name: 'Regular crafts' })
+    expect(within(filter).getByRole('button', { name: 'hide' }).getAttribute('aria-pressed')).toBe('true')
+    expect(within(regularCategory).queryByRole('listitem', { name: 'Regular craft: 3' })).toBeNull()
+    expect(within(regularCategory).getByRole('listitem', { name: 'Regular craft: sword' })).toBeTruthy()
   })
 
   test('uses two previews from a category when the other category has no crafts', () => {

@@ -3226,3 +3226,63 @@ h3 {
     display: flex;
   }
 }
+
+/* A saved accessibility preference disables both CSS motion and the matching
+   JavaScript page/disclosure delays. */
+.app-shell--remove-animations,
+.app-shell--remove-animations *,
+.app-shell--remove-animations *::before,
+.app-shell--remove-animations *::after {
+  animation: none !important;
+  scroll-behavior: auto !important;
+  transition: none !important;
+}
+
+/* Keep the dense option focused on the craft workspace. The dedicated craft
+   sheet has its own screen-fitting layout and intentionally stays unchanged. */
+.app-shell--compact-layout:not(.app-shell--crafting-sheet) {
+  font-size: .92rem;
+}
+
+.app-shell--compact-layout:not(.app-shell--crafting-sheet) .app-header {
+  margin-bottom: 1rem;
+  padding: .6rem .8rem;
+}
+
+.app-shell--compact-layout:not(.app-shell--crafting-sheet) .workspace-grid {
+  gap: .9rem;
+}
+
+.app-shell--compact-layout:not(.app-shell--crafting-sheet) .workspace-grid > section,
+.app-shell--compact-layout:not(.app-shell--crafting-sheet) .workspace-grid > .language-ranking,
+.app-shell--compact-layout:not(.app-shell--crafting-sheet) .workspace-grid > .language-selector,
+.app-shell--compact-layout:not(.app-shell--crafting-sheet) .results-column {
+  padding: .75rem;
+}
+
+.app-shell--compact-layout:not(.app-shell--crafting-sheet) .calculated-search-row {
+  padding: .5rem;
+}
+
+.app-shell--compact-layout:not(.app-shell--crafting-sheet) .calculated-search-row__summary {
+  gap: .4rem;
+  min-height: 2.8rem;
+}
+
+.app-shell--compact-layout:not(.app-shell--crafting-sheet) .calculated-search-row__targets .item-icon--detail {
+  width: 3.25rem;
+  height: 3.25rem;
+}
+
+.app-shell--compact-layout:not(.app-shell--crafting-sheet) .craft-query,
+.app-shell--compact-layout:not(.app-shell--crafting-sheet) .craft-result__toggle,
+.app-shell--compact-layout:not(.app-shell--crafting-sheet) .craft-result__bar,
+.app-shell--compact-layout:not(.app-shell--crafting-sheet) .craft-result__details {
+  gap: .4rem;
+}
+
+.app-shell--compact-layout:not(.app-shell--crafting-sheet) .craft-result__toggle,
+.app-shell--compact-layout:not(.app-shell--crafting-sheet) .craft-result__bar,
+.app-shell--compact-layout:not(.app-shell--crafting-sheet) .craft-result__details {
+  padding: .5rem .6rem;
+}

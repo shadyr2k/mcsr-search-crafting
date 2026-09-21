@@ -24,6 +24,8 @@ interface CalculatedSearchRowProps {
   previewMode?: 'default' | 'junkless-single' | 'junkless-overlap'
   hideOverflowingPreviews?: boolean
   textControlKeycaps?: boolean
+  hideNumberCraftsByDefault?: boolean
+  removeAnimations?: boolean
   className?: string
 }
 
@@ -442,15 +444,15 @@ function OverlapCraftSteps({ search, items, icons, expanded, textControlKeycaps 
   </div>
 }
 
-function CollectionEvidence({ explanation, itemIds, items, icons }: Extract<CraftExplanation, { kind: 'collection' }> & { items: ReadonlyMap<string, SearchItem>; icons: IconManifest }) {
+function CollectionEvidence({ explanation, itemIds, items, icons, removeAnimations }: Extract<CraftExplanation, { kind: 'collection' }> & { items: ReadonlyMap<string, SearchItem>; icons: IconManifest; removeAnimations: boolean }) {
   const [currentIndex, setCurrentIndex] = useState(0)
 
   useEffect(() => {
     setCurrentIndex(0)
-    if (itemIds.length < 2) return
+    if (removeAnimations || itemIds.length < 2) return
     const timer = window.setInterval(() => setCurrentIndex((index) => (index + 1) % itemIds.length), 800)
     return () => window.clearInterval(timer)
-  }, [itemIds])
+  }, [itemIds, removeAnimations])
 
   const itemId = itemIds[currentIndex] ?? itemIds[0]
   if (!itemId) return null
@@ -464,12 +466,13 @@ function CollectionEvidence({ explanation, itemIds, items, icons }: Extract<Craf
   </span>
 }
 
-function CraftDetail({ craft, items, icons, collections, textControlKeycaps }: {
+function CraftDetail({ craft, items, icons, collections, textControlKeycaps, removeAnimations }: {
   craft: CraftGroup
   items: ReadonlyMap<string, SearchItem>
   icons: IconManifest
   collections: ReadonlyMap<string, RecipeResultCollection> | undefined
   textControlKeycaps: boolean
+  removeAnimations: boolean
 }) {
   const [showEvidence, setShowEvidence] = useState(false)
   const [hasShownEvidence, setHasShownEvidence] = useState(false)
@@ -513,7 +516,7 @@ function CraftDetail({ craft, items, icons, collections, textControlKeycaps }: {
       {!usesStepRows && contents.junkItemIds.length > 0 && <RemainingJunk itemIds={contents.junkItemIds} items={items} icons={icons} />}
       {explanations.length > 0 && <div className="craft-result__evidence">
         {explanations.map((explanation) => explanation.kind === 'collection'
-          ? <CollectionEvidence key={`collection:${explanation.explanation.collectionId}:${explanation.explanation.query}`} {...explanation} items={items} icons={icons} />
+          ? <CollectionEvidence key={`collection:${explanation.explanation.collectionId}:${explanation.explanation.query}`} {...explanation} items={items} icons={icons} removeAnimations={removeAnimations} />
           : <MatchEvidence key={JSON.stringify(explanation.explanation)} explanation={explanation.explanation} explanations={explanation.explanations} items={items} icons={icons} />)}
       </div>}
       </div>
@@ -521,12 +524,13 @@ function CraftDetail({ craft, items, icons, collections, textControlKeycaps }: {
   </li>
 }
 
-function CraftCategory({ category, items, icons, collections, textControlKeycaps, showMore: controlledShowMore, onShowMoreChange }: {
+function CraftCategory({ category, items, icons, collections, textControlKeycaps, removeAnimations, showMore: controlledShowMore, onShowMoreChange }: {
   category: SearchCategory
   items: ReadonlyMap<string, SearchItem>
   icons: IconManifest
   collections: ReadonlyMap<string, RecipeResultCollection> | undefined
   textControlKeycaps: boolean
+  removeAnimations: boolean
   showMore?: boolean
   onShowMoreChange?: (showMore: boolean) => void
 }) {
@@ -542,7 +546,7 @@ function CraftCategory({ category, items, icons, collections, textControlKeycaps
       {category.headerControl}
     </header>}
     <ol>
-      {visibleCrafts.map((craft) => <CraftDetail key={craft.key} craft={craft} items={items} icons={icons} collections={collections} textControlKeycaps={textControlKeycaps} />)}
+      {visibleCrafts.map((craft) => <CraftDetail key={craft.key} craft={craft} items={items} icons={icons} collections={collections} textControlKeycaps={textControlKeycaps} removeAnimations={removeAnimations} />)}
     </ol>
     {category.crafts.length > 3 && <button
       type="button"
@@ -583,6 +587,8 @@ export function CalculatedSearchRow({
   previewMode = 'default',
   hideOverflowingPreviews = false,
   textControlKeycaps = false,
+  hideNumberCraftsByDefault = false,
+  removeAnimations = false,
   className,
 }: CalculatedSearchRowProps) {
   const [expanded, setExpanded] = useState(false)
@@ -594,13 +600,23 @@ export function CalculatedSearchRow({
   const [overlapView, setOverlapView] = useState<'junkless' | 'other'>('junkless')
   const [expandedRegularViews, setExpandedRegularViews] = useState({ junkless: false, other: false })
   const [expandedOverlapViews, setExpandedOverlapViews] = useState({ junkless: false, other: false })
-  const [showNumberCrafts, setShowNumberCrafts] = useState(true)
+  const [showNumberCrafts, setShowNumberCrafts] = useState(!hideNumberCraftsByDefault)
   const listId = useId()
   const label = summaryLabel ?? `item set ${entryNumber}`
   const rowClassName = `calculated-search-row${className ? ` ${className}` : ''}`
   useEffect(() => () => {
     if (craftSpacingReleaseTimer.current !== undefined) clearTimeout(craftSpacingReleaseTimer.current)
   }, [])
+  useEffect(() => {
+    setShowNumberCrafts(!hideNumberCraftsByDefault)
+  }, [hideNumberCraftsByDefault])
+  useEffect(() => {
+    if (!removeAnimations) return
+    if (craftSpacingReleaseTimer.current !== undefined) clearTimeout(craftSpacingReleaseTimer.current)
+    setIsClosingCrafts(false)
+    setIsReleasingCraftSpacing(false)
+    if (!expanded) setHasExpanded(false)
+  }, [expanded, removeAnimations])
   if (!entry.enabled) return null
   if (state === undefined || state.status === 'idle') return <section className={rowClassName} aria-label={`Calculated searches for ${label}`}><span>Waiting for goals</span></section>
   if (state.status === 'pending') return <section className={rowClassName} aria-label={`Calculated searches for ${label}`}><span>Calculating…</span></section>
@@ -683,6 +699,14 @@ export function CalculatedSearchRow({
   </div>
   const toggleCrafts = () => {
     if (expanded) {
+      if (removeAnimations) {
+        if (craftSpacingReleaseTimer.current !== undefined) clearTimeout(craftSpacingReleaseTimer.current)
+        setExpanded(false)
+        setHasExpanded(false)
+        setIsClosingCrafts(false)
+        setIsReleasingCraftSpacing(false)
+        return
+      }
       setExpanded(false)
       setIsClosingCrafts(true)
       setIsReleasingCraftSpacing(false)
@@ -738,6 +762,7 @@ export function CalculatedSearchRow({
         icons={icons}
         collections={collections}
         textControlKeycaps={textControlKeycaps}
+        removeAnimations={removeAnimations}
         showMore={expandedRegularViews[visibleRegularView]}
         onShowMoreChange={(showMore) => setExpandedRegularViews((current) => ({ ...current, [visibleRegularView]: showMore }))}
       />}
@@ -747,6 +772,7 @@ export function CalculatedSearchRow({
         icons={icons}
         collections={collections}
         textControlKeycaps={textControlKeycaps}
+        removeAnimations={removeAnimations}
         showMore={expandedOverlapViews[visibleOverlapView]}
         onShowMoreChange={(showMore) => setExpandedOverlapViews((current) => ({ ...current, [visibleOverlapView]: showMore }))}
       />}

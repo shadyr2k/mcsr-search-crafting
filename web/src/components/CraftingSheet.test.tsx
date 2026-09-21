@@ -105,7 +105,7 @@ describe('CraftingSheet', () => {
     expect(screen.getByText('SH', { selector: '.crafting-sheet__key' })).toHaveAttribute('title', 'Select the previous query, then replace it')
   })
 
-  test('uses Minecraft keyboard sprites when text keycaps are disabled', () => {
+  test('always uses text controls in the crafting sheet', () => {
     const input = props()
     const first = search('aw', 'anchor')
     const replacementStep = search('bed').steps[0]
@@ -116,11 +116,11 @@ describe('CraftingSheet', () => {
       steps: [first.steps[0], { ...replacementStep, retainedPrefix: '', freeBackspaceCount: 2, typedSuffix: 'bed' }],
     }
 
-    const { container } = render(<CraftingSheet {...input} entries={[{ ...input.entries[0], selectedSearch: replacement }]} layout="page" textControlKeycaps={false} />)
+    const { container } = render(<CraftingSheet {...input} entries={[{ ...input.entries[0], selectedSearch: replacement }]} layout="page" />)
     fireEvent.click(screen.getByRole('button', { name: 'Expand item set 1' }))
-    expect(container.querySelector('.crafting-sheet__sequence .arrow-sprite--shift')).toBeTruthy()
-    expect(container.querySelector('.crafting-sheet__sequence .arrow-sprite--home')).toBeTruthy()
-    expect(screen.queryByText('SH', { selector: '.query-control-keycap' })).not.toBeInTheDocument()
+    expect(screen.getByText('SH', { selector: '.crafting-sheet__key' })).toBeTruthy()
+    expect(container.querySelector('.crafting-sheet__sequence .arrow-sprite--shift')).toBeNull()
+    expect(container.querySelector('.crafting-sheet__sequence .arrow-sprite--home')).toBeNull()
   })
 
   test('scales the total score from green at best to red at the furthest available score', () => {

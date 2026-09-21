@@ -246,6 +246,15 @@ function App() {
     const selector = languageSelectorRef.current
     const workspaceTransition = workspaceTransitionRef.current
     const priorPosition = priorLanguagePositionRef.current
+    if (appSettings.removeAnimations) {
+      priorLanguagePositionRef.current = undefined
+      if (workspaceTransition) workspaceTransition.style.transition = ''
+      if (selector) {
+        selector.style.transition = ''
+        selector.style.transform = ''
+      }
+      return
+    }
     if (!selector || !workspaceTransition || !priorPosition) return
     priorLanguagePositionRef.current = undefined
 
@@ -277,7 +286,7 @@ function App() {
       }
       selector.addEventListener('transitionend', finishLanguageTransition)
     })
-  }, [page])
+  }, [appSettings.removeAnimations, page])
 
   useEffect(() => () => {
     if (languageAnimationFrameRef.current !== undefined) cancelAnimationFrame(languageAnimationFrameRef.current)
@@ -402,6 +411,20 @@ function App() {
 
     if (languageAnimationFrameRef.current !== undefined) cancelAnimationFrame(languageAnimationFrameRef.current)
     const selector = languageSelectorRef.current
+    if (appSettings.removeAnimations) {
+      clearPageTransitionTimer()
+      pendingPageRef.current = undefined
+      priorLanguagePositionRef.current = undefined
+      if (selector) {
+        selector.style.transition = ''
+        selector.style.transform = ''
+      }
+      setUsesSharedLanguageTransition(false)
+      setPageTransitionDirection(undefined)
+      setPageTransitionPhase('idle')
+      setPage(nextPage)
+      return
+    }
     const shareLanguageColumn = sharesLanguageColumn(page, nextPage) && canAnimateLanguageColumn()
     const transitionDirection = pageTransitionDirectionFor(page, nextPage)
     if (shareLanguageColumn) {
@@ -440,7 +463,7 @@ function App() {
   const editorNumber = editor?.entryId === undefined ? undefined : entries.findIndex((entry) => entry.id === editor.entryId) + 1
   const selectedLanguage = languages.find((language) => language.locale === selectedLocale)
   const selectedLanguageName = selectedLanguage ? englishLocaleName(selectedLanguage, languages) : 'english (us)'
-  return <main className={`app-shell${tutorialIndex !== null ? ' app-shell--tutorial' : ''}${page === 'crafting-sheet' ? ' app-shell--crafting-sheet' : ''}`}>
+  return <main className={`app-shell${tutorialIndex !== null ? ' app-shell--tutorial' : ''}${page === 'crafting-sheet' ? ' app-shell--crafting-sheet' : ''}${appSettings.removeAnimations ? ' app-shell--remove-animations' : ''}${appSettings.compactLayout ? ' app-shell--compact-layout' : ''}`}>
     <header className="app-header">
       <div className="app-header__brand">
         {activeIcons && <ItemIcon itemId="minecraft:smithing_table" name="smithing table" manifest={activeIcons} size="detail" className="app-header__icon" />}
@@ -509,7 +532,8 @@ function App() {
       onClearCustomSlot={clearSlot}
       dataBaseUrl={gameVersion.packageBaseUrl}
       itemIdSearch={appSettings.itemIdSearch}
-      textControlKeycaps={appSettings.textControlKeycaps}
+      hideNumberCraftsByDefault={appSettings.hideNumberCraftsByDefault}
+      removeAnimations={appSettings.removeAnimations}
     />}
     {data && activeIcons && page === 'crafting-sheet' && <CraftingSheet
       layout="page"
@@ -527,7 +551,6 @@ function App() {
       icons={activeIcons}
       isCalculating={craftingSheet.isCalculating}
       warning={craftingSheet.warning}
-      textControlKeycaps={appSettings.textControlKeycaps}
       onSelectItemCraft={craftingSheet.selectItemCraft}
       onMoveItemCraft={craftingSheet.moveItemCraft}
       onSetEntryDisabled={craftingSheet.setEntryDisabled}
@@ -563,14 +586,13 @@ function App() {
           icons={activeIcons}
           isCalculating={craftingSheet.isCalculating}
           warning={craftingSheet.warning}
-          textControlKeycaps={appSettings.textControlKeycaps}
           onSelectItemCraft={craftingSheet.selectItemCraft}
           onMoveItemCraft={craftingSheet.moveItemCraft}
           onSetEntryDisabled={craftingSheet.setEntryDisabled}
           onReset={craftingSheet.reset}
         />
         {entries.map((entry, index) => <CalculatedSearchRow
-          key={entry.id} entry={entry} entryNumber={index + 1} state={states.get(entry.id)} items={data.items} icons={activeIcons} collections={data.collections} textControlKeycaps={appSettings.textControlKeycaps} onRetry={() => retry(entry.id)}
+          key={entry.id} entry={entry} entryNumber={index + 1} state={states.get(entry.id)} items={data.items} icons={activeIcons} collections={data.collections} textControlKeycaps={appSettings.textControlKeycaps} hideNumberCraftsByDefault={appSettings.hideNumberCraftsByDefault} removeAnimations={appSettings.removeAnimations} onRetry={() => retry(entry.id)}
         />)}
       </section>
       {editor && <div className="item-set-editor-overlay">

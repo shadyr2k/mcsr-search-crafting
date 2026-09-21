@@ -14,9 +14,9 @@
 .settings-page__toggle { display: grid; grid-template-columns: auto 1fr; gap: .25rem .6rem; align-items: center; width: min(100%, 36rem); color: var(--accent-strong); }
 .settings-page__toggle small { grid-column: 1 / -1; color: var(--muted); font-size: .78rem; line-height: 1.4; }
 :root[data-theme] .settings-page button.settings-page__switch { position: relative; width: 2.65rem; min-width: 2.65rem; height: 1.45rem; min-height: 1.45rem; margin: 0; padding: 0; border: 2px solid var(--border); border-radius: 999px; background: var(--muted); cursor: pointer; transition: background .16s ease, border-color .16s ease; }
-:root[data-theme] .settings-page button.settings-page__switch::after { position: absolute; top: 50%; left: .17rem; width: .78rem; height: .78rem; border-radius: 50%; background: var(--panel); content: ''; transform: translateY(-50%); transition: transform .16s ease; }
+:root[data-theme] .settings-page button.settings-page__switch::after { position: absolute; top: 50%; left: .17rem; width: .78rem; height: .78rem; border-radius: 50%; background: var(--panel); content: ''; transform: translateY(-50%); }
 :root[data-theme] .settings-page button.settings-page__switch[aria-checked='true'] { border-color: var(--accent-strong); background: var(--accent-strong); }
-:root[data-theme] .settings-page button.settings-page__switch[aria-checked='true']::after { transform: translate(.99rem, -50%); }
+:root[data-theme] .settings-page button.settings-page__switch[aria-checked='true']::after { right: .17rem; left: auto; }
 .settings-page__switch:disabled { opacity: .5; cursor: not-allowed; }
 .settings-page__save { display: flex; align-items: center; justify-content: end; gap: .75rem; min-height: 2.4rem; }
 .settings-page__save p { margin: 0; color: var(--accent-strong); font-size: .85rem; }

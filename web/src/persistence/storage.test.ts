@@ -577,7 +577,7 @@ describe('version-scoped crafting records', () => {
 })
 
 describe('app settings persistence', () => {
-  test('loads saved settings from before item ID search and defaults to text keycaps', () => {
+  test('loads saved settings from before display preferences and uses their defaults', () => {
     const storage = new MemoryStorage()
     storage.setItem('mcsr.app-settings.v1', JSON.stringify({
       schemaVersion: 1,
@@ -586,7 +586,10 @@ describe('app settings persistence', () => {
     }))
 
     expect(loadAppSettings(storage).value.itemIdSearch).toBe(false)
+    expect(loadAppSettings(storage).value.hideNumberCraftsByDefault).toBe(false)
     expect(loadAppSettings(storage).value.textControlKeycaps).toBe(true)
+    expect(loadAppSettings(storage).value.removeAnimations).toBe(false)
+    expect(loadAppSettings(storage).value.compactLayout).toBe(false)
   })
 
   test('saves score settings globally and clears a versioned score cache', () => {
@@ -601,7 +604,10 @@ describe('app settings persistence', () => {
         shiftHomePenalty: 2,
       },
       itemIdSearch: true,
+      hideNumberCraftsByDefault: true,
       textControlKeycaps: true,
+      removeAnimations: true,
+      compactLayout: true,
       catifyItems: true,
     }
     saveAppSettings(settings, storage)

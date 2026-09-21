@@ -25,7 +25,6 @@ export interface CraftingSheetProps {
   icons?: IconManifest
   isCalculating?: boolean
   warning?: string
-  textControlKeycaps?: boolean
   defaultOpen?: boolean
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -66,15 +65,15 @@ function SheetDisclosure({ id, open, children, sizeWhileCollapsed = false }: { i
   </div>
 }
 
-function QuerySequence({ search, textControlKeycaps = true }: { search: RankedSearch; textControlKeycaps?: boolean }) {
+function QuerySequence({ search }: { search: RankedSearch }) {
   return <span className="crafting-sheet__sequence" dir="ltr">
     {search.steps.map((step, index) => {
       const replaces = index > 0 && step.retainedPrefix.length === 0 && step.freeBackspaceCount >= search.steps[index - 1].query.length
       return <Fragment key={index}>
         {index > 0 && (replaces
-          ? <QueryControl kind="shift-home" textKeycaps={textControlKeycaps} keycapClassName="crafting-sheet__key" />
+          ? <QueryControl kind="shift-home" textKeycaps keycapClassName="crafting-sheet__key" />
           : step.freeBackspaceCount > 0
-            ? <QueryControl kind="backspace" backspaceCount={step.freeBackspaceCount} textKeycaps={textControlKeycaps} keycapClassName="crafting-sheet__key" />
+            ? <QueryControl kind="backspace" backspaceCount={step.freeBackspaceCount} textKeycaps keycapClassName="crafting-sheet__key" />
             : <span className="crafting-sheet__key" aria-label={step.typedSuffix ? 'Continue typing' : 'Keep search'}>{step.typedSuffix ? '→' : 'keep search'}</span>)}
         <span className="crafting-sheet__query-text" title={`Search: ${step.query.replaceAll(' ', '_')}`}>{(index === 0 ? step.query : step.typedSuffix).replaceAll(' ', '_')}</span>
       </Fragment>
@@ -82,12 +81,11 @@ function QuerySequence({ search, textControlKeycaps = true }: { search: RankedSe
   </span>
 }
 
-function CraftPicker({ label, options, selectedOptionId, onSelect, textControlKeycaps }: {
+function CraftPicker({ label, options, selectedOptionId, onSelect }: {
   label: string
   options: readonly CraftingSheetOption[]
   selectedOptionId: string
   onSelect: (optionId: string) => void
-  textControlKeycaps: boolean
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const [filter, setFilter] = useState('')
@@ -118,7 +116,7 @@ function CraftPicker({ label, options, selectedOptionId, onSelect, textControlKe
       <ul>
         {filtered.slice(0, visibleCount).map((option) => <li key={option.id}>
           <button type="button" aria-pressed={option.id === selectedOptionId} onClick={() => { onSelect(option.id); close() }}>
-            <QuerySequence search={option.search} textControlKeycaps={textControlKeycaps} />
+            <QuerySequence search={option.search} />
             <span className="crafting-sheet__option-metrics">
               <span>{option.totalTypedCharacters} chars · {option.junkCount} junk</span>
               <span className={option.isOptimal ? 'crafting-sheet__optimal' : ''}>{deltaLabel(option.scoreDelta)}</span>
@@ -140,7 +138,7 @@ function ItemLabels({ itemIds, items, icons }: { itemIds: readonly string[]; ite
   </span>)}</span>
 }
 
-function ItemSetCard({ entry, items, icons, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, textControlKeycaps = true, onOpenChange }: Pick<CraftingSheetProps, 'items' | 'icons' | 'onSelectItemCraft' | 'onMoveItemCraft' | 'onSetEntryDisabled' | 'textControlKeycaps'> & { entry: CraftingSheetEntry; onOpenChange?: (open: boolean) => void }) {
+function ItemSetCard({ entry, items, icons, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, onOpenChange }: Pick<CraftingSheetProps, 'items' | 'icons' | 'onSelectItemCraft' | 'onMoveItemCraft' | 'onSetEntryDisabled'> & { entry: CraftingSheetEntry; onOpenChange?: (open: boolean) => void }) {
   const [isOpen, setIsOpen] = useState(false)
   const headingId = useId()
   const detailsId = useId()
@@ -192,7 +190,7 @@ function ItemSetCard({ entry, items, icons, onSelectItemCraft, onMoveItemCraft, 
         </div>
         <div className="crafting-sheet__plan">
           <span className="crafting-sheet__eyebrow">your sequence</span>
-          {entry.selectedSearch && <QuerySequence search={entry.selectedSearch} textControlKeycaps={textControlKeycaps} />}
+          {entry.selectedSearch && <QuerySequence search={entry.selectedSearch} />}
 
         </div>
         <div className="crafting-sheet__individual">
@@ -207,9 +205,9 @@ function ItemSetCard({ entry, items, icons, onSelectItemCraft, onMoveItemCraft, 
                       onClick={() => onMoveItemCraft(entry.id, choice.itemId, direction)}><span aria-hidden="true"><ArrowSprite direction={direction === -1 ? 'up' : 'down'} compact /></span></button>)}
                   </span>
                   <ItemLabels itemIds={[choice.itemId]} items={items} icons={icons} />
-                  {selected && <><QuerySequence search={selected.search} textControlKeycaps={textControlKeycaps} /><span className="crafting-sheet__item-cost">{selected.totalTypedCharacters} chars · {selected.junkCount} junk · {deltaLabel(choice.scoreDelta)}</span></>}
+                  {selected && <><QuerySequence search={selected.search} /><span className="crafting-sheet__item-cost">{selected.totalTypedCharacters} chars · {selected.junkCount} junk · {deltaLabel(choice.scoreDelta)}</span></>}
                 </div>
-                <CraftPicker label={itemName(choice.itemId, items)} options={choice.options} selectedOptionId={choice.selectedOptionId} onSelect={(id) => onSelectItemCraft(entry.id, choice.itemId, id)} textControlKeycaps={textControlKeycaps} />
+                <CraftPicker label={itemName(choice.itemId, items)} options={choice.options} selectedOptionId={choice.selectedOptionId} onSelect={(id) => onSelectItemCraft(entry.id, choice.itemId, id)} />
               </div>
             })}
           </div>
@@ -288,7 +286,7 @@ function SheetSummary({
   </>
 }
 
-function ItemSetList({ entries, items, icons, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, textControlKeycaps, columns = false }: Pick<CraftingSheetProps, 'entries' | 'items' | 'icons' | 'onSelectItemCraft' | 'onMoveItemCraft' | 'onSetEntryDisabled' | 'textControlKeycaps'> & { columns?: boolean }) {
+function ItemSetList({ entries, items, icons, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, columns = false }: Pick<CraftingSheetProps, 'entries' | 'items' | 'icons' | 'onSelectItemCraft' | 'onMoveItemCraft' | 'onSetEntryDisabled'> & { columns?: boolean }) {
   const columnsRef = useRef<HTMLDivElement>(null)
   const [openEntryIds, setOpenEntryIds] = useState<readonly string[]>([])
   const [rowCount, setRowCount] = useState<number>()
@@ -335,7 +333,7 @@ function ItemSetList({ entries, items, icons, onSelectItemCraft, onMoveItemCraft
   }
 
   function renderEntry(entry: CraftingSheetEntry) {
-    return <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={setEntryDisabled} textControlKeycaps={textControlKeycaps} onOpenChange={columns ? (open) => setEntryOpen(entry.id, open) : undefined} />
+    return <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={setEntryDisabled} onOpenChange={columns ? (open) => setEntryOpen(entry.id, open) : undefined} />
   }
 
   return <section className={`crafting-sheet__sets${columns ? ' crafting-sheet__sets--columns' : ''}`} aria-label="Selected item sets"><h3>item sets</h3>
@@ -344,7 +342,7 @@ function ItemSetList({ entries, items, icons, onSelectItemCraft, onMoveItemCraft
   </section>
 }
 
-export function CraftingSheet({ languageName, entries, characterSet, characterUsages, optimalCharacterCount, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, textControlKeycaps = true, defaultOpen = false, open, onOpenChange, layout = 'inline', onBack, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, onReset }: CraftingSheetProps) {
+export function CraftingSheet({ languageName, entries, characterSet, characterUsages, optimalCharacterCount, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, defaultOpen = false, open, onOpenChange, layout = 'inline', onBack, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, onReset }: CraftingSheetProps) {
   const [localOpen, setLocalOpen] = useState(defaultOpen)
   const [selectedCharacter, setSelectedCharacter] = useState<string>()
   const isOpen = open ?? localOpen
@@ -372,7 +370,7 @@ export function CraftingSheet({ languageName, entries, characterSet, characterUs
         <CharacterDetails selectedCharacter={selectedCharacter} usages={usages} />
       </aside>
       <UsageChart usages={usages} className="crafting-sheet__chart--page" />
-      <ItemSetList columns entries={entries} items={items} icons={icons} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} textControlKeycaps={textControlKeycaps} />
+      <ItemSetList columns entries={entries} items={items} icons={icons} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />
     </div>
   </section>
 
@@ -387,7 +385,7 @@ export function CraftingSheet({ languageName, entries, characterSet, characterUs
     <SheetDisclosure id={panelId} open={isOpen}>
     <div className="crafting-sheet__panel">
       <SheetSummary entries={entries} characterSet={characterSet} totalTypedCharacters={totalTypedCharacters} totalScore={totalScore} scoreDelta={scoreDelta} optimalCharacterCount={optimalCharacterCount} selectedCharacter={selectedCharacter} onSelectCharacter={selectCharacter} isCalculating={isCalculating} warning={warning} readyCount={readyCount} onReset={onReset} />
-      <ItemSetList entries={entries} items={items} icons={icons} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} textControlKeycaps={textControlKeycaps} />
+      <ItemSetList entries={entries} items={items} icons={icons} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />
       <CharacterDetails selectedCharacter={selectedCharacter} usages={usages} />
     </div>
     </SheetDisclosure>

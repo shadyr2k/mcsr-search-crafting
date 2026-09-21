@@ -77,7 +77,10 @@ interface VersionedThemePreference extends ThemePreference {
 export interface AppSettings {
   scoring: ScoringSettings
   itemIdSearch: boolean
+  hideNumberCraftsByDefault: boolean
   textControlKeycaps: boolean
+  removeAnimations: boolean
+  compactLayout: boolean
   catifyItems: boolean
 }
 
@@ -103,10 +106,13 @@ interface VersionedLanguageScoreCache extends LanguageScoreCache {
   schemaVersion: 1
 }
 
-interface VersionedAppSettings extends Omit<AppSettings, 'itemIdSearch' | 'textControlKeycaps'> {
+interface VersionedAppSettings extends Omit<AppSettings, 'itemIdSearch' | 'hideNumberCraftsByDefault' | 'textControlKeycaps' | 'removeAnimations' | 'compactLayout'> {
   schemaVersion: 1
   itemIdSearch?: boolean
+  hideNumberCraftsByDefault?: boolean
   textControlKeycaps?: boolean
+  removeAnimations?: boolean
+  compactLayout?: boolean
 }
 
 const volatileRecordsByStorage = new WeakMap<Storage, Map<string, string | null>>()
@@ -230,7 +236,15 @@ export function languageScoreCacheGeneration(minecraftVersion = LEGACY_GAME_VERS
 }
 
 function defaultAppSettings(): AppSettings {
-  return { scoring: { ...DEFAULT_SCORING_SETTINGS }, itemIdSearch: false, textControlKeycaps: true, catifyItems: false }
+  return {
+    scoring: { ...DEFAULT_SCORING_SETTINGS },
+    itemIdSearch: false,
+    hideNumberCraftsByDefault: false,
+    textControlKeycaps: true,
+    removeAnimations: false,
+    compactLayout: false,
+    catifyItems: false,
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -265,9 +279,12 @@ function isAppSettings(value: unknown): value is VersionedAppSettings {
     && value.schemaVersion === 1
     && isScoringSettings(value.scoring)
     && (value.itemIdSearch === undefined || typeof value.itemIdSearch === 'boolean')
+    && (value.hideNumberCraftsByDefault === undefined || typeof value.hideNumberCraftsByDefault === 'boolean')
     && (value.textControlKeycaps === undefined || typeof value.textControlKeycaps === 'boolean')
+    && (value.removeAnimations === undefined || typeof value.removeAnimations === 'boolean')
+    && (value.compactLayout === undefined || typeof value.compactLayout === 'boolean')
     && typeof value.catifyItems === 'boolean'
-    && Object.keys(value).every((key) => key === 'schemaVersion' || key === 'scoring' || key === 'itemIdSearch' || key === 'textControlKeycaps' || key === 'catifyItems')
+    && Object.keys(value).every((key) => key === 'schemaVersion' || key === 'scoring' || key === 'itemIdSearch' || key === 'hideNumberCraftsByDefault' || key === 'textControlKeycaps' || key === 'removeAnimations' || key === 'compactLayout' || key === 'catifyItems')
 }
 
 function isCustomInventoryPreset(value: unknown): value is CustomInventoryPreset {
@@ -634,7 +651,18 @@ export function loadAppSettings(storage?: Storage): PersistenceLoadResult<AppSet
   try {
     const parsed = parseJson(target, APP_SETTINGS_KEY)
     if (!isAppSettings(parsed)) return recover(target, APP_SETTINGS_KEY, 'app-settings', raw, fallback)
-    return { value: { scoring: { ...parsed.scoring }, itemIdSearch: parsed.itemIdSearch ?? false, textControlKeycaps: parsed.textControlKeycaps ?? true, catifyItems: parsed.catifyItems }, warning: target.warning }
+    return {
+      value: {
+        scoring: { ...parsed.scoring },
+        itemIdSearch: parsed.itemIdSearch ?? false,
+        hideNumberCraftsByDefault: parsed.hideNumberCraftsByDefault ?? false,
+        textControlKeycaps: parsed.textControlKeycaps ?? true,
+        removeAnimations: parsed.removeAnimations ?? false,
+        compactLayout: parsed.compactLayout ?? false,
+        catifyItems: parsed.catifyItems,
+      },
+      warning: target.warning,
+    }
   } catch {
     return recover(target, APP_SETTINGS_KEY, 'app-settings', raw, fallback)
   }
@@ -645,7 +673,16 @@ export function saveAppSettings(settings: AppSettings, storage?: Storage): Persi
     throw new TypeError('App settings must contain valid non-negative score penalties and valid search, display, and texture preferences.')
   }
   const target = storageOrDefault(storage)
-  target.setItem(APP_SETTINGS_KEY, JSON.stringify({ schemaVersion: 1, scoring: settings.scoring, itemIdSearch: settings.itemIdSearch, textControlKeycaps: settings.textControlKeycaps, catifyItems: settings.catifyItems } satisfies VersionedAppSettings))
+  target.setItem(APP_SETTINGS_KEY, JSON.stringify({
+    schemaVersion: 1,
+    scoring: settings.scoring,
+    itemIdSearch: settings.itemIdSearch,
+    hideNumberCraftsByDefault: settings.hideNumberCraftsByDefault,
+    textControlKeycaps: settings.textControlKeycaps,
+    removeAnimations: settings.removeAnimations,
+    compactLayout: settings.compactLayout,
+    catifyItems: settings.catifyItems,
+  } satisfies VersionedAppSettings))
   return { warning: target.warning }
 }
 
