@@ -25,6 +25,7 @@ interface LanguageComparisonProps {
   loadedLocale?: string
   loadedStates?: ReadonlyMap<string, RowOptimizationState>
   layout?: 'inline' | 'page'
+  compactLayout?: boolean
   onBack?: () => void
 }
 
@@ -106,7 +107,7 @@ function ChoiceCell({
               </span>
               <ItemIcon itemId={choice.itemId} name={name} manifest={icons} />
               {selected && <QuerySequence search={selected.search} />}
-              <CraftPicker label={`${name} in ${locale}`} options={choice.options} selectedOptionId={choice.selectedOptionId} onSelect={(optionId) => onSelectItemCraft(entry.id, choice.itemId, optionId)} />
+              <CraftPicker label={`${name} in ${locale}`} options={choice.options} selectedOptionId={choice.selectedOptionId} onSelect={(optionId) => onSelectItemCraft(entry.id, choice.itemId, optionId)} closeOnOutsidePointer />
             </div>
           })}
         </div>
@@ -126,7 +127,7 @@ function Differences({ left, right, leftName, rightName }: { left: CraftingSheet
   </aside>
 }
 
-export function LanguageComparison({ baseData, entries, languages, selectedLocale, icons, dataBaseUrl, scoringSettings, itemIdSearch, minecraftVersion, loadedLocale, loadedStates, layout = 'inline', onBack }: LanguageComparisonProps) {
+export function LanguageComparison({ baseData, entries, languages, selectedLocale, icons, dataBaseUrl, scoringSettings, itemIdSearch, minecraftVersion, loadedLocale, loadedStates, layout = 'inline', compactLayout = false, onBack }: LanguageComparisonProps) {
   const availableLocales = useMemo(() => languages.map((language) => language.locale), [languages])
   const fallbackRightLocale = useMemo(() => availableLocales.find((locale) => locale !== selectedLocale) ?? selectedLocale, [availableLocales, selectedLocale])
   const [open, setOpen] = useState(false)
@@ -192,7 +193,7 @@ export function LanguageComparison({ baseData, entries, languages, selectedLocal
     </div>}
   </div>
 
-  if (isPage) return <section className="language-comparison language-comparison--page" aria-label="Language craft comparison">
+  if (isPage) return <section className={`language-comparison language-comparison--page${compactLayout ? ' language-comparison--compact' : ''}`} aria-label="Language craft comparison">
     <header className="language-comparison__header language-comparison__header--page"><button type="button" aria-label="Back to crafts" onClick={onBack}><span>compare languages</span><span>back to crafts <ArrowSprite direction="left" compact /></span></button></header>
     {panel}
   </section>

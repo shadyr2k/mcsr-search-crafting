@@ -4,7 +4,7 @@ import '@testing-library/jest-dom/vitest'
 
 import type { RankedSearch, RowOptimizationState, TargetWorkspaceEntry } from '../domain/types'
 import { createCraftingSheetModel } from '../engine/craftingSheet'
-import { CraftingSheet, type CraftingSheetProps } from './CraftingSheet'
+import { CraftPicker, CraftingSheet, type CraftingSheetProps } from './CraftingSheet'
 
 afterEach(cleanup)
 
@@ -218,6 +218,18 @@ describe('CraftingSheet', () => {
     expect(screen.getByRole('button', { name: 'Collapse item set 1' })).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: 'reset sheet' }))
     expect(input.onReset).toHaveBeenCalledOnce()
+  })
+
+  test('dismisses a comparison craft picker when its pointer leaves the menu', () => {
+    const input = props()
+    const choice = input.entries[0].itemChoices[0]
+    render(<><CraftPicker label="bed in english" options={choice.options} selectedOptionId={choice.selectedOptionId} onSelect={vi.fn()} closeOnOutsidePointer /><button type="button">outside picker</button></>)
+
+    fireEvent.click(screen.getByRole('button', { name: 'choose craft for bed in english' }))
+    expect(screen.getByRole('searchbox', { name: 'Filter crafts for bed in english' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Close crafts for bed in english' })).not.toBeInTheDocument()
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'outside picker' }))
+    expect(screen.queryByRole('searchbox', { name: 'Filter crafts for bed in english' })).not.toBeInTheDocument()
   })
 
   test('shows pending and unavailable sets with clear status messages', () => {

@@ -3173,20 +3173,20 @@ h3 {
   transition: none !important;
 }
 
-/* Keep the dense option focused on the craft workspace. The dedicated craft
-   sheet has its own screen-fitting layout and intentionally stays unchanged. */
-.app-shell--compact-layout:not(.app-shell--crafting-sheet) {
+/* Dedicated craft pages receive their own compact card rules, while this
+   shared scale keeps the header and surrounding page space proportionate. */
+.app-shell--compact-layout {
   font-size: .92rem;
 }
 
-/* The comparison is a full workspace page, so it keeps the regular page
-   scale even when dense controls are enabled for the main craft list. */
+.app-shell--compact-layout.app-shell--crafting-sheet,
 .app-shell--compact-layout.app-shell--language-comparison {
-  font-size: 1rem;
+  font-size: .9rem;
 }
 
+.app-shell--compact-layout.app-shell--crafting-sheet .app-header,
 .app-shell--compact-layout.app-shell--language-comparison .app-header {
-  margin-bottom: 1.5rem;
+  margin-bottom: .75rem;
   padding: .75rem 1rem;
 }
 

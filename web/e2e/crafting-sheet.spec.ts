@@ -5,7 +5,7 @@ test('keeps the header fixed while the crafting sheet opens and closes', async (
   const header = page.locator('.app-header')
   const initialTop = await header.evaluate((element) => element.getBoundingClientRect().top)
 
-  await page.getByRole('button', { name: /english.*search crafts/ }).click()
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).click()
   const backToCrafts = page.getByRole('button', { name: 'Back to english (us) crafts' })
   await expect(backToCrafts).toBeVisible()
   expect(await backToCrafts.evaluate((element) => Number.parseFloat(getComputedStyle(element).borderTopLeftRadius))).toBeGreaterThan(0)
@@ -18,7 +18,7 @@ test('keeps the header fixed while the crafting sheet opens and closes', async (
 
 test('expands a sheet item set without clipping its controls inside a compact row', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: /english.*search crafts/ }).waitFor()
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).waitFor()
   await page.evaluate(() => {
     const workspace = JSON.parse(localStorage.getItem('mcsr.target-workspace.v1')!)
     const source = workspace.entries[0]
@@ -26,7 +26,7 @@ test('expands a sheet item set without clipping its controls inside a compact ro
     localStorage.setItem('mcsr.target-workspace.v1', JSON.stringify(workspace))
   })
   await page.reload()
-  await page.getByRole('button', { name: /english.*search crafts/ }).click()
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).click()
   const entry = page.getByRole('region', { name: 'item set 1', exact: true })
   const collapsedWidth = await entry.evaluate((element) => element.getBoundingClientRect().width)
 
@@ -42,7 +42,7 @@ test('expands a sheet item set without clipping its controls inside a compact ro
 test('stacks sheet item sets on short desktop displays', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 })
   await page.goto('/')
-  await page.getByRole('button', { name: /english.*search crafts/ }).waitFor()
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).waitFor()
   await page.evaluate(() => {
     const workspace = JSON.parse(localStorage.getItem('mcsr.target-workspace.v1')!)
     const source = workspace.entries[0]
@@ -50,8 +50,8 @@ test('stacks sheet item sets on short desktop displays', async ({ page }) => {
     localStorage.setItem('mcsr.target-workspace.v1', JSON.stringify(workspace))
   })
   await page.reload()
-  await page.getByRole('button', { name: /english.*search crafts/ }).click()
-  await expect.poll(() => page.locator('.page-transition').getAttribute('class')).toBe('page-transition')
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).click()
+  await expect(page.getByRole('button', { name: /Back to .* crafts/ })).toBeVisible()
   const first = page.getByRole('region', { name: 'item set 1', exact: true })
   const second = page.getByRole('region', { name: 'item set 2', exact: true })
   const positions = await Promise.all([first.boundingBox(), second.boundingBox()])
@@ -64,7 +64,7 @@ test('stacks sheet item sets on short desktop displays', async ({ page }) => {
 test('keeps all-enabled sheet rows stable after a resize', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
   await page.goto('/')
-  await page.getByRole('button', { name: /english.*search crafts/ }).waitFor()
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).waitFor()
   await page.evaluate(() => {
     const workspace = JSON.parse(localStorage.getItem('mcsr.target-workspace.v1')!)
     const source = workspace.entries[0]
@@ -72,8 +72,8 @@ test('keeps all-enabled sheet rows stable after a resize', async ({ page }) => {
     localStorage.setItem('mcsr.target-workspace.v1', JSON.stringify(workspace))
   })
   await page.reload()
-  await page.getByRole('button', { name: /english.*search crafts/ }).click()
-  await expect.poll(() => page.locator('.page-transition').getAttribute('class')).toBe('page-transition')
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).click()
+  await expect(page.getByRole('button', { name: /Back to .* crafts/ })).toBeVisible()
   const columns = page.locator('.crafting-sheet__set-columns')
   await expect(columns).toHaveClass(/crafting-sheet__set-columns--sized/)
   await page.setViewportSize({ width: 1280, height: 760 })
@@ -89,7 +89,7 @@ test('keeps all-enabled sheet rows stable after a resize', async ({ page }) => {
 test('stacks compact sheet item sets in one full-width column', async ({ page }) => {
   await page.setViewportSize({ width: 700, height: 900 })
   await page.goto('/')
-  await page.getByRole('button', { name: /english.*search crafts/ }).waitFor()
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).waitFor()
   await page.evaluate(() => {
     const workspace = JSON.parse(localStorage.getItem('mcsr.target-workspace.v1')!)
     const source = workspace.entries[0]
@@ -97,8 +97,8 @@ test('stacks compact sheet item sets in one full-width column', async ({ page })
     localStorage.setItem('mcsr.target-workspace.v1', JSON.stringify(workspace))
   })
   await page.reload()
-  await page.getByRole('button', { name: /english.*search crafts/ }).click()
-  await expect.poll(() => page.locator('.page-transition').getAttribute('class')).toBe('page-transition')
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).click()
+  await expect(page.getByRole('button', { name: /Back to .* crafts/ })).toBeVisible()
   const columns = page.locator('.crafting-sheet__set-columns')
   await expect(columns).toHaveCSS('display', 'flex')
   const first = page.getByRole('region', { name: 'item set 1', exact: true })
@@ -111,7 +111,7 @@ test('stacks compact sheet item sets in one full-width column', async ({ page })
 
 test('packs excluded sheet rows at their natural height', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: /english.*search crafts/ }).waitFor()
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).waitFor()
   await page.evaluate(() => {
     const workspace = JSON.parse(localStorage.getItem('mcsr.target-workspace.v1')!)
     const source = workspace.entries[0]
@@ -119,7 +119,7 @@ test('packs excluded sheet rows at their natural height', async ({ page }) => {
     localStorage.setItem('mcsr.target-workspace.v1', JSON.stringify(workspace))
   })
   await page.reload()
-  await page.getByRole('button', { name: /english.*search crafts/ }).click()
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).click()
   const columns = page.locator('.crafting-sheet__set-columns')
   const entry = page.getByRole('region', { name: 'item set 4', exact: true })
   const nextEntry = page.getByRole('region', { name: 'item set 5', exact: true })
@@ -141,7 +141,7 @@ test('packs excluded sheet rows at their natural height', async ({ page }) => {
 
 test('crafting sheet customizes bed and anchor, persists choices, and fits narrow screens', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: /english.*search crafts/ }).waitFor()
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).waitFor()
   // Reuse the starter inventory, keeping exactly the two targets in this example.
   await page.evaluate(() => {
     const workspace = JSON.parse(localStorage.getItem('mcsr.target-workspace.v1')!)
@@ -152,7 +152,7 @@ test('crafting sheet customizes bed and anchor, persists choices, and fits narro
     localStorage.setItem('mcsr.target-workspace.v1', JSON.stringify(workspace))
   })
   await page.reload()
-  await page.getByRole('button', { name: /english.*search crafts/ }).click()
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).click()
   const sheet = page.locator('.crafting-sheet')
   const card = sheet.getByRole('region', { name: 'item set 1', exact: true })
   await expect(card.getByText('Calculating crafts…')).toHaveCount(0)
@@ -175,7 +175,7 @@ test('crafting sheet customizes bed and anchor, persists choices, and fits narro
   await expect(sheet.getByLabel('Selected characters')).toHaveText('abdew')
   await expect(card.locator('.crafting-sheet__entry-metrics')).toContainText('+1 score')
   await page.reload()
-  await page.getByRole('button', { name: /english.*search crafts/ }).click()
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).click()
   await expect(card.getByLabel('Selected query for White Bed')).toHaveText('bed')
   await card.getByRole('button', { name: 'Expand item set 1' }).click()
   await expect(card.locator('.crafting-sheet__plan')).toHaveText(/your sequencebedSHaw/)
@@ -212,58 +212,57 @@ test('crafting sheet customizes bed and anchor, persists choices, and fits narro
   await expect(card.locator('.crafting-sheet__plan')).toHaveText(initialSequence!)
 })
 
-test('crafting sheet has compact rows and animates open and closed like calculated rows', async ({ page }) => {
-  await page.goto('/')
-  const sheet = page.locator('.crafting-sheet')
-  const toggle = sheet.getByRole('button', { name: /english.*search crafts/ })
-  await toggle.click()
-  const panel = sheet.locator(':scope > .crafting-sheet__details')
-  await expect(panel).toHaveCSS('animation-name', 'craft-disclosure-open')
-  await expect(panel).toHaveCSS('animation-duration', '0.42s')
-  const card = sheet.getByRole('region', { name: 'item set 1', exact: true })
-  await expect(card.getByRole('button', { name: 'Expand item set 1' })).toBeVisible()
-  await expect(card.locator('.crafting-sheet__query-preview')).toBeVisible()
-  await expect(card.locator('.crafting-sheet__query-preview')).toHaveCSS('border-top-width', '1px')
-  await expect(card.locator('.item-icon').first()).toHaveCSS('width', '24px')
-  await expect(card.locator('.item-icon').first()).toHaveCSS('height', '24px')
-  await expect(sheet.locator('.crafting-sheet__entry-body')).toHaveCount(1)
-  await expect(sheet.getByText('Updating crafting sheet… Totals include ready crafts.')).toHaveCount(0)
-  await page.evaluate(() => document.fonts.ready)
-  await sheet.screenshot({ path: 'test-results/crafting-sheet-compact-desktop.png', style: '.app-header { visibility: hidden !important; }' })
-  const headerTop = await card.evaluate((element) => element.getBoundingClientRect().top + window.scrollY)
-  await card.getByRole('button', { name: 'Expand item set 1' }).click()
-  const details = card.locator('.crafting-sheet__details')
-  await expect(card.getByRole('button', { name: /choose craft for/ })).toBeVisible()
-  await expect(details).toHaveCSS('animation-name', 'craft-disclosure-open')
-  await card.getByRole('button', { name: 'Collapse item set 1' }).click()
-  await expect(details).toHaveCSS('animation-name', 'craft-disclosure-close')
-  await expect(details).toHaveAttribute('inert', '')
-  await expect.poll(async () => (await details.boundingBox())!.height).toBe(0)
-  expect(await card.evaluate((element) => element.getBoundingClientRect().top + window.scrollY)).toBeCloseTo(headerTop, 0)
-  await expect(card.getByRole('button', { name: /choose craft for/ })).toHaveCount(0)
-
-  await toggle.click()
-  await expect(panel).toHaveCSS('animation-name', 'craft-disclosure-close')
-  await expect(panel).toHaveAttribute('aria-hidden', 'true')
-  await expect.poll(async () => (await panel.boundingBox())!.height).toBe(0)
-  await toggle.click()
-  await expect(card.getByRole('button', { name: 'Expand item set 1' })).toBeVisible()
-  for (const width of [320, 375, 768]) {
-    await page.setViewportSize({ width, height: 1000 })
-    expect(await sheet.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
-    await expect(card.getByRole('checkbox', { name: 'Include item set 1' })).toBeVisible()
+test('keeps the full sheet and comparison pages fluid in normal and compact layouts', async ({ page }) => {
+  async function expectPageFits(root: string) {
+    const rootSize = await page.locator(root).evaluate((element) => ({ scrollWidth: element.scrollWidth, clientWidth: element.clientWidth }))
+    const documentSize = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: window.innerWidth }))
+    expect(rootSize.scrollWidth, `${root} has no horizontal overflow`).toBeLessThanOrEqual(rootSize.clientWidth)
+    expect(documentSize.scrollWidth, 'the document has no horizontal overflow').toBeLessThanOrEqual(documentSize.clientWidth)
   }
-  await page.setViewportSize({ width: 375, height: 1000 })
-  await sheet.screenshot({ path: 'test-results/crafting-sheet-compact-mobile.png', style: '.app-header { visibility: hidden !important; }' })
-  await page.emulateMedia({ reducedMotion: 'reduce' })
-  await toggle.click()
-  await expect(panel).toHaveCSS('animation-name', 'none')
-  await expect.poll(async () => (await panel.boundingBox())!.height).toBe(0)
+
+  async function checkPages(compact: boolean) {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.getByRole('button', { name: 'crafting sheet', exact: true }).click()
+    await expect.poll(() => page.locator('.page-transition').getAttribute('class')).toBe('page-transition')
+    const sheet = page.locator('.crafting-sheet--page')
+    await expect(sheet).toBeVisible()
+    if (compact) await expect(sheet).toHaveClass(/crafting-sheet--compact/)
+    else await expect(sheet).not.toHaveClass(/crafting-sheet--compact/)
+    for (const width of [1280, 768, 375]) {
+      await page.setViewportSize({ width, height: 900 })
+      await expectPageFits('.crafting-sheet--page')
+    }
+    await page.getByRole('button', { name: /Back to .* crafts/ }).click()
+    await page.getByRole('button', { name: 'compare languages', exact: true }).click()
+    await expect.poll(() => page.locator('.page-transition').getAttribute('class')).toBe('page-transition')
+    const comparison = page.getByRole('region', { name: 'Language craft comparison' })
+    await expect(comparison).toBeVisible()
+    if (compact) await expect(comparison).toHaveClass(/language-comparison--compact/)
+    else await expect(comparison).not.toHaveClass(/language-comparison--compact/)
+    for (const [width, columns] of [[1280, 3], [768, 2], [375, 1]] as const) {
+      await page.setViewportSize({ width, height: 900 })
+      await expectPageFits('.language-comparison--page')
+      await expect.poll(() => comparison.locator('.language-comparison__row').first().evaluate((row) => getComputedStyle(row).gridTemplateColumns.trim().split(/\s+/).length)).toBe(columns)
+    }
+    await page.getByRole('button', { name: 'Back to crafts' }).click()
+    await expect.poll(() => page.locator('.page-transition').getAttribute('class')).toBe('page-transition')
+  }
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).waitFor()
+  await checkPages(false)
+
+  await page.getByRole('button', { name: 'settings' }).click()
+  await page.getByRole('switch', { name: 'compact layout' }).click()
+  await page.getByRole('button', { name: 'save settings' }).click()
+  await page.getByRole('button', { name: 'search crafting' }).click()
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).waitFor()
+  await checkPages(true)
 })
 
 test('reorders Latin item crafts and automatically uses two backspaces for lea to lab', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: /english.*search crafts/ }).waitFor()
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).waitFor()
   await page.evaluate(() => {
     const workspace = JSON.parse(localStorage.getItem('mcsr.target-workspace.v1')!)
     const entry = workspace.entries.find((value: { targetIds: string[] }) => value.targetIds.includes('minecraft:golden_helmet'))
@@ -275,7 +274,7 @@ test('reorders Latin item crafts and automatically uses two backspaces for lea t
   await page.reload()
   await page.getByRole('button', { name: /^latin -/i }).click()
   const sheet = page.locator('.crafting-sheet')
-  await sheet.getByRole('button', { name: /latin.*search crafts/i }).click()
+  await sheet.getByRole('button', { name: 'crafting sheet', exact: true }).click()
   const card = sheet.getByRole('region', { name: 'item set 1', exact: true })
   await card.getByRole('button', { name: 'Expand item set 1' }).click()
   const helmetUp = card.getByRole('button', { name: /^Move Galea aurea up$/i })
@@ -301,7 +300,7 @@ test('reorders Latin item crafts and automatically uses two backspaces for lea t
   await expect(plan.locator('.crafting-sheet__query-text').last()).toHaveText('ea')
   await expect(card.locator('.crafting-sheet__query-preview').first()).toHaveText('lab')
   await page.reload()
-  await sheet.getByRole('button', { name: /latin.*search crafts/i }).click()
+  await sheet.getByRole('button', { name: 'crafting sheet', exact: true }).click()
   await card.getByRole('button', { name: 'Expand item set 1' }).click()
   await expect(plan.locator('.crafting-sheet__query-text').first()).toHaveText('lab')
   await rows.nth(0).getByRole('button', { name: /^Move .* down$/ }).click()

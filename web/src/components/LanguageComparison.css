@@ -77,6 +77,49 @@
 .language-comparison--page .language-comparison__items .item-icon { width: 1.55rem; height: 1.55rem; }
 .language-comparison--page .language-comparison__metrics { font-size: .76rem; }
 
+/* Comparison keeps both languages readable in compact mode. Its density comes
+   from smaller cards and controls instead of collapsing either language. */
+.language-comparison--page.language-comparison--compact .language-comparison__header--page button { min-height: 3rem; padding: .55rem .7rem; font-size: .94rem; }
+.language-comparison--page.language-comparison--compact .language-comparison__panel { gap: .65rem; padding: .65rem; }
+.language-comparison--page.language-comparison--compact .language-comparison__table { gap: .35rem; }
+.language-comparison--page.language-comparison--compact .language-comparison__table > header,
+.language-comparison--page.language-comparison--compact .language-comparison__row { gap: .45rem; }
+.language-comparison--page.language-comparison--compact .language-comparison__choice,
+.language-comparison--page.language-comparison--compact .language-comparison__difference { min-height: 0; gap: .35rem; padding: .5rem; }
+.language-comparison--page.language-comparison--compact .language-comparison__choice > header strong { font-size: .76rem; }
+.language-comparison--page.language-comparison--compact .language-comparison__items .item-icon { width: 1.25rem; height: 1.25rem; }
+.language-comparison--page.language-comparison--compact .language-comparison__choice .crafting-sheet__sequence { min-height: 1.35rem; }
+.language-comparison--page.language-comparison--compact .language-comparison__metrics { gap: .18rem .35rem; font-size: .64rem; }
+.language-comparison--page.language-comparison--compact .language-comparison__items-editor { gap: .2rem; }
+.language-comparison--page.language-comparison--compact .language-comparison__item-choice { gap: .2rem; padding: .2rem; }
+.language-comparison--page.language-comparison--compact .language-comparison__item-choice .crafting-sheet__choice-toggle { min-height: 1.75rem; padding: .16rem .28rem; font-size: .61rem; }
+.language-comparison--page.language-comparison--compact .language-comparison__reorder { grid-template-columns: repeat(2, 1.8rem); }
+.language-comparison--page.language-comparison--compact .language-comparison__reorder button { width: 1.8rem; min-height: 1.8rem; }
+.language-comparison--page.language-comparison--compact .language-comparison__difference { font-size: .64rem; }
+
+/* The page’s more specific desktop grid used to override this breakpoint. On
+   mid-size displays keep the two languages side by side and put their shared
+   comparison below; phones stack the three cards in source order. */
+@media (max-width: 72rem) {
+  .language-comparison--page .language-comparison__table > header { display: none; }
+  .language-comparison--page .language-comparison__row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .language-comparison--page .language-comparison__difference { grid-column: 1 / -1; }
+}
+
+@media (max-width: 46rem) {
+  .language-comparison--page .language-comparison__row { grid-template-columns: minmax(0, 1fr); }
+  .language-comparison--page .language-comparison__difference { grid-column: auto; }
+}
+
+@media (max-width: 34rem) {
+  .language-comparison__item-choice { grid-template-columns: auto auto minmax(0, 1fr); }
+  .language-comparison__item-choice .language-comparison__reorder { grid-column: 1; grid-row: 1; }
+  .language-comparison__item-choice > .item-icon { grid-column: 2; grid-row: 1; }
+  .language-comparison__item-choice .crafting-sheet__sequence { grid-column: 1 / -1; grid-row: 2; }
+  .language-comparison__item-choice .crafting-sheet__picker { grid-column: 3; grid-row: 1; justify-self: end; }
+  .language-comparison__item-choice .crafting-sheet__choice-menu { width: min(21rem, calc(100vw - 1.5rem)); }
+}
+
 :root[data-theme='dark'] .language-comparison__value--better { color: #72df93 !important; }
 :root[data-theme='dark'] .language-comparison__value--worse { color: #ff91a5 !important; }
 

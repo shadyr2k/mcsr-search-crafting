@@ -57,6 +57,31 @@
 .crafting-sheet--page .crafting-sheet__entry-toggle { gap: .35rem; padding: .1rem; }
 .crafting-sheet--page .crafting-sheet__entry-summary { gap: .2rem; }
 .crafting-sheet--page .crafting-sheet__include { min-height: 1.5rem; }
+
+/* Dense mode still uses the same three-pane sheet on a roomy display, while
+   reducing each pane enough to leave more vertical room for item-set rows. */
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__panel--page { grid-template-columns: minmax(17rem, 20rem) minmax(11rem, 14rem) minmax(18rem, 1fr); }
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__page-info { gap: .4rem; padding: .5rem; }
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__chart--page { padding: .5rem; }
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__sets { gap: .2rem; padding: .5rem .5rem 0; }
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__set-columns,
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__set-column { gap: .25rem; }
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__entry { padding: .35rem .5rem; }
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__entry-heading { gap: .3rem; }
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__entry-label { font-size: .71rem; }
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__summary-items { gap: .2rem .45rem; }
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__query-preview .crafting-sheet__query-text { font-size: .68rem; }
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__include { min-height: 1.35rem; font-size: .64rem; }
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__chart--page li { min-height: 1.1rem; font-size: .58rem; }
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__chart--page li > :last-child { font-size: .68rem; }
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__chart--page .crafting-sheet__bar-track { height: .38rem; }
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__totals > div { padding: .5rem; }
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__totals strong { font-size: 1.4rem; }
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__character-set { gap: .2rem; }
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__character-set button { min-width: 1.65rem; min-height: 1.65rem; padding: .18rem .3rem; }
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__intro p,
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__hint { font-size: .68rem; }
+.crafting-sheet--page.crafting-sheet--compact .crafting-sheet__reset { min-height: 1.85rem; font-size: .7rem; }
 .crafting-sheet__intro { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
 .crafting-sheet__intro p { margin: 0; color: var(--muted); font-size: .85rem; }
 .crafting-sheet__reset { flex: 0 0 auto; font-size: .8rem; min-height: 2.2rem; padding: .3rem .6rem; }
@@ -148,8 +173,18 @@
   .crafting-sheet__totals > div:nth-child(2) { border-inline-end: 0; }
   .crafting-sheet__totals > div:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
 }
+
+/* The dedicated page has its own horizontal padding, so its four score cards
+   need to split one breakpoint earlier than an inline sheet. */
+@media (max-width: 52rem) {
+  .crafting-sheet--page .crafting-sheet__totals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .crafting-sheet--page .crafting-sheet__totals > div:nth-child(2) { border-inline-end: 0; }
+  .crafting-sheet--page .crafting-sheet__totals > div:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
+}
+
 @media (max-width: 72rem), (max-height: 54rem) {
   .crafting-sheet__panel--page { width: 100%; min-height: 0; max-height: none; grid-template-columns: minmax(0, 1fr); }
+  .crafting-sheet--page.crafting-sheet--compact .crafting-sheet__panel--page { grid-template-columns: minmax(0, 1fr); }
   .crafting-sheet--page { width: 100%; }
   .crafting-sheet--page .crafting-sheet__page-info,
   .crafting-sheet--page .crafting-sheet__sets,
@@ -161,6 +196,10 @@
   .crafting-sheet--page .crafting-sheet__entry { flex: 0 0 auto; }
   .crafting-sheet--page .crafting-sheet__entry-heading { flex-wrap: wrap; align-items: start; }
   .crafting-sheet--page .crafting-sheet__entry-toggle { flex: 1 1 16rem; }
+
+  .crafting-sheet--page.crafting-sheet--compact .crafting-sheet__page-info,
+  .crafting-sheet--page.crafting-sheet--compact .crafting-sheet__chart--page,
+  .crafting-sheet--page.crafting-sheet--compact .crafting-sheet__sets { padding: .55rem; }
 }
 
 @media (max-width: 32rem) {

@@ -563,6 +563,7 @@ function App() {
     />}
     {data && activeIcons && page === 'crafting-sheet' && <CraftingSheet
       layout="page"
+      compactLayout={appSettings.compactLayout}
       onBack={() => selectPage('home')}
       languageName={selectedLanguageName}
       entries={craftingSheet.entries}
@@ -584,6 +585,7 @@ function App() {
     />}
     {baseData && activeIcons && page === 'language-comparison' && <LanguageComparison
       layout="page"
+      compactLayout={appSettings.compactLayout}
       onBack={() => selectPage('home')}
       baseData={baseData}
       entries={entries}

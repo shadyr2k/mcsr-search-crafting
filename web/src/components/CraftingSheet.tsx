@@ -1,10 +1,11 @@
-import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
 import type { IconManifest } from '../data/iconManifest'
 import type { RankedSearch, SearchItem } from '../domain/types'
 import type { CraftingSheetCharacterUsage, CraftingSheetEntry, CraftingSheetOption } from '../engine/craftingSheet'
 import { ArrowSprite } from './ArrowSprite'
 import { ItemIcon } from './ItemIcon'
+import { isScrollbarPointer } from './outsidePointer'
 import { QueryControl } from './QueryControl'
 
 import './CraftingSheet.css'
@@ -29,6 +30,7 @@ export interface CraftingSheetProps {
   open?: boolean
   onOpenChange?: (open: boolean) => void
   layout?: 'inline' | 'page'
+  compactLayout?: boolean
   onBack?: () => void
   onCompare?: () => void
   onSelectItemCraft: (entryId: string, itemId: string, optionId: string) => void
@@ -82,15 +84,18 @@ export function QuerySequence({ search }: { search: RankedSearch }) {
   </span>
 }
 
-export function CraftPicker({ label, options, selectedOptionId, onSelect }: {
+export function CraftPicker({ label, options, selectedOptionId, onSelect, closeOnOutsidePointer = false }: {
   label: string
   options: readonly CraftingSheetOption[]
   selectedOptionId: string
   onSelect: (optionId: string) => void
+  /** Comparison pickers are transient menus, so a click elsewhere dismisses them. */
+  closeOnOutsidePointer?: boolean
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const [filter, setFilter] = useState('')
   const [visibleCount, setVisibleCount] = useState(30)
+  const pickerRef = useRef<HTMLDivElement>(null)
   const toggleRef = useRef<HTMLButtonElement>(null)
   const menuId = useId()
   const filtered = useMemo(() => options.filter((option) => (
@@ -100,7 +105,18 @@ export function CraftPicker({ label, options, selectedOptionId, onSelect }: {
   const selected = options.find((option) => option.id === selectedOptionId)
   function close() { setIsOpen(false); toggleRef.current?.focus() }
 
-  return <div className="crafting-sheet__picker" onKeyDown={(event) => {
+  useEffect(() => {
+    if (!isOpen || !closeOnOutsidePointer) return
+    function closeOnOutsidePointerDown(event: PointerEvent) {
+      if (isScrollbarPointer(event)) return
+      if (event.target instanceof Node && pickerRef.current?.contains(event.target)) return
+      setIsOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutsidePointerDown)
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointerDown)
+  }, [closeOnOutsidePointer, isOpen])
+
+  return <div ref={pickerRef} className="crafting-sheet__picker" onKeyDown={(event) => {
     if (event.key === 'Escape' && isOpen) { event.stopPropagation(); close() }
   }}>
     <button ref={toggleRef} type="button" className="crafting-sheet__choice-toggle" aria-label={`choose craft for ${label}`} aria-expanded={isOpen} aria-controls={menuId} disabled={options.length === 0}
@@ -111,7 +127,7 @@ export function CraftPicker({ label, options, selectedOptionId, onSelect }: {
     {isOpen && <section id={menuId} className="crafting-sheet__choice-menu" aria-label={`Calculated crafts for ${label}`}>
       <div className="crafting-sheet__filter">
         <input autoFocus type="search" value={filter} aria-label={`Filter crafts for ${label}`} placeholder="find a query…" onChange={(event) => { setFilter(event.target.value); setVisibleCount(30) }} />
-        <button type="button" onClick={close} aria-label={`Close crafts for ${label}`}>close</button>
+        {!closeOnOutsidePointer && <button type="button" onClick={close} aria-label={`Close crafts for ${label}`}>close</button>}
       </div>
       <p className="crafting-sheet__hint">Up to 5 characters per query and 2 pages of results. Lower score is better.</p>
       <ul>
@@ -312,13 +328,26 @@ function ItemSetList({ entries, items, icons, onSelectItemCraft, onMoveItemCraft
     }
   }
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (!columns) return
-    measureRowCount()
-    if (typeof ResizeObserver === 'undefined' || !columnsRef.current) return
-    const observer = new ResizeObserver(measureRowCount)
-    observer.observe(columnsRef.current)
-    return () => observer.disconnect()
+    let animationFrame: number | undefined
+    const scheduleMeasurement = () => {
+      if (animationFrame !== undefined) cancelAnimationFrame(animationFrame)
+      if (typeof requestAnimationFrame === 'undefined') {
+        measureRowCount()
+        return
+      }
+      animationFrame = requestAnimationFrame(() => {
+        animationFrame = undefined
+        measureRowCount()
+      })
+    }
+    scheduleMeasurement()
+    window.addEventListener('resize', scheduleMeasurement)
+    return () => {
+      if (animationFrame !== undefined) cancelAnimationFrame(animationFrame)
+      window.removeEventListener('resize', scheduleMeasurement)
+    }
   }, [columns])
 
   function setEntryOpen(entryId: string, open: boolean) {
@@ -343,7 +372,7 @@ function ItemSetList({ entries, items, icons, onSelectItemCraft, onMoveItemCraft
   </section>
 }
 
-export function CraftingSheet({ languageName, entries, characterSet, characterUsages, optimalCharacterCount, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, defaultOpen = false, open, onOpenChange, layout = 'inline', onBack, onCompare, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, onReset }: CraftingSheetProps) {
+export function CraftingSheet({ languageName, entries, characterSet, characterUsages, optimalCharacterCount, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, defaultOpen = false, open, onOpenChange, layout = 'inline', compactLayout = false, onBack, onCompare, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, onReset }: CraftingSheetProps) {
   const [localOpen, setLocalOpen] = useState(defaultOpen)
   const [selectedCharacter, setSelectedCharacter] = useState<string>()
   const isOpen = open ?? localOpen
@@ -357,7 +386,7 @@ export function CraftingSheet({ languageName, entries, characterSet, characterUs
     if (selectedCharacter !== undefined && !characterSet.includes(selectedCharacter)) setSelectedCharacter(undefined)
   }, [characterSet, selectedCharacter])
 
-  if (layout === 'page') return <section className="crafting-sheet crafting-sheet--page" aria-label={`${languageName} crafting sheet`}>
+  if (layout === 'page') return <section className={`crafting-sheet crafting-sheet--page${compactLayout ? ' crafting-sheet--compact' : ''}`} aria-label={`${languageName} crafting sheet`}>
     <div className="crafting-sheet__panel crafting-sheet__panel--page">
       <aside className="crafting-sheet__page-info">
         <header className="crafting-sheet__header"><h2 className="crafting-sheet__heading">
