@@ -290,7 +290,7 @@ export function RecipeBookSim({
     setPage(0)
   }
 
-  return <section className="recipe-book-sim" aria-label="Recipe book simulator">
+  return <section className={`recipe-book-sim${compactLayout ? ' recipe-book-sim--compact' : ''}`} aria-label="Recipe book simulator">
     <div className="recipe-book-sim__layout">
       <div className="recipe-book-sim__configuration">
         <header className="recipe-book-sim__header">
@@ -362,7 +362,7 @@ export function RecipeBookSim({
           <ul>{specialCharacters.map((character) => <li key={character}><button type="button" aria-label={`Copy ${character}`} onClick={() => { void copyCharacter(character) }}>{character}</button></li>)}</ul>
           {copyStatus && <span role="status">{copyStatus}</span>}
         </div>}
-        <div className="recipe-book-sim__presets" role="group" aria-label="Inventory presets">
+        <div className="recipe-book-sim__presets recipe-book-sim__presets--text-only" role="group" aria-label="Inventory presets">
           <span>inventory preset</span>
           <div>
             {inventoryChoices.map((preset) => <button
@@ -384,6 +384,7 @@ export function RecipeBookSim({
         <ItemPicker
           items={inventoryPickerItems}
           label="Simulator inventory"
+          className={compactLayout ? 'item-picker--compact' : undefined}
           selectedIds={inventoryItemIds}
           manifest={icons}
           onChange={updateInventory}

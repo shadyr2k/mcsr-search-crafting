@@ -65,7 +65,7 @@ function SheetDisclosure({ id, open, children, sizeWhileCollapsed = false }: { i
   </div>
 }
 
-function QuerySequence({ search }: { search: RankedSearch }) {
+export function QuerySequence({ search }: { search: RankedSearch }) {
   return <span className="crafting-sheet__sequence" dir="ltr">
     {search.steps.map((step, index) => {
       const replaces = index > 0 && step.retainedPrefix.length === 0 && step.freeBackspaceCount >= search.steps[index - 1].query.length
@@ -81,7 +81,7 @@ function QuerySequence({ search }: { search: RankedSearch }) {
   </span>
 }
 
-function CraftPicker({ label, options, selectedOptionId, onSelect }: {
+export function CraftPicker({ label, options, selectedOptionId, onSelect }: {
   label: string
   options: readonly CraftingSheetOption[]
   selectedOptionId: string

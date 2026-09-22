@@ -38,6 +38,7 @@ interface ItemSetEditorProps {
   cancelOnOutsidePointer?: boolean
   saveNextToGoals?: boolean
   compactLayout?: boolean
+  hidePresetIcons?: boolean
 }
 
 function unique(ids: readonly string[]): string[] {
@@ -72,6 +73,7 @@ export function ItemSetEditor({
   cancelOnOutsidePointer = true,
   saveNextToGoals = false,
   compactLayout = false,
+  hidePresetIcons = false,
 }: ItemSetEditorProps) {
   const { draft } = state
   const editorRef = useRef<HTMLElement>(null)
@@ -137,7 +139,7 @@ export function ItemSetEditor({
     disabled={!valid}
   >{resolvedSaveLabel}</button>
 
-  return <section ref={editorRef} className={`item-set-editor${saveNextToGoals ? ' item-set-editor--save-next-to-goals' : ''}${compactLayout ? ' item-set-editor--compact' : ''}`} aria-label={title ?? (state.kind === 'new' ? 'New item set' : 'Edit item set')}>
+  return <section ref={editorRef} className={`item-set-editor${saveNextToGoals ? ' item-set-editor--save-next-to-goals' : ''}${compactLayout ? ' item-set-editor--compact' : ''}${hidePresetIcons ? ' item-set-editor--hide-preset-icons' : ''}`} aria-label={title ?? (state.kind === 'new' ? 'New item set' : 'Edit item set')}>
     {showDismiss && <button type="button" className="item-set-editor__dismiss" aria-label="Close item set editor" onClick={onCancel}>×</button>}
     <h2>{editorTitle}</h2>
     <ItemPicker

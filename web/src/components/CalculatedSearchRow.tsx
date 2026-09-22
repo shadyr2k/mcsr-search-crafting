@@ -72,16 +72,25 @@ function searchDescription(search: RankedSearch): string {
 }
 
 function SearchQuery({ search, textControlKeycaps = false }: { search: RankedSearch; textControlKeycaps?: boolean }) {
-  return <span className="craft-query" aria-label={searchDescription(search)}>
+  const compactOverlap = textControlKeycaps && search.steps.length > 1
+  return <span className={`craft-query${compactOverlap ? ' craft-query--compact-overlap' : ''}`} aria-label={searchDescription(search)}>
     {search.steps.map((step, index) => <Fragment key={`${step.query}-${index}`}>
       {index > 0 && (replacesWholeQuery(step, search.steps[index - 1]?.query)
-        ? <QueryControl kind="shift-home" textKeycaps={textControlKeycaps} />
+        ? compactOverlap
+          ? <span className="craft-query__compact-control" aria-label="Shift home">SH</span>
+          : <QueryControl kind="shift-home" textKeycaps={textControlKeycaps} />
         : step.freeBackspaceCount > 0
-        ? <QueryControl kind="backspace" backspaceCount={step.freeBackspaceCount} textKeycaps={textControlKeycaps} />
-        : textControlKeycaps
+        ? compactOverlap
+          ? <span className="craft-query__compact-control" aria-label={`${step.freeBackspaceCount} backspace${step.freeBackspaceCount === 1 ? '' : 's'}`}>←{step.freeBackspaceCount > 1 ? `×${step.freeBackspaceCount}` : ''}</span>
+          : <QueryControl kind="backspace" backspaceCount={step.freeBackspaceCount} textKeycaps={textControlKeycaps} />
+        : compactOverlap
+          ? <span className="craft-query__compact-control" aria-label="Next search">→</span>
+          : textControlKeycaps
           ? <kbd className="query-control-keycap craft-query__term-keycap" aria-label="Next search">→</kbd>
           : <ArrowSprite direction="right" className="craft-query__advance" />)}
-      {textControlKeycaps
+      {compactOverlap
+        ? <span className="craft-query__compact-term">{displayQuery(index === 0 ? step.query : step.typedSuffix)}</span>
+        : textControlKeycaps
         ? <kbd className="query-control-keycap craft-query__term-keycap">{displayQuery(index === 0 ? step.query : step.typedSuffix)}</kbd>
         : <span className="craft-query__term">{displayQuery(index === 0 ? step.query : step.typedSuffix)}</span>}
     </Fragment>)}

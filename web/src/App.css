@@ -3530,9 +3530,9 @@ h3 {
 }
 
 .app-shell--compact-layout:not(.app-shell--crafting-sheet) .workspace-grid .query-control-keycap {
-  min-height: 1.4rem;
-  padding: .12rem .3rem;
-  font-size: .68rem;
+  min-height: 1.65rem;
+  padding: .16rem .36rem;
+  font-size: .82rem;
 }
 
 .app-shell--compact-layout:not(.app-shell--crafting-sheet) .item-set-editor__dismiss {
@@ -3548,4 +3548,50 @@ h3 {
   min-height: 1.75rem;
   padding: .18rem .34rem;
   font-size: .68rem;
+}
+
+/* Compact overlap paths are one readable control group instead of a run of
+   independent keycaps. Single-query crafts keep their small individual box. */
+.app-shell--compact-layout:not(.app-shell--crafting-sheet) .workspace-grid .craft-query--compact-overlap {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: .26rem;
+  min-height: 1.65rem;
+  padding: .16rem .38rem;
+  border: 1px solid var(--border);
+  border-radius: .32rem;
+  background: var(--page);
+  color: var(--muted);
+  font-family: 'Monocraft', monospace;
+  font-size: .82rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.app-shell--compact-layout:not(.app-shell--crafting-sheet) .workspace-grid .craft-query--compact-overlap .craft-query__compact-control {
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.item-set-editor--hide-preset-icons .item-set-editor__preset-icon,
+.recipe-book-sim__presets--text-only .item-icon,
+.recipe-book-sim__presets--text-only .recipe-book-sim__custom-preset {
+  display: none;
+}
+
+/* The simulator has its own page root, so it needs the compact picker rules
+   that the main workspace normally supplies. */
+.recipe-book-sim--compact .item-picker { gap: .25rem; }
+.recipe-book-sim--compact .item-picker__selected { min-height: 2.35rem; padding: .25rem; gap: .2rem; }
+.recipe-book-sim--compact .item-picker__selected-item { min-width: 2rem; min-height: 2rem; padding: .12rem; }
+.recipe-book-sim--compact .item-picker__selected-item .item-icon--compact,
+.recipe-book-sim--compact .item-picker__option .item-icon--compact { width: 1.45rem; height: 1.45rem; }
+.recipe-book-sim--compact .item-picker input { min-height: 2rem; padding: .22rem .36rem; font-size: .75rem; }
+.recipe-book-sim--compact .item-picker__results { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: .2rem; padding: .3rem; }
+.recipe-book-sim--compact .item-picker__option { min-height: 3.55rem; padding: .12rem .05rem; font-size: .62rem; }
+
+.app-header__nav button[aria-current='page'] {
+  color: var(--accent-strong);
+  box-shadow: inset 0 -2px 0 var(--accent-strong);
 }

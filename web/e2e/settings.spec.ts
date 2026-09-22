@@ -94,6 +94,10 @@ test('uses compact option controls and keeps the editor close button aligned', a
   await page.getByRole('switch', { name: 'compact layout' }).click()
   await page.getByRole('button', { name: 'save settings' }).click()
   await page.getByRole('button', { name: 'search crafting' }).click()
+  const themeSwitch = page.getByRole('switch', { name: 'Switch to dark mode' })
+  await expect(themeSwitch).toBeVisible()
+  await themeSwitch.click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await page.getByRole('button', { name: 'Edit item set 1' }).click()
 
   const editor = page.locator('.item-set-editor')

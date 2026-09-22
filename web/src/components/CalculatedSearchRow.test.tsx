@@ -554,7 +554,7 @@ describe('CalculatedSearchRow', () => {
     expect(within(previews).getByRole('listitem', { name: 'Regular craft: three' })).toBeTruthy()
   })
 
-  test('uses text keycaps for Shift+Home and backspace in compact layout', () => {
+  test('keeps a compact overlap sequence together in one keycap-style box', () => {
     const overlap = search(['first', 'second', 'third'], 1, 'overlap')
     overlap.steps[1] = { ...overlap.steps[1], retainedPrefix: 'f', freeBackspaceCount: 1, typedSuffix: 'second' }
     overlap.steps[2] = { ...overlap.steps[2], retainedPrefix: '', freeBackspaceCount: 6, typedSuffix: 'third' }
@@ -567,7 +567,8 @@ describe('CalculatedSearchRow', () => {
       compactLayout
     />)
 
-    expect(document.querySelectorAll('.query-control-keycap')).toHaveLength(5)
+    expect(document.querySelectorAll('.craft-query--compact-overlap')).toHaveLength(1)
+    expect(document.querySelectorAll('.craft-query--compact-overlap .query-control-keycap')).toHaveLength(0)
     expect(screen.getByText('SH')).toBeTruthy()
     expect(screen.getByText('←')).toBeTruthy()
   })

@@ -157,6 +157,15 @@ function optionsForSearches(searches: readonly RankedSearch[], bestScore: number
   return options
 }
 
+/**
+ * Converts ranked crafts into the same selectable options used by the sheet.
+ * Other views can use this without depending on the sheet's character-set
+ * bookkeeping.
+ */
+export function craftingSheetOptionsForSearches(searches: readonly RankedSearch[], bestScore: number): CraftingSheetOption[] {
+  return optionsForSearches(searches, bestScore)
+}
+
 function isSubset(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
   if (left.size > right.size) return false
   for (const character of left) if (!right.has(character)) return false

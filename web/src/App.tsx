@@ -4,6 +4,7 @@ import './App.css'
 import { CalculatedSearchRow } from './components/CalculatedSearchRow'
 import { CraftLookup, newCraftLookupSession, type CraftLookupSession } from './components/CraftLookup'
 import { CraftingSheet } from './components/CraftingSheet'
+import { LanguageComparison } from './components/LanguageComparison'
 import { ItemIcon } from './components/ItemIcon'
 import { ItemSetEditor, type ItemSetEditorCommit, type ItemSetEditorState } from './components/ItemSetEditor'
 import { ItemSetWorkspace } from './components/ItemSetWorkspace'
@@ -488,12 +489,7 @@ function App() {
         {pageTutorials[page] && <button ref={helpRef} type="button" className="app-header__help" aria-label={`Help for ${page === 'home' ? 'search crafting' : page.replaceAll('-', ' ')}`} disabled={!data || !activeIcons || pageTransitionPhase !== 'idle'} onClick={() => { tutorialPriorView.current = { editor }; setTutorialIndex(0) }}>?</button>}
         <VersionPicker versions={supportedGameVersions} selectedVersionId={gameVersion.id} onVersionChange={selectGameVersion} />
         {activeIcons && <ThemePicker theme={theme} icons={activeIcons} onThemeColorChange={selectThemeColor} />}
-        {appSettings.compactLayout
-          ? <div className="theme-mode-options" role="group" aria-label="Theme mode">
-            <button type="button" aria-pressed={theme.mode === 'light'} onClick={() => selectThemeMode('light')}>light</button>
-            <button type="button" aria-pressed={theme.mode === 'dark'} onClick={() => selectThemeMode('dark')}>dark</button>
-          </div>
-          : <button
+        <button
             type="button"
             className="theme-switch"
             role="switch"
@@ -504,7 +500,7 @@ function App() {
             <span className="theme-switch__light" aria-hidden="true">☀</span>
             <span className="theme-switch__dark" aria-hidden="true">☾</span>
             <span className="theme-switch__thumb" aria-hidden="true" />
-          </button>}
+          </button>
       </div>
     </header>
     {warning && <p role="alert">{warning}</p>}{error && <p role="alert">{error}</p>}
@@ -603,6 +599,16 @@ function App() {
           onSetEntryDisabled={craftingSheet.setEntryDisabled}
           onReset={craftingSheet.reset}
         />
+        {baseData && <LanguageComparison
+          baseData={baseData}
+          entries={entries}
+          languages={languages}
+          selectedLocale={selectedLocale}
+          icons={activeIcons}
+          dataBaseUrl={gameVersion.packageBaseUrl}
+          scoringSettings={appSettings.scoring}
+          itemIdSearch={appSettings.itemIdSearch}
+        />}
         {entries.map((entry, index) => <CalculatedSearchRow
           key={entry.id} entry={entry} entryNumber={index + 1} state={states.get(entry.id)} items={data.items} icons={activeIcons} collections={data.collections} compactLayout={appSettings.compactLayout} hideNumberCraftsByDefault={appSettings.hideNumberCraftsByDefault} removeAnimations={appSettings.removeAnimations} onRetry={() => retry(entry.id)}
         />)}
