@@ -4,13 +4,13 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { GeneratedData, LanguageMetadata, TargetWorkspaceEntry } from '../domain/types'
 
 const mocks = vi.hoisted(() => ({
-  aggregateLocaleScore: vi.fn(),
+  aggregateLocaleMetrics: vi.fn(),
   loadLocalizedSearchPayload: vi.fn(),
   parseLocalizedGeneratedData: vi.fn(),
 }))
 
 vi.mock('../engine/optimizeWorkspace', () => ({
-  aggregateLocaleScore: mocks.aggregateLocaleScore,
+  aggregateLocaleMetrics: mocks.aggregateLocaleMetrics,
 }))
 
 vi.mock('../data/schema', () => ({
@@ -57,13 +57,16 @@ beforeEach(() => {
   mocks.parseLocalizedGeneratedData.mockImplementation((_payload: unknown, locale: string) => (
     { ...data, locale } as GeneratedData
   ))
-  mocks.aggregateLocaleScore.mockImplementation(async (
+  mocks.aggregateLocaleMetrics.mockImplementation(async (
     localeData: GeneratedData,
     currentEntries: readonly TargetWorkspaceEntry[],
-  ) => scoreFor(
-    (localeData as GeneratedData & { locale?: string }).locale ?? 'en_us',
-    currentEntries[0].targetIds[0],
-  ))
+  ) => {
+    const score = scoreFor(
+      (localeData as GeneratedData & { locale?: string }).locale ?? 'en_us',
+      currentEntries[0].targetIds[0],
+    )
+    return { score, optimalCharacterCount: score + 1, leastJunk: score % 3 }
+  })
 })
 
 afterEach(() => {
@@ -77,18 +80,18 @@ describe('useLanguageScores', () => {
     const itemSets = [entry('tools', 'minecraft:stick'), entry('blocks', 'minecraft:crafting_table')]
     const first = renderHook(() => useLanguageScores(data, languages, itemSets, noBannedLocales, '/versions/26.1.2/', '26.1.2'))
 
-    await waitFor(() => expect(first.result.current.get('de_de')).toEqual({ status: 'ready', score: 208 }))
-    expect(mocks.aggregateLocaleScore).toHaveBeenCalledTimes(4)
+    await waitFor(() => expect(first.result.current.get('de_de')).toEqual({ status: 'ready', score: 208, optimalCharacterCount: 210, leastJunk: 1 }))
+    expect(mocks.aggregateLocaleMetrics).toHaveBeenCalledTimes(4)
 
     first.unmount()
-    mocks.aggregateLocaleScore.mockClear()
+    mocks.aggregateLocaleMetrics.mockClear()
     mocks.loadLocalizedSearchPayload.mockClear()
 
     const reloaded = renderHook(() => useLanguageScores(data, languages, itemSets, noBannedLocales, '/versions/26.1.2/', '26.1.2'))
 
-    await waitFor(() => expect(reloaded.result.current.get('en_us')).toEqual({ status: 'ready', score: 8 }))
-    expect(reloaded.result.current.get('de_de')).toEqual({ status: 'ready', score: 208 })
-    expect(mocks.aggregateLocaleScore).not.toHaveBeenCalled()
+    await waitFor(() => expect(reloaded.result.current.get('en_us')).toEqual({ status: 'ready', score: 8, optimalCharacterCount: 10, leastJunk: 2 }))
+    expect(reloaded.result.current.get('de_de')).toEqual({ status: 'ready', score: 208, optimalCharacterCount: 210, leastJunk: 1 })
+    expect(mocks.aggregateLocaleMetrics).not.toHaveBeenCalled()
     expect(mocks.loadLocalizedSearchPayload).not.toHaveBeenCalled()
   })
 
@@ -99,14 +102,14 @@ describe('useLanguageScores', () => {
       initialProps: { itemSets: [tools] },
     })
 
-    await waitFor(() => expect(hook.result.current.get('en_us')).toEqual({ status: 'ready', score: 3 }))
-    expect(mocks.aggregateLocaleScore).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(hook.result.current.get('en_us')).toEqual({ status: 'ready', score: 3, optimalCharacterCount: 4, leastJunk: 0 }))
+    expect(mocks.aggregateLocaleMetrics).toHaveBeenCalledTimes(1)
 
     hook.rerender({ itemSets: [tools, blocks] })
 
-    await waitFor(() => expect(hook.result.current.get('en_us')).toEqual({ status: 'ready', score: 8 }))
-    expect(mocks.aggregateLocaleScore).toHaveBeenCalledTimes(2)
-    expect(mocks.aggregateLocaleScore.mock.calls[1][1]).toEqual([blocks])
+    await waitFor(() => expect(hook.result.current.get('en_us')).toEqual({ status: 'ready', score: 8, optimalCharacterCount: 10, leastJunk: 2 }))
+    expect(mocks.aggregateLocaleMetrics).toHaveBeenCalledTimes(2)
+    expect(mocks.aggregateLocaleMetrics.mock.calls[1][1]).toEqual([blocks])
   })
 })
 

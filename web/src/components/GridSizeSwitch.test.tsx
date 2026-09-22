@@ -46,4 +46,14 @@ describe('GridSizeSwitch', () => {
     expect(screen.getByText('2×2').className).toContain('grid-size-switch__label')
     expect(screen.getByText('3×3').className).toContain('grid-size-switch__label')
   })
+
+  test('uses mutually exclusive buttons in compact layout', () => {
+    const onChange = vi.fn()
+    render(<GridSizeSwitch value={2} targetIds={[]} recipes={recipes} compactLayout onChange={onChange} />)
+
+    expect(screen.queryByRole('switch', { name: 'Crafting grid size' })).toBeNull()
+    expect(screen.getByRole('button', { name: '2×2' }).getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: '3×3' }))
+    expect(onChange).toHaveBeenCalledWith(3)
+  })
 })

@@ -17,16 +17,15 @@ const languages = [
 afterEach(cleanup)
 
 describe('LanguageSelector', () => {
-  test('shows English and Minecraft names in scrollable language categories', () => {
+  test('shows English and Minecraft names in one scrollable language dropdown', () => {
     render(<LanguageSelector languages={languages} selectedLocale="en_us" enabledBannedLocales={new Set()} scores={new Map()} onSelect={vi.fn()} onBannedLocaleEnabledChange={vi.fn()} />)
 
     expect(screen.getByRole('heading', { name: 'language list' })).toBeTruthy()
-    const selectedLanguage = screen.getByRole('region', { name: 'Selected language' })
-    expect(within(selectedLanguage).getByRole('button', { name: 'english - english (united states)' }).getAttribute('aria-pressed')).toBe('true')
-    expect(within(screen.getByRole('region', { name: 'latin text' })).getByRole('button', { name: 'english - english (united states)' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'elfdalian - övdalska (swerre)' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /ɥs/ })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'show all' })).toBeNull()
+    const choices = screen.getByRole('region', { name: 'Language choices' })
+    expect(within(choices).getByRole('button', { name: 'english - english (united states)' }).getAttribute('aria-pressed')).toBe('true')
+    expect(within(choices).getByRole('button', { name: 'elfdalian - övdalska (swerre)' })).toBeTruthy()
+    expect(within(choices).getByRole('button', { name: /ɥs/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Sort languages' })).toBeTruthy()
   })
 
   test('uses English dialect names for the results title only when variants exist', () => {
@@ -64,7 +63,7 @@ describe('LanguageSelector', () => {
     expect(englishLocaleName(variants[1], variants)).toBe(`${englishLanguageName(variants[1])} (latn)`)
   })
 
-  test('filters all categories with one Unicode-aware language search and ranks ready scores first', () => {
+  test('filters one dropdown with one Unicode-aware language search and ranks ready scores first', () => {
     render(<LanguageSelector
       languages={languages}
       selectedLocale="en_us"
@@ -77,14 +76,14 @@ describe('LanguageSelector', () => {
       onBannedLocaleEnabledChange={vi.fn()}
     />)
 
-    const latinButtons = screen.getByRole('region', { name: 'latin text' }).getElementsByTagName('button')
-    expect(latinButtons[0].getAttribute('aria-label')).toBe('german - deutsch (deutschland)')
+    const choices = screen.getByRole('region', { name: 'Language choices' })
+    expect(within(choices).getAllByRole('button')[0].getAttribute('aria-label')).toBe('german - deutsch (deutschland)')
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search languages' }), { target: { value: 'عرب' } })
-    expect(within(screen.getByRole('region', { name: 'Language search results' })).getByRole('button', { name: 'arabic - العربية (العالم العربي)' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'elfdalian - övdalska (swerre)' })).toBeNull()
+    expect(within(choices).getByRole('button', { name: 'arabic - العربية (العالم العربي)' })).toBeTruthy()
+    expect(within(choices).queryByRole('button', { name: 'elfdalian - övdalska (swerre)' })).toBeNull()
   })
 
-  test('limits compact search results to five matching languages and includes calculated scores', () => {
+  test('keeps every matching language in the scrollable dropdown and includes calculated scores', () => {
     const matchingLanguages = Array.from({ length: 6 }, (_, index) => ({
       locale: `zz_${index}`,
       name: `Test ${index}`,
@@ -101,22 +100,23 @@ describe('LanguageSelector', () => {
     />)
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search languages' }), { target: { value: 'test' } })
-    const results = screen.getByRole('region', { name: 'Language search results' })
-    expect(within(results).getAllByRole('listitem')).toHaveLength(5)
+    const results = screen.getByRole('region', { name: 'Language choices' })
+    expect(within(results).getAllByRole('listitem')).toHaveLength(6)
     expect(within(results).getByText('3')).toBeTruthy()
   })
 
-  test('clears the compact search after selecting a language', () => {
+  test('clears the language search after selecting a language', () => {
     const onSelect = vi.fn()
     render(<LanguageSelector languages={languages} selectedLocale="en_us" enabledBannedLocales={new Set()} scores={new Map()} onSelect={onSelect} onBannedLocaleEnabledChange={vi.fn()} />)
 
     const search = screen.getByRole('searchbox', { name: 'Search languages' })
     fireEvent.change(search, { target: { value: 'german' } })
-    fireEvent.click(within(screen.getByRole('region', { name: 'Language search results' })).getByRole('button', { name: 'german - deutsch (deutschland)' }))
+    const choices = screen.getByRole('region', { name: 'Language choices' })
+    fireEvent.click(within(choices).getByRole('button', { name: 'german - deutsch (deutschland)' }))
 
     expect(onSelect).toHaveBeenCalledWith('de_de')
     expect((search as HTMLInputElement).value).toBe('')
-    expect(screen.queryByRole('region', { name: 'Language search results' })).toBeNull()
+    expect(within(choices).getByRole('button', { name: 'elfdalian - övdalska (swerre)' })).toBeTruthy()
   })
 
   test('scales ready language-score colors from the lowest score to the highest score', () => {
@@ -132,8 +132,33 @@ describe('LanguageSelector', () => {
       onBannedLocaleEnabledChange={vi.fn()}
     />)
 
-    expect(within(screen.getByRole('region', { name: 'Selected language' })).getByText('1').getAttribute('style')).toContain('--language-score-position: 0')
-    expect(screen.getByText('9').getAttribute('style')).toContain('--language-score-position: 1')
+    const choices = screen.getByRole('region', { name: 'Language choices' })
+    expect(within(choices).getByText('1').getAttribute('style')).toContain('--language-score-position: 0')
+    expect(within(choices).getByText('9').getAttribute('style')).toContain('--language-score-position: 1')
+  })
+
+  test('sorts score-tied language crafts by optimal characters or least overall junk', () => {
+    render(<LanguageSelector
+      languages={languages.slice(0, 3)}
+      selectedLocale="en_us"
+      enabledBannedLocales={new Set()}
+      scores={new Map([
+        ['en_us', { status: 'ready', score: 4, optimalCharacterCount: 9, leastJunk: 2 }],
+        ['de_de', { status: 'ready', score: 4, optimalCharacterCount: 5, leastJunk: 3 }],
+        ['en_ud', { status: 'ready', score: 4, optimalCharacterCount: 7, leastJunk: 1 }],
+      ])}
+      onSelect={vi.fn()}
+      onBannedLocaleEnabledChange={vi.fn()}
+    />)
+
+    const choices = screen.getByRole('region', { name: 'Language choices' })
+    fireEvent.click(screen.getByRole('button', { name: 'Sort languages' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'fewest characters in optimal score search' }))
+    expect(within(choices).getAllByRole('button')[0].getAttribute('aria-label')).toBe('german - deutsch (deutschland)')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sort languages' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'least overall junk' }))
+    expect(within(choices).getAllByRole('button')[0].getAttribute('aria-label')).toMatch(/^upside-down english -/)
   })
 
   test('marks RTL locale controls and requires banned languages to be enabled explicitly', () => {

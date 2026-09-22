@@ -353,7 +353,12 @@ function App() {
   }
 
   function toggleTheme() {
-    const nextTheme: ThemePreference = { ...theme, mode: theme.mode === 'light' ? 'dark' : 'light' }
+    selectThemeMode(theme.mode === 'light' ? 'dark' : 'light')
+  }
+
+  function selectThemeMode(mode: ThemePreference['mode']) {
+    if (theme.mode === mode) return
+    const nextTheme: ThemePreference = { ...theme, mode }
     setTheme(nextTheme)
     const result = saveThemePreference(nextTheme)
     setWarning((current) => combineWarnings(current, result.warning))
@@ -483,18 +488,23 @@ function App() {
         {pageTutorials[page] && <button ref={helpRef} type="button" className="app-header__help" aria-label={`Help for ${page === 'home' ? 'search crafting' : page.replaceAll('-', ' ')}`} disabled={!data || !activeIcons || pageTransitionPhase !== 'idle'} onClick={() => { tutorialPriorView.current = { editor }; setTutorialIndex(0) }}>?</button>}
         <VersionPicker versions={supportedGameVersions} selectedVersionId={gameVersion.id} onVersionChange={selectGameVersion} />
         {activeIcons && <ThemePicker theme={theme} icons={activeIcons} onThemeColorChange={selectThemeColor} />}
-        <button
-          type="button"
-          className="theme-switch"
-          role="switch"
-          aria-checked={theme.mode === 'dark'}
-          aria-label={`Switch to ${theme.mode === 'dark' ? 'light' : 'dark'} mode`}
-          onClick={toggleTheme}
-        >
-          <span className="theme-switch__light" aria-hidden="true">☀</span>
-          <span className="theme-switch__dark" aria-hidden="true">☾</span>
-          <span className="theme-switch__thumb" aria-hidden="true" />
-        </button>
+        {appSettings.compactLayout
+          ? <div className="theme-mode-options" role="group" aria-label="Theme mode">
+            <button type="button" aria-pressed={theme.mode === 'light'} onClick={() => selectThemeMode('light')}>light</button>
+            <button type="button" aria-pressed={theme.mode === 'dark'} onClick={() => selectThemeMode('dark')}>dark</button>
+          </div>
+          : <button
+            type="button"
+            className="theme-switch"
+            role="switch"
+            aria-checked={theme.mode === 'dark'}
+            aria-label={`Switch to ${theme.mode === 'dark' ? 'light' : 'dark'} mode`}
+            onClick={toggleTheme}
+          >
+            <span className="theme-switch__light" aria-hidden="true">☀</span>
+            <span className="theme-switch__dark" aria-hidden="true">☾</span>
+            <span className="theme-switch__thumb" aria-hidden="true" />
+          </button>}
       </div>
     </header>
     {warning && <p role="alert">{warning}</p>}{error && <p role="alert">{error}</p>}
@@ -519,6 +529,7 @@ function App() {
       scores={languageScores}
       onLocaleChange={selectLocale}
       minecraftVersion={gameVersion.id}
+      compactLayout={appSettings.compactLayout}
     />}
     {baseData && activeIcons && page === 'craft-lookup' && <CraftLookup
       data={baseData}
@@ -534,6 +545,7 @@ function App() {
       itemIdSearch={appSettings.itemIdSearch}
       hideNumberCraftsByDefault={appSettings.hideNumberCraftsByDefault}
       removeAnimations={appSettings.removeAnimations}
+      compactLayout={appSettings.compactLayout}
     />}
     {data && activeIcons && page === 'crafting-sheet' && <CraftingSheet
       layout="page"
@@ -568,7 +580,7 @@ function App() {
         onEdit={openEdit}
         onAdd={openAdd}
       />
-      <LanguageSelector containerRef={languageSelectorRef} languages={languages} selectedLocale={selectedLocale} enabledBannedLocales={enabledBannedLocales} scores={languageScores} loadingLocale={loadingLocale} onSelect={selectLocale} onBannedLocaleEnabledChange={setBannedLocaleEnabled} />
+      <LanguageSelector containerRef={languageSelectorRef} languages={languages} selectedLocale={selectedLocale} enabledBannedLocales={enabledBannedLocales} scores={languageScores} loadingLocale={loadingLocale} compactLayout={appSettings.compactLayout} onSelect={selectLocale} onBannedLocaleEnabledChange={setBannedLocaleEnabled} />
       <section inert={!!editor} aria-hidden={!!editor} className={`results-column${editor ? ' results-column--editing' : ''}`} dir={isRtlLocale(selectedLocale) ? 'rtl' : 'ltr'} aria-label="Calculated searches">
         <CraftingSheet
           open={false}
@@ -598,6 +610,7 @@ function App() {
       {editor && <div className="item-set-editor-overlay">
         <ItemSetEditor
           state={editor} entryNumber={editorNumber} data={data} pickerData={baseData} icons={activeIcons} customSlots={customSlots}
+          compactLayout={appSettings.compactLayout}
           cancelOnOutsidePointer={tutorialIndex === null}
           onDraftChange={updateDraft}
           onSave={(commit) => { setWorkspace((current) => commitDraft(current, commit)); setEditor(null) }}

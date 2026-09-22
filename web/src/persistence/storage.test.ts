@@ -562,7 +562,10 @@ describe('version-scoped crafting records', () => {
   test('keeps completed language scores separate for each Minecraft version', () => {
     const storage = new MemoryStorage()
     const cache = { entryScores: {
-      '{"targetIds":["minecraft:stick"]}': { en_us: 8, de_de: 5 },
+      '{"targetIds":["minecraft:stick"]}': {
+        en_us: { score: 8, optimalCharacterCount: 4, leastJunk: 1 },
+        de_de: { score: 5, optimalCharacterCount: 3, leastJunk: 0 },
+      },
     } }
 
     saveLanguageScoreCache(cache, storage, '26.1.2')
@@ -570,9 +573,20 @@ describe('version-scoped crafting records', () => {
     expect(loadLanguageScoreCache(storage, '26.1.2')).toEqual({ value: cache, warning: undefined })
     expect(loadLanguageScoreCache(storage, '1.16.1')).toEqual({ value: { entryScores: {} }, warning: undefined })
     expect(JSON.parse(storage.getItem('mcsr.game.26.1.2.mcsr.language-score-cache.v1')!)).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       entryScores: cache.entryScores,
     })
+  })
+
+  test('silently refreshes a score-only cache from before language sort metrics', () => {
+    const storage = new MemoryStorage()
+    storage.setItem('mcsr.game.26.1.2.mcsr.language-score-cache.v1', JSON.stringify({
+      schemaVersion: 1,
+      entryScores: { itemSet: { en_us: 8 } },
+    }))
+
+    expect(loadLanguageScoreCache(storage, '26.1.2')).toEqual({ value: { entryScores: {} }, warning: undefined })
+    expect(storage.getItem('mcsr.game.26.1.2.mcsr.language-score-cache.v1')).toBeNull()
   })
 })
 
@@ -610,7 +624,7 @@ describe('app settings persistence', () => {
       catifyItems: true,
     }
     saveAppSettings(settings, storage)
-    saveLanguageScoreCache({ entryScores: { itemSet: { en_us: 8 } } }, storage, '26.1.2')
+    saveLanguageScoreCache({ entryScores: { itemSet: { en_us: { score: 8, optimalCharacterCount: 4, leastJunk: 1 } } } }, storage, '26.1.2')
 
     expect(loadAppSettings(storage)).toEqual({ value: settings, warning: undefined })
     clearLanguageScoreCache(storage, '26.1.2')
@@ -623,7 +637,7 @@ describe('app settings persistence', () => {
     const generation = languageScoreCacheGeneration(minecraftVersion)
 
     clearLanguageScoreCache(storage, minecraftVersion)
-    saveLanguageScoreCache({ entryScores: { stale: { en_us: 8 } } }, storage, minecraftVersion, generation)
+    saveLanguageScoreCache({ entryScores: { stale: { en_us: { score: 8, optimalCharacterCount: 4, leastJunk: 1 } } } }, storage, minecraftVersion, generation)
 
     expect(loadLanguageScoreCache(storage, minecraftVersion).value).toEqual({ entryScores: {} })
   })

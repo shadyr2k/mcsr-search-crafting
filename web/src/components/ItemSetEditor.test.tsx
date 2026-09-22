@@ -133,6 +133,27 @@ describe('ItemSetEditor', () => {
     expect(screen.getByText('enabled').className).toContain('craft-order-switch__label')
   })
 
+  test('uses selected options instead of sliders in compact layout', () => {
+    const onDraftChange = vi.fn()
+    render(<ItemSetEditor
+      compactLayout
+      state={{ kind: 'new', draft: newItemSetDraft() }}
+      data={data}
+      icons={icons}
+      customSlots={[null, null, null]}
+      onDraftChange={onDraftChange}
+      onSave={vi.fn()}
+      onCancel={vi.fn()}
+      onSaveCustomSlot={vi.fn()}
+      onClearCustomSlot={vi.fn()}
+    />)
+
+    expect(screen.queryByRole('switch', { name: 'Retain item order' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'disabled' }).getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: 'enabled' }))
+    expect(onDraftChange).toHaveBeenCalledWith(expect.objectContaining({ retainCraftOrder: true }))
+  })
+
   test('cancels when a pointer press lands outside the editor', () => {
     const { onCancel } = renderEditor(newItemSetDraft())
 

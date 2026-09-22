@@ -289,19 +289,19 @@ test('stacks the three workspace columns on a narrow viewport', async ({ page })
   expect(columnCount).toBe(1)
 })
 
-test('uses the compact language picker on the stacked language-info page', async ({ page }) => {
+test('keeps the searchable language dropdown on the stacked language-info page', async ({ page }) => {
   await page.setViewportSize({ width: 720, height: 1000 })
   await page.goto('/')
   await page.getByRole('button', { name: 'language info' }).click()
   await expect(page.getByRole('heading', { name: /more language info/i })).toBeVisible()
 
   const languagePicker = await page.locator('.workspace-transition--language-info > .language-selector').evaluate((selector) => ({
-    categoryDisplay: getComputedStyle(selector.querySelector<HTMLElement>('.language-selector__category')!).display,
+    dropdownDisplay: getComputedStyle(selector.querySelector<HTMLElement>('.language-selector__dropdown')!).display,
     searchDisplay: getComputedStyle(selector.querySelector<HTMLElement>('.language-selector__search')!).display,
     titleDisplay: getComputedStyle(selector.querySelector<HTMLElement>('.language-selector__title')!).display,
   }))
-  expect(languagePicker.titleDisplay).toBe('none')
-  expect(languagePicker.categoryDisplay).toBe('none')
+  expect(languagePicker.titleDisplay).not.toBe('none')
+  expect(languagePicker.dropdownDisplay).not.toBe('none')
   expect(languagePicker.searchDisplay).not.toBe('none')
 })
 

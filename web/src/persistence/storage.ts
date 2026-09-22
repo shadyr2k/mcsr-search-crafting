@@ -98,11 +98,22 @@ interface VersionedCraftingSheetPreferences extends CraftingSheetPreferences {
 }
 
 export interface LanguageScoreCache {
-  entryScores: Record<string, Record<string, number>>
+  entryScores: Record<string, Record<string, CachedLanguageScore>>
+}
+
+export interface CachedLanguageScore {
+  score: number
+  optimalCharacterCount?: number
+  leastJunk?: number
 }
 
 interface VersionedLanguageScoreCache extends LanguageScoreCache {
+  schemaVersion: 2
+}
+
+interface LegacyVersionedLanguageScoreCache {
   schemaVersion: 1
+  entryScores: Record<string, Record<string, number>>
 }
 
 interface VersionedAppSettings extends Omit<AppSettings, 'itemIdSearch' | 'hideNumberCraftsByDefault' | 'removeAnimations' | 'compactLayout'> {
@@ -256,8 +267,27 @@ function isStringArray(value: unknown): value is string[] {
 }
 
 function isLanguageScoreCache(value: unknown): value is VersionedLanguageScoreCache {
-  if (!isRecord(value) || value.schemaVersion !== 1 || !isRecord(value.entryScores)) return false
+  if (!isRecord(value) || value.schemaVersion !== 2 || !isRecord(value.entryScores)) return false
   return Object.keys(value).every((key) => key === 'schemaVersion' || key === 'entryScores')
+    && Object.values(value.entryScores).every((scores) => (
+      isRecord(scores) && Object.values(scores).every((score) => isCachedLanguageScore(score))
+    ))
+}
+
+function isCachedLanguageScore(value: unknown): value is CachedLanguageScore {
+  return isRecord(value)
+    && typeof value.score === 'number'
+    && Number.isFinite(value.score)
+    && (value.optimalCharacterCount === undefined || (typeof value.optimalCharacterCount === 'number' && Number.isFinite(value.optimalCharacterCount)))
+    && (value.leastJunk === undefined || (typeof value.leastJunk === 'number' && Number.isFinite(value.leastJunk)))
+    && Object.keys(value).every((key) => key === 'score' || key === 'optimalCharacterCount' || key === 'leastJunk')
+}
+
+function isLegacyLanguageScoreCache(value: unknown): value is LegacyVersionedLanguageScoreCache {
+  return isRecord(value)
+    && value.schemaVersion === 1
+    && isRecord(value.entryScores)
+    && Object.keys(value).every((key) => key === 'schemaVersion' || key === 'entryScores')
     && Object.values(value.entryScores).every((scores) => (
       isRecord(scores) && Object.values(scores).every((score) => typeof score === 'number' && Number.isFinite(score))
     ))
@@ -585,12 +615,12 @@ export function saveLanguagePreferences(
 }
 
 function encodeLanguageScoreCache(cache: LanguageScoreCache): VersionedLanguageScoreCache {
-  const entryScores: Record<string, Record<string, number>> = {}
+  const entryScores: Record<string, Record<string, CachedLanguageScore>> = {}
   for (const entryKey of Object.keys(cache.entryScores).sort()) {
     const scores = cache.entryScores[entryKey]
     entryScores[entryKey] = Object.fromEntries(Object.entries(scores).sort(([left], [right]) => left.localeCompare(right)))
   }
-  return { schemaVersion: 1, entryScores }
+  return { schemaVersion: 2, entryScores }
 }
 
 function saveLanguageScoreCacheRecord(cache: LanguageScoreCache, storage: ResilientStorage): void {
@@ -607,6 +637,13 @@ export function loadLanguageScoreCache(
   if (raw === null) return { value: fallback, warning: target.warning }
   try {
     const parsed = parseJson(target, LANGUAGE_SCORE_CACHE_KEY)
+    // Version 1 stored only scores. The new sort modes need the tied-craft
+    // character and junk metrics, so recalculate silently instead of treating
+    // a valid older cache as corrupt data.
+    if (isLegacyLanguageScoreCache(parsed)) {
+      target.removeItem(LANGUAGE_SCORE_CACHE_KEY)
+      return { value: fallback, warning: target.warning }
+    }
     if (!isLanguageScoreCache(parsed)) {
       return recover(target, LANGUAGE_SCORE_CACHE_KEY, 'language-score-cache', raw, fallback)
     }
@@ -622,7 +659,7 @@ export function saveLanguageScoreCache(
   minecraftVersion = LEGACY_GAME_VERSION_ID,
   expectedGeneration?: number,
 ): PersistenceSaveResult {
-  if (!isLanguageScoreCache({ schemaVersion: 1, ...cache })) {
+  if (!isLanguageScoreCache({ schemaVersion: 2, ...cache })) {
     throw new TypeError('Language score caches must contain finite scores for each item set and locale.')
   }
   const target = storageOrDefault(storage, minecraftVersion)

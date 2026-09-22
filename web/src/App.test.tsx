@@ -92,7 +92,7 @@ describe('App workspace composition', () => {
       'results-column',
       'language-info-panel',
     ])
-    expect(within(screen.getByRole('region', { name: 'Selected language' })).getByRole('button', { name: 'english - english (united states)' }).getAttribute('aria-pressed')).toBe('true')
+    expect(within(screen.getByRole('region', { name: 'Language choices' })).getByRole('button', { name: 'english - english (united states)' }).getAttribute('aria-pressed')).toBe('true')
     expect(screen.getByAltText('Stick')).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'english (us) search crafts' })).toBeTruthy()
     expect(screen.getByText('optimize recipe book results')).toBeTruthy()
@@ -293,7 +293,7 @@ describe('App workspace composition', () => {
     stubData()
     render(<App />)
 
-    const selectedLanguage = await screen.findByRole('region', { name: 'Selected language' })
+    const selectedLanguage = await screen.findByRole('region', { name: 'Language choices' })
     expect(within(selectedLanguage).getByRole('button', { name: 'english - english (united states)' }).getAttribute('aria-pressed')).toBe('true')
   })
 
@@ -324,7 +324,7 @@ describe('App workspace composition', () => {
     fireEvent.click(screen.getByRole('button', { name: 'language info' }))
 
     expect(await screen.findByRole('heading', { name: 'more language info (german)' })).toBeTruthy()
-    expect(within(screen.getByRole('region', { name: 'Selected language' })).getByRole('button', { name: 'german - deutsch (deutschland)' }).getAttribute('aria-pressed')).toBe('true')
+    expect(within(screen.getByRole('region', { name: 'Language choices' })).getByRole('button', { name: 'german - deutsch (deutschland)' }).getAttribute('aria-pressed')).toBe('true')
     expect(document.querySelector('.language-selector')).toBe(sharedLanguageSelector)
     expect(screen.getByText('Leicht')).toBeTruthy()
     expect(screen.getByText('Video Settings')).toBeTruthy()

@@ -241,16 +241,51 @@ export async function aggregateLocaleScore(
   entries: readonly TargetWorkspaceEntry[],
   options: OptimizeWorkspaceOptions = {},
 ): Promise<number | undefined> {
+  return (await aggregateLocaleMetrics(data, entries, options))?.score
+}
+
+export interface AggregateLocaleMetrics {
+  score: number
+  optimalCharacterCount?: number
+  leastJunk?: number
+}
+
+function metricsForOutcome(outcome: EntryOptimizationOutcome): Omit<AggregateLocaleMetrics, 'score'> {
+  if (outcome.kind !== 'ranked' || outcome.rankedSearches.length === 0) return {}
+  const optimalSearches = outcome.rankedSearches.filter((search) => search.totalScore === outcome.bestScore)
+  return {
+    optimalCharacterCount: Math.min(...optimalSearches.map((search) => search.totalTypedCharacters)),
+    leastJunk: Math.min(...optimalSearches.map((search) => search.totalJunkAppearances)),
+  }
+}
+
+export async function aggregateLocaleMetrics(
+  data: GeneratedData,
+  entries: readonly TargetWorkspaceEntry[],
+  options: OptimizeWorkspaceOptions = {},
+): Promise<AggregateLocaleMetrics | undefined> {
   const scoreable = entries.filter((entry) => entry.enabled && entry.targetIds.length > 0)
   if (scoreable.length === 0) return undefined
   let score = 0
+  let optimalCharacterCount = 0
+  let leastJunk = 0
+  let hasOptimalMetrics = true
   for (const entry of scoreable) {
     const outcome = await optimizeWorkspaceEntry(data, entry, options)
     score += outcome.bestScore
+    const metrics = metricsForOutcome(outcome)
+    if (metrics.optimalCharacterCount === undefined || metrics.leastJunk === undefined) hasOptimalMetrics = false
+    else {
+      optimalCharacterCount += metrics.optimalCharacterCount
+      leastJunk += metrics.leastJunk
+    }
     await (options.yieldControl ?? yieldToBrowser)()
     throwIfAborted(options.signal)
   }
-  return score
+  return {
+    score,
+    ...(hasOptimalMetrics ? { optimalCharacterCount, leastJunk } : {}),
+  }
 }
 
 export async function optimizeWorkspace(

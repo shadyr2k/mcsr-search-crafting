@@ -22,6 +22,7 @@ interface CraftLookupProps {
   itemIdSearch?: boolean
   hideNumberCraftsByDefault?: boolean
   removeAnimations?: boolean
+  compactLayout?: boolean
 }
 
 export interface CraftLookupSession {
@@ -107,6 +108,7 @@ export function CraftLookup({
   itemIdSearch = false,
   hideNumberCraftsByDefault = false,
   removeAnimations = false,
+  compactLayout = false,
 }: CraftLookupProps) {
   const { draft, entry } = session
   const [languageSearch, setLanguageSearch] = useState('')
@@ -150,6 +152,7 @@ export function CraftLookup({
           showDismiss={false}
           cancelOnOutsidePointer={false}
           saveNextToGoals
+          compactLayout={compactLayout}
           onDraftChange={(nextDraft) => onSessionChange({ ...session, draft: nextDraft })}
           onSave={({ draft: nextDraft }) => {
             onSessionChange({ draft: nextDraft, entry: lookupEntryFromDraft(nextDraft) })

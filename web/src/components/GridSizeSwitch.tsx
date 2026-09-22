@@ -7,6 +7,7 @@ interface GridSizeSwitchProps {
   targetIds: readonly string[]
   recipes: readonly CraftingRecipe[]
   onChange: (gridSize: 2 | 3) => void
+  compactLayout?: boolean
 }
 
 function needs3x3(targetIds: readonly string[], recipes: readonly CraftingRecipe[]): boolean {
@@ -15,7 +16,7 @@ function needs3x3(targetIds: readonly string[], recipes: readonly CraftingRecipe
   )))
 }
 
-export function GridSizeSwitch({ value, targetIds, recipes, onChange }: GridSizeSwitchProps) {
+export function GridSizeSwitch({ value, targetIds, recipes, onChange, compactLayout = false }: GridSizeSwitchProps) {
   const requires3x3 = needs3x3(targetIds, recipes)
   const displayedValue = requires3x3 ? 3 : value
   const forcedKey = `${targetIds.join('\u0000')}\u0000${value}`
@@ -28,6 +29,14 @@ export function GridSizeSwitch({ value, targetIds, recipes, onChange }: GridSize
     }
     if (!requires3x3 || value === 3) lastForcedKey.current = undefined
   }, [forcedKey, onChange, requires3x3, value])
+
+  if (compactLayout) return <div className="grid-size-switch grid-size-switch--options">
+    <span className="grid-size-switch__title">craft space</span>
+    <div className="grid-size-switch__options" role="group" aria-label="Crafting grid size">
+      <button type="button" aria-pressed={displayedValue === 2} disabled={requires3x3} onClick={() => onChange(2)}>2×2</button>
+      <button type="button" aria-pressed={displayedValue === 3} onClick={() => onChange(3)}>3×3</button>
+    </div>
+  </div>
 
   return <div className="grid-size-switch">
     <span className="grid-size-switch__title">craft space</span>

@@ -7,8 +7,8 @@ import type {
   SearchItem,
   TargetWorkspaceEntry,
 } from '../domain/types'
-import { incompleteScore } from './scoring'
-import { aggregateLocaleScore, optimizeWorkspace, optimizeWorkspaceEntry } from './optimizeWorkspace'
+import { DEFAULT_SCORING_SETTINGS, incompleteScore } from './scoring'
+import { aggregateLocaleMetrics, aggregateLocaleScore, optimizeWorkspace, optimizeWorkspaceEntry } from './optimizeWorkspace'
 
 function item(id: string, text: string): SearchItem {
   return {
@@ -274,6 +274,19 @@ describe('optimizeWorkspace', () => {
     const score = await aggregateLocaleScore(data, entries, { yieldControl: async () => {} })
 
     expect(score).toBe(incompleteScore(1, 0))
+  })
+
+  test('keeps the fewest characters and junk among crafts tied for the optimal score', async () => {
+    const junk = item('junk:metric', 'a')
+    const metricData = generatedData([alpha, junk], [recipe(alpha.id, true), recipe(junk.id, true)])
+    const metrics = await aggregateLocaleMetrics(metricData, [
+      entry('craftable', [alpha.id], { inventoryItemIds: ['ingredient:shared'] }),
+    ], {
+      yieldControl: async () => {},
+      scoringSettings: { ...DEFAULT_SCORING_SETTINGS, additionalCharacterPenalty: 0, junkExistingPenalty: 0, junkItemPenalty: 0 },
+    })
+
+    expect(metrics).toEqual({ score: 0, optimalCharacterCount: 1, leastJunk: 0 })
   })
 
   test('uses the lower overlap score when both complete categories exist at different scores', async () => {

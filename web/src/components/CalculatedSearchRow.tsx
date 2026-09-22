@@ -78,8 +78,12 @@ function SearchQuery({ search, textControlKeycaps = false }: { search: RankedSea
         ? <QueryControl kind="shift-home" textKeycaps={textControlKeycaps} />
         : step.freeBackspaceCount > 0
         ? <QueryControl kind="backspace" backspaceCount={step.freeBackspaceCount} textKeycaps={textControlKeycaps} />
-        : <ArrowSprite direction="right" className="craft-query__advance" />)}
-      <span className="craft-query__term">{displayQuery(index === 0 ? step.query : step.typedSuffix)}</span>
+        : textControlKeycaps
+          ? <kbd className="query-control-keycap craft-query__term-keycap" aria-label="Next search">→</kbd>
+          : <ArrowSprite direction="right" className="craft-query__advance" />)}
+      {textControlKeycaps
+        ? <kbd className="query-control-keycap craft-query__term-keycap">{displayQuery(index === 0 ? step.query : step.typedSuffix)}</kbd>
+        : <span className="craft-query__term">{displayQuery(index === 0 ? step.query : step.typedSuffix)}</span>}
     </Fragment>)}
   </span>
 }

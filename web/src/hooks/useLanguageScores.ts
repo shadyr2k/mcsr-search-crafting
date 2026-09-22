@@ -3,9 +3,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { isBannedLocale } from '../components/LanguageSelector'
 import { loadLocalizedSearchPayload, parseLocalizedGeneratedData } from '../data/schema'
 import type { GeneratedData, LanguageMetadata, LanguageScoreState, TargetWorkspaceEntry } from '../domain/types'
-import { aggregateLocaleScore } from '../engine/optimizeWorkspace'
+import { aggregateLocaleMetrics } from '../engine/optimizeWorkspace'
 import { DEFAULT_SCORING_SETTINGS, scoringSettingsFingerprint, type ScoringSettings } from '../engine/scoring'
-import { languageScoreCacheGeneration, LEGACY_GAME_VERSION_ID, loadLanguageScoreCache, saveLanguageScoreCache, type LanguageScoreCache } from '../persistence/storage'
+import { languageScoreCacheGeneration, LEGACY_GAME_VERSION_ID, loadLanguageScoreCache, saveLanguageScoreCache, type CachedLanguageScore, type LanguageScoreCache } from '../persistence/storage'
 
 interface ScoringEntry {
   entry: TargetWorkspaceEntry
@@ -31,15 +31,26 @@ function cachedAggregateScore(
   cache: LanguageScoreCache | undefined,
   locale: string,
   entries: readonly ScoringEntry[],
-): number | undefined {
+): CachedLanguageScore | undefined {
   if (!cache) return undefined
-  let total = 0
+  let score = 0
+  let optimalCharacterCount = 0
+  let leastJunk = 0
+  let hasOptimalMetrics = true
   for (const { cacheKey } of entries) {
-    const score = cache.entryScores[cacheKey]?.[locale]
-    if (score === undefined) return undefined
-    total += score
+    const entryScore = cache.entryScores[cacheKey]?.[locale]
+    if (entryScore === undefined) return undefined
+    score += entryScore.score
+    if (entryScore.optimalCharacterCount === undefined || entryScore.leastJunk === undefined) hasOptimalMetrics = false
+    else {
+      optimalCharacterCount += entryScore.optimalCharacterCount
+      leastJunk += entryScore.leastJunk
+    }
   }
-  return total
+  return {
+    score,
+    ...(hasOptimalMetrics ? { optimalCharacterCount, leastJunk } : {}),
+  }
 }
 
 export function useLanguageScores(
@@ -90,11 +101,11 @@ export function useLanguageScores(
         initialScores.set(language.locale, { status: 'disabled' })
         continue
       }
-      const score = cachedAggregateScore(cacheRef.current, language.locale, scoringEntries)
-      if (score === undefined) {
+      const cachedScore = cachedAggregateScore(cacheRef.current, language.locale, scoringEntries)
+      if (cachedScore === undefined) {
         pendingLocales.add(language.locale)
         initialScores.set(language.locale, { status: 'pending' })
-      } else initialScores.set(language.locale, { status: 'ready', score })
+      } else initialScores.set(language.locale, { status: 'ready', ...cachedScore })
     }
     setScores(initialScores)
     if (pendingLocales.size === 0) return
@@ -110,9 +121,12 @@ export function useLanguageScores(
       })
     }
 
-    function rememberScore(cacheKey: string, locale: string, score: number) {
+    function rememberScore(cacheKey: string, locale: string, score: CachedLanguageScore) {
       const currentCache = cacheRef.current
-      if (!currentCache || currentCache.entryScores[cacheKey]?.[locale] === score) return
+      const current = currentCache?.entryScores[cacheKey]?.[locale]
+      if (!currentCache || (current?.score === score.score
+        && current.optimalCharacterCount === score.optimalCharacterCount
+        && current.leastJunk === score.leastJunk)) return
       const updatedCache: LanguageScoreCache = {
         entryScores: {
           ...currentCache.entryScores,
@@ -127,13 +141,13 @@ export function useLanguageScores(
       try {
         for (const { entry, cacheKey } of scoringEntries) {
           if (cachedAggregateScore(cacheRef.current, locale, [{ entry, cacheKey }]) !== undefined) continue
-          const score = await aggregateLocaleScore(localeData, [entry], { signal: controller.signal, scoringSettings, itemIdSearch })
+          const score = await aggregateLocaleMetrics(localeData, [entry], { signal: controller.signal, scoringSettings, itemIdSearch })
           if (controller.signal.aborted) return
-          if (score === undefined || !Number.isFinite(score)) throw new Error('No language score was available.')
+          if (score === undefined || !Number.isFinite(score.score)) throw new Error('No language score was available.')
           rememberScore(cacheKey, locale, score)
         }
         const score = cachedAggregateScore(cacheRef.current, locale, scoringEntries)
-        publish(locale, score === undefined ? { status: 'unavailable' } : { status: 'ready', score })
+        publish(locale, score === undefined ? { status: 'unavailable' } : { status: 'ready', ...score })
       } catch (error) {
         if (!isAbortError(error)) publish(locale, { status: 'unavailable' })
       }

@@ -87,3 +87,29 @@ test('clears cached language scores for every calculation setting', async ({ pag
     return cached.entryScores?.display?.en_us ?? null
   })).toBe(4)
 })
+
+test('uses compact option controls and keeps the editor close button aligned', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'settings' }).click()
+  await page.getByRole('switch', { name: 'compact layout' }).click()
+  await page.getByRole('button', { name: 'save settings' }).click()
+  await page.getByRole('button', { name: 'search crafting' }).click()
+  await page.getByRole('button', { name: 'Edit item set 1' }).click()
+
+  const editor = page.locator('.item-set-editor')
+  await expect(editor.getByRole('group', { name: 'Crafting grid size' })).toBeVisible()
+  await expect(editor.getByRole('group', { name: 'Retain item order' })).toBeVisible()
+  await expect(editor.getByRole('switch', { name: 'Crafting grid size' })).toHaveCount(0)
+  await expect(editor.getByRole('switch', { name: 'Retain item order' })).toHaveCount(0)
+  await expect(editor.getByRole('group', { name: 'Crafting grid size' }).locator('button[aria-pressed="true"]')).toHaveCount(1)
+
+  const closeWithinEditor = await editor.evaluate((element) => {
+    const editorBounds = element.getBoundingClientRect()
+    const closeBounds = element.querySelector<HTMLElement>('.item-set-editor__dismiss')!.getBoundingClientRect()
+    return closeBounds.left >= editorBounds.left
+      && closeBounds.right <= editorBounds.right
+      && closeBounds.top >= editorBounds.top
+      && closeBounds.bottom <= editorBounds.bottom
+  })
+  expect(closeWithinEditor).toBe(true)
+})

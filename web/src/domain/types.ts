@@ -91,7 +91,14 @@ export interface LocalizedLanguageInfo {
 
 export type LanguageScoreState =
   | { status: 'pending' }
-  | { status: 'ready'; score: number }
+  | {
+      status: 'ready'
+      score: number
+      /** Fewest typed characters among crafts tied for this language's best score. */
+      optimalCharacterCount?: number
+      /** Fewest junk appearances among crafts tied for this language's best score. */
+      leastJunk?: number
+    }
   | { status: 'unavailable' }
   | { status: 'disabled' }
 

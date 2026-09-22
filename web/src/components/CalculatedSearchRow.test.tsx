@@ -567,7 +567,7 @@ describe('CalculatedSearchRow', () => {
       compactLayout
     />)
 
-    expect(document.querySelectorAll('.query-control-keycap')).toHaveLength(2)
+    expect(document.querySelectorAll('.query-control-keycap')).toHaveLength(5)
     expect(screen.getByText('SH')).toBeTruthy()
     expect(screen.getByText('←')).toBeTruthy()
   })

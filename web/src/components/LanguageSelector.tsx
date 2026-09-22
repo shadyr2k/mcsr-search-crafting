@@ -60,7 +60,7 @@ const MINECRAFT_LANGUAGE_ALIASES: Readonly<Record<string, string>> = {
 const englishLanguageNames = new Intl.DisplayNames('en', { type: 'language', fallback: 'code' })
 const englishRegionNames = new Intl.DisplayNames('en', { type: 'region', fallback: 'code' })
 
-type LanguageCategory = 'latin' | 'non_latin' | 'banned'
+export type LanguageSortMode = 'score-ascending' | 'score-descending' | 'optimal-characters' | 'least-junk'
 
 interface LanguageSelectorProps {
   languages: readonly LanguageMetadata[]
@@ -71,6 +71,7 @@ interface LanguageSelectorProps {
   onBannedLocaleEnabledChange: (locale: string, enabled: boolean) => void
   loadingLocale?: string
   containerRef?: Ref<HTMLElement>
+  compactLayout?: boolean
 }
 
 export function languageDisplayName(language: LanguageMetadata): string {
@@ -152,15 +153,45 @@ export function isBannedLocale(locale: string): boolean {
   return BANNED_LOCALES.has(locale)
 }
 
-function categoryFor(language: LanguageMetadata): LanguageCategory {
-  if (BANNED_LOCALES.has(language.locale)) return 'banned'
-  return language.script
+const sortLabels: Readonly<Record<LanguageSortMode, string>> = {
+  'score-ascending': 'score: least to greatest',
+  'score-descending': 'score: greatest to least',
+  'optimal-characters': 'fewest characters in optimal score search',
+  'least-junk': 'least overall junk',
 }
 
-function categoryTitle(category: LanguageCategory): string {
-  if (category === 'latin') return 'latin text'
-  if (category === 'non_latin') return 'non-latin text'
-  return 'banned'
+function comparisonForScore(left: LanguageScoreState | undefined, right: LanguageScoreState | undefined, descending = false): number {
+  const stateComparison = scoreRank(left) - scoreRank(right)
+  if (stateComparison !== 0) return stateComparison
+  if (left?.status !== 'ready' || right?.status !== 'ready') return 0
+  return (left.score - right.score) * (descending ? -1 : 1)
+}
+
+function comparisonForMetric(
+  left: LanguageScoreState | undefined,
+  right: LanguageScoreState | undefined,
+  metric: 'optimalCharacterCount' | 'leastJunk',
+): number {
+  const leftMetric = left?.status === 'ready' ? left[metric] : undefined
+  const rightMetric = right?.status === 'ready' ? right[metric] : undefined
+  const leftRank = leftMetric === undefined ? (left?.status === 'ready' ? 1 : 2 + scoreRank(left)) : 0
+  const rightRank = rightMetric === undefined ? (right?.status === 'ready' ? 1 : 2 + scoreRank(right)) : 0
+  if (leftRank !== rightRank) return leftRank - rightRank
+  if (leftMetric !== undefined && rightMetric !== undefined && leftMetric !== rightMetric) return leftMetric - rightMetric
+  return comparisonForScore(left, right)
+}
+
+function compareLanguages(left: LanguageMetadata, right: LanguageMetadata, scores: ReadonlyMap<string, LanguageScoreState>, sortMode: LanguageSortMode): number {
+  const leftScore = scores.get(left.locale)
+  const rightScore = scores.get(right.locale)
+  const comparison = sortMode === 'score-descending'
+    ? comparisonForScore(leftScore, rightScore, true)
+    : sortMode === 'optimal-characters'
+      ? comparisonForMetric(leftScore, rightScore, 'optimalCharacterCount')
+      : sortMode === 'least-junk'
+        ? comparisonForMetric(leftScore, rightScore, 'leastJunk')
+        : comparisonForScore(leftScore, rightScore)
+  return comparison || languageDisplayName(left).localeCompare(languageDisplayName(right))
 }
 
 function LanguageOption({
@@ -172,6 +203,7 @@ function LanguageOption({
   loadingLocale,
   onSelect,
   onBannedLocaleEnabledChange,
+  compactLayout = false,
 }: {
   language: LanguageMetadata
   selectedLocale: string
@@ -181,6 +213,7 @@ function LanguageOption({
   loadingLocale?: string
   onSelect: (locale: string) => void
   onBannedLocaleEnabledChange: (locale: string, enabled: boolean) => void
+  compactLayout?: boolean
 }) {
   const displayName = languageDisplayName(language)
   const banned = isBannedLocale(language.locale)
@@ -208,16 +241,21 @@ function LanguageOption({
       >{scoreText(score.score)}</strong>}
       {score?.status === 'pending' && <span className="language-selector__score" aria-hidden="true">…</span>}
     </button>
-    {banned && <button
-      type="button"
-      className="language-selector__enable"
-      role="switch"
-      aria-label={`Enable ${displayName} for calculation`}
-      aria-checked={enabled}
-      onClick={() => onBannedLocaleEnabledChange(language.locale, !enabled)}
-    >
-      {enabled ? 'on' : 'off'}
-    </button>}
+    {banned && (compactLayout
+      ? <div className="language-selector__enable-options" role="group" aria-label={`Enable ${displayName} for calculation`}>
+        <button type="button" aria-pressed={!enabled} onClick={() => onBannedLocaleEnabledChange(language.locale, false)}>off</button>
+        <button type="button" aria-pressed={enabled} onClick={() => onBannedLocaleEnabledChange(language.locale, true)}>on</button>
+      </div>
+      : <button
+        type="button"
+        className="language-selector__enable"
+        role="switch"
+        aria-label={`Enable ${displayName} for calculation`}
+        aria-checked={enabled}
+        onClick={() => onBannedLocaleEnabledChange(language.locale, !enabled)}
+      >
+        {enabled ? 'on' : 'off'}
+      </button>)}
   </li>
 }
 
@@ -230,36 +268,16 @@ export function LanguageSelector({
   onBannedLocaleEnabledChange,
   loadingLocale,
   containerRef,
+  compactLayout = false,
 }: LanguageSelectorProps) {
   const [query, setQuery] = useState('')
-  const selectedLanguage = languages.find((language) => language.locale === selectedLocale)
+  const [sortMode, setSortMode] = useState<LanguageSortMode>('score-ascending')
+  const [sortOpen, setSortOpen] = useState(false)
   const normalizedQuery = normalizeSearchText(query.trim())
   const scorePositionByLocale = useMemo(() => scorePositions(scores), [scores])
-  const categories = useMemo(() => {
-    const grouped: Record<LanguageCategory, LanguageMetadata[]> = {
-      latin: [],
-      non_latin: [],
-      banned: [],
-    }
-    for (const language of languages) grouped[categoryFor(language)].push(language)
-    for (const entries of Object.values(grouped)) entries.sort((left, right) => {
-      const leftScore = scores.get(left.locale)
-      const rightScore = scores.get(right.locale)
-      const scoreDifference = scoreRank(leftScore) - scoreRank(rightScore)
-      if (scoreDifference !== 0) return scoreDifference
-      if (leftScore?.status === 'ready' && rightScore?.status === 'ready' && leftScore.score !== rightScore.score) {
-        return leftScore.score - rightScore.score
-      }
-      return languageDisplayName(left).localeCompare(languageDisplayName(right))
-    })
-    return grouped
-  }, [languages, scores])
-  const compactMatches = useMemo(() => (
-    (['latin', 'non_latin', 'banned'] as const)
-      .flatMap((category) => categories[category])
-      .filter((language) => languageMatches(language, normalizedQuery))
-      .slice(0, 5)
-  ), [categories, normalizedQuery])
+  const visibleLanguages = useMemo(() => languages
+    .filter((language) => languageMatches(language, normalizedQuery))
+    .sort((left, right) => compareLanguages(left, right, scores, sortMode)), [languages, normalizedQuery, scores, sortMode])
   const languageOptionProps = {
     selectedLocale,
     enabledBannedLocales,
@@ -271,18 +289,25 @@ export function LanguageSelector({
       onSelect(locale)
     },
     onBannedLocaleEnabledChange,
+    compactLayout,
   }
 
   return <section ref={containerRef} className="language-selector" aria-label="Languages">
-    <h2 className="language-selector__title">language list</h2>
-    <section className="language-selector__selected" aria-label="Selected language" aria-live="polite">
-      <p>selected: <span className="language-selector__selected-mobile-name">{selectedLanguage
-        ? <><span>{englishLanguageName(selectedLanguage)}</span> - {languageDisplayName(selectedLanguage)}</>
-        : 'english'}</span></p>
-      {selectedLanguage && <ul>
-        <LanguageOption key={selectedLanguage.locale} language={selectedLanguage} {...languageOptionProps} />
-      </ul>}
-    </section>
+    <div className="language-selector__toolbar">
+      <h2 className="language-selector__title">language list</h2>
+      <div className="language-selector__sort">
+        <button type="button" aria-label="Sort languages" aria-expanded={sortOpen} aria-controls="language-sort-options" onClick={() => setSortOpen((open) => !open)}>sort by</button>
+        {sortOpen && <div id="language-sort-options" className="language-selector__sort-options" role="menu" aria-label="Sort languages by">
+          {(Object.keys(sortLabels) as LanguageSortMode[]).map((mode) => <button
+            key={mode}
+            type="button"
+            role="menuitemradio"
+            aria-checked={sortMode === mode}
+            onClick={() => { setSortMode(mode); setSortOpen(false) }}
+          >{sortLabels[mode]}</button>)}
+        </div>}
+      </div>
+    </div>
     <input
       className="language-selector__search"
       type="search"
@@ -291,20 +316,10 @@ export function LanguageSelector({
       value={query}
       onChange={(event) => setQuery(event.target.value)}
     />
-    {normalizedQuery && <section className="language-selector__compact-results" aria-label="Language search results">
-      {compactMatches.length > 0
-        ? <ul>{compactMatches.map((language) => <LanguageOption key={language.locale} language={language} {...languageOptionProps} />)}</ul>
+    <section className="language-selector__dropdown" aria-label="Language choices">
+      {visibleLanguages.length > 0
+        ? <ul>{visibleLanguages.map((language) => <LanguageOption key={language.locale} language={language} {...languageOptionProps} />)}</ul>
         : <p className="language-selector__empty">no matching languages</p>}
-    </section>}
-    {(['latin', 'non_latin', 'banned'] as const).map((category) => {
-      const languagesInCategory = categories[category].filter((language) => languageMatches(language, normalizedQuery))
-      return <section key={category} className="language-selector__category" aria-label={categoryTitle(category)}>
-        <h2>{categoryTitle(category)}</h2>
-        <ul>
-          {languagesInCategory.map((language) => <LanguageOption key={language.locale} language={language} {...languageOptionProps} />)}
-        </ul>
-        {languagesInCategory.length === 0 && <p className="language-selector__empty">no matching languages</p>}
-      </section>
-    })}
+    </section>
   </section>
 }

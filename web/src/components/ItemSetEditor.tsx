@@ -37,6 +37,7 @@ interface ItemSetEditorProps {
   showDismiss?: boolean
   cancelOnOutsidePointer?: boolean
   saveNextToGoals?: boolean
+  compactLayout?: boolean
 }
 
 function unique(ids: readonly string[]): string[] {
@@ -70,6 +71,7 @@ export function ItemSetEditor({
   showDismiss = true,
   cancelOnOutsidePointer = true,
   saveNextToGoals = false,
+  compactLayout = false,
 }: ItemSetEditorProps) {
   const { draft } = state
   const editorRef = useRef<HTMLElement>(null)
@@ -135,7 +137,7 @@ export function ItemSetEditor({
     disabled={!valid}
   >{resolvedSaveLabel}</button>
 
-  return <section ref={editorRef} className={`item-set-editor${saveNextToGoals ? ' item-set-editor--save-next-to-goals' : ''}`} aria-label={title ?? (state.kind === 'new' ? 'New item set' : 'Edit item set')}>
+  return <section ref={editorRef} className={`item-set-editor${saveNextToGoals ? ' item-set-editor--save-next-to-goals' : ''}${compactLayout ? ' item-set-editor--compact' : ''}`} aria-label={title ?? (state.kind === 'new' ? 'New item set' : 'Edit item set')}>
     {showDismiss && <button type="button" className="item-set-editor__dismiss" aria-label="Close item set editor" onClick={onCancel}>×</button>}
     <h2>{editorTitle}</h2>
     <ItemPicker
@@ -153,22 +155,30 @@ export function ItemSetEditor({
       value={draft.gridSize}
       targetIds={draft.targetIds}
       recipes={data.recipes}
+      compactLayout={compactLayout}
       onChange={(gridSize) => updateDraft({ ...draft, gridSize })}
     />
-    <div className="craft-order-switch">
+    <div className={`craft-order-switch${compactLayout ? ' craft-order-switch--options' : ''}`}>
       <span className="craft-order-switch__title">retain item order</span>
-      <span className="craft-order-switch__label">disabled</span>
-      <button
-        type="button"
-        role="switch"
-        className="craft-order-switch__control"
-        aria-label="Retain item order"
-        aria-checked={draft.retainCraftOrder === true}
-        onClick={() => updateDraft({ ...draft, retainCraftOrder: draft.retainCraftOrder !== true })}
-      >
-        <span className="craft-order-switch__thumb" aria-hidden="true" />
-      </button>
-      <span className="craft-order-switch__label">enabled</span>
+      {compactLayout
+        ? <div className="craft-order-switch__options" role="group" aria-label="Retain item order">
+          <button type="button" aria-pressed={draft.retainCraftOrder !== true} onClick={() => updateDraft({ ...draft, retainCraftOrder: false })}>disabled</button>
+          <button type="button" aria-pressed={draft.retainCraftOrder === true} onClick={() => updateDraft({ ...draft, retainCraftOrder: true })}>enabled</button>
+        </div>
+        : <>
+          <span className="craft-order-switch__label">disabled</span>
+          <button
+            type="button"
+            role="switch"
+            className="craft-order-switch__control"
+            aria-label="Retain item order"
+            aria-checked={draft.retainCraftOrder === true}
+            onClick={() => updateDraft({ ...draft, retainCraftOrder: draft.retainCraftOrder !== true })}
+          >
+            <span className="craft-order-switch__thumb" aria-hidden="true" />
+          </button>
+          <span className="craft-order-switch__label">enabled</span>
+        </>}
     </div>
     <div className="item-set-editor__presets" aria-label="Inventory presets">
       <span>Inventory preset</span>

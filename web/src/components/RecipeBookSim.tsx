@@ -29,6 +29,7 @@ interface RecipeBookSimProps {
   scores?: ReadonlyMap<string, LanguageScoreState>
   onLocaleChange: (locale: string) => void
   minecraftVersion?: string
+  compactLayout?: boolean
 }
 
 interface InventoryChoice extends InventoryPreset {
@@ -137,6 +138,7 @@ export function RecipeBookSim({
   scores = new Map(),
   onLocaleChange,
   minecraftVersion = '1.16.1',
+  compactLayout = false,
 }: RecipeBookSimProps) {
   const defaultInventory = data.presets.get('overworld')?.itemIds ?? []
   const [inventoryItemIds, setInventoryItemIds] = useState<string[]>(() => (
@@ -390,6 +392,7 @@ export function RecipeBookSim({
           value={gridSize}
           targetIds={[]}
           recipes={data.recipes}
+          compactLayout={compactLayout}
           onChange={(size) => {
             setGridSize(size)
             setPage(0)
