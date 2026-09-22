@@ -36,7 +36,7 @@ function props(): CraftingSheetProps {
 describe('CraftingSheet', () => {
   test('opens a cheat sheet with totals and all item sets immediately reachable', () => {
     render(<CraftingSheet {...props()} defaultOpen={false} />)
-    const toggle = screen.getByRole('button', { name: 'english search crafts' })
+    const toggle = screen.getByRole('button', { name: 'crafting sheet' })
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(toggle)
     expect(screen.getByLabelText('Total characters')).toHaveTextContent('4')
@@ -164,9 +164,9 @@ describe('CraftingSheet', () => {
     expect(details).toHaveAttribute('inert')
     expect(within(details).getAllByText('choose craft')).toHaveLength(2)
     expect(screen.queryByRole('button', { name: 'choose craft for bed' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'english search crafts' }))
+    fireEvent.click(screen.getByRole('button', { name: 'crafting sheet' }))
     expect(screen.queryByRole('region', { name: 'Selected item sets' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'english search crafts' }))
+    fireEvent.click(screen.getByRole('button', { name: 'crafting sheet' }))
     expect(screen.getByRole('button', { name: 'Expand item set 1' })).toBeVisible()
   })
 

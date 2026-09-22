@@ -96,14 +96,14 @@ describe('App workspace composition', () => {
     expect(screen.getByAltText('Stick')).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'english (us) search crafts' })).toBeTruthy()
     expect(screen.getByText('optimize recipe book results')).toBeTruthy()
-    expect(document.querySelector('.results-column .crafting-sheet__disclosure .arrow-sprite')?.classList.contains('arrow-sprite--right')).toBe(true)
+    expect(document.querySelector('.results-column .crafting-sheet__action .arrow-sprite')?.classList.contains('arrow-sprite--right')).toBe(true)
   })
 
   test('opens the crafting sheet as a sliding page and returns to the crafts', async () => {
     stubData()
     render(<App />)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'english (us) search crafts' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'crafting sheet' }))
     expect(document.querySelector('.page-transition')?.classList.contains('page-transition--slide-left')).toBe(true)
 
     const back = await screen.findByRole('button', { name: 'Back to english (us) crafts' })

@@ -470,14 +470,17 @@ test('keeps the simulator language picker within its control at narrow widths', 
   await page.goto('/')
   await page.getByRole('button', { name: 'recipe book sim' }).click()
 
-  const trigger = page.getByRole('button', { name: 'Simulator language' })
-  await trigger.click()
-  const geometry = await page.locator('.recipe-book-sim__language-menu').evaluate((menu) => {
-    const trigger = menu.querySelector<HTMLElement>('.recipe-book-sim__language-trigger')!
+  const trigger = page.getByRole('combobox', { name: 'Simulator language' })
+  await trigger.focus()
+  const geometry = await page.locator('.recipe-book-sim__language .language-dropdown').evaluate((menu) => {
+    const trigger = menu.querySelector<HTMLElement>('.language-dropdown__input')!
+    const field = menu.querySelector<HTMLElement>('.language-dropdown__field')!
+    const popover = menu.querySelector<HTMLElement>('.language-dropdown__menu')!
     const list = menu.querySelector<HTMLElement>('[role="listbox"]')!
     return {
       trigger: trigger.getBoundingClientRect().toJSON(),
-      list: list.getBoundingClientRect().toJSON(),
+      field: field.getBoundingClientRect().toJSON(),
+      popover: popover.getBoundingClientRect().toJSON(),
       triggerScrollWidth: trigger.scrollWidth,
       triggerClientWidth: trigger.clientWidth,
       listScrollWidth: list.scrollWidth,
@@ -485,8 +488,8 @@ test('keeps the simulator language picker within its control at narrow widths', 
     }
   })
 
-  expect(geometry.list.left).toBeCloseTo(geometry.trigger.left, 0)
-  expect(geometry.list.right).toBeCloseTo(geometry.trigger.right, 0)
+  expect(geometry.popover.left).toBeCloseTo(geometry.field.left, 0)
+  expect(geometry.popover.right).toBeCloseTo(geometry.field.right, 0)
   expect(geometry.triggerScrollWidth).toBeLessThanOrEqual(geometry.triggerClientWidth)
   expect(geometry.listScrollWidth).toBeLessThanOrEqual(geometry.listClientWidth)
 })

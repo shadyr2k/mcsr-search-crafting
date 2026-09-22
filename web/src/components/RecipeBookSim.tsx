@@ -15,7 +15,7 @@ import { loadRecipeBookInventory, saveRecipeBookInventory } from '../persistence
 import { GridSizeSwitch } from './GridSizeSwitch'
 import { ItemIcon } from './ItemIcon'
 import { ItemPicker } from './ItemPicker'
-import { englishLanguageName, englishLocaleName, isBannedLocale, languageDisplayName } from './LanguageSelector'
+import { englishLocaleName, isBannedLocale, LanguageDropdown } from './LanguageSelector'
 
 interface RecipeBookSimProps {
   data: GeneratedData
@@ -148,8 +148,6 @@ export function RecipeBookSim({
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(0)
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null)
-  const [languageMenuOpen, setLanguageMenuOpen] = useState(false)
-  const [languageSearch, setLanguageSearch] = useState('')
   const [copyStatus, setCopyStatus] = useState('')
   async function copyCharacter(character: string) {
     try { await navigator.clipboard.writeText(character); setCopyStatus(`Copied ${character}`) }
@@ -165,18 +163,6 @@ export function RecipeBookSim({
     englishLocaleName(left, languages).localeCompare(englishLocaleName(right, languages))
   )), [enabledBannedLocales, languages])
   const selectedLanguage = languages.find((language) => language.locale === selectedLocale)
-  const matchingLanguages = useMemo(() => {
-    const normalizedSearch = languageSearch.normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLocaleLowerCase().trim()
-    if (normalizedSearch === '') return selectableLanguages
-    return selectableLanguages.filter((language) => (
-      `${language.locale} ${englishLocaleName(language, languages)} ${languageDisplayName(language)}`
-        .normalize('NFKD')
-        .replace(/\p{Diacritic}/gu, '')
-        .toLocaleLowerCase()
-        .includes(normalizedSearch)
-    ))
-  }, [languageSearch, languages, selectableLanguages])
-  const selectedLanguageScore = scores.get(selectedLocale)
   const scorePositionByLocale = useMemo(() => scorePositions(scores), [scores])
   const specialCharacters = useMemo(() => (
     selectedLanguage?.script === 'latin' ? latinSpecialCharacters(data.items) : []
@@ -302,67 +288,25 @@ export function RecipeBookSim({
         <aside className="recipe-book-sim__controls" aria-label="Recipe book controls">
         <div className="recipe-book-sim__language">
           <span>language</span>
-          <div className="recipe-book-sim__language-menu">
-            <button
-              type="button"
-              className="recipe-book-sim__language-trigger"
-              aria-label="Simulator language"
-              aria-haspopup="listbox"
-              aria-expanded={languageMenuOpen}
-              onClick={() => {
-                setLanguageMenuOpen((open) => !open)
-                setLanguageSearch('')
-              }}
-            >
-              <span>{selectedLanguage ? `${englishLanguageName(selectedLanguage)} - ${languageDisplayName(selectedLanguage)}` : 'english'}</span>
-              {selectedLanguageScore?.status === 'ready' && <strong
-                className="recipe-book-sim__language-score"
-                style={{ '--language-score-position': scorePositionByLocale.get(selectedLocale) } as CSSProperties}
-              >{scoreText(selectedLanguageScore.score)}</strong>}
-              {selectedLanguageScore?.status === 'pending' && <span className="recipe-book-sim__language-score">…</span>}
-            </button>
-            {languageMenuOpen && <div className="recipe-book-sim__language-menu-popover">
-              <input
-                type="search"
-                aria-label="Search simulator languages"
-                placeholder="search languages"
-                value={languageSearch}
-                onChange={(event) => setLanguageSearch(event.target.value)}
-              />
-              <ul role="listbox" aria-label="Simulator language choices">
-              {matchingLanguages.map((language) => {
-                const score = scores.get(language.locale)
-                return <li key={language.locale}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={language.locale === selectedLocale}
-                    onClick={() => {
-                      setLanguageMenuOpen(false)
-                      setLanguageSearch('')
-                      onLocaleChange(language.locale)
-                    }}
-                  >
-                    <span>{englishLanguageName(language)} - {languageDisplayName(language)}</span>
-                    {score?.status === 'ready' && <strong
-                      className="recipe-book-sim__language-score"
-                      style={{ '--language-score-position': scorePositionByLocale.get(language.locale) } as CSSProperties}
-                    >{scoreText(score.score)}</strong>}
-                    {score?.status === 'pending' && <span className="recipe-book-sim__language-score">…</span>}
-                  </button>
-                </li>
-              })}
-              {matchingLanguages.length === 0 && <li className="recipe-book-sim__language-empty">no matching languages</li>}
-              </ul>
-            </div>}
-          </div>
+          <LanguageDropdown
+            label="Simulator language"
+            languages={selectableLanguages}
+            selectedLocale={selectedLocale}
+            onSelect={onLocaleChange}
+            renderAccessory={(language) => {
+              const score = scores.get(language.locale)
+              return score?.status === 'ready'
+                ? <strong className="recipe-book-sim__language-score" style={{ '--language-score-position': scorePositionByLocale.get(language.locale) } as CSSProperties}>{scoreText(score.score)}</strong>
+                : score?.status === 'pending' ? <span className="recipe-book-sim__language-score">…</span> : undefined
+            }}
+          />
         </div>
         {specialCharacters.length > 0 && <div className="recipe-book-sim__characters" role="region" aria-label="Special characters">
           <span>special characters</span>
           <ul>{specialCharacters.map((character) => <li key={character}><button type="button" aria-label={`Copy ${character}`} onClick={() => { void copyCharacter(character) }}>{character}</button></li>)}</ul>
           {copyStatus && <span role="status">{copyStatus}</span>}
         </div>}
-        <div className="recipe-book-sim__presets recipe-book-sim__presets--text-only" role="group" aria-label="Inventory presets">
+        <div className={`recipe-book-sim__presets${compactLayout ? ' recipe-book-sim__presets--text-only' : ''}`} role="group" aria-label="Inventory presets">
           <span>inventory preset</span>
           <div>
             {inventoryChoices.map((preset) => <button

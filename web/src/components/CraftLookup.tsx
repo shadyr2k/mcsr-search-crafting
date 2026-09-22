@@ -153,7 +153,7 @@ export function CraftLookup({
           cancelOnOutsidePointer={false}
           saveNextToGoals
           compactLayout={compactLayout}
-          hidePresetIcons
+          hidePresetIcons={compactLayout}
           onDraftChange={(nextDraft) => onSessionChange({ ...session, draft: nextDraft })}
           onSave={({ draft: nextDraft }) => {
             onSessionChange({ draft: nextDraft, entry: lookupEntryFromDraft(nextDraft) })

@@ -66,7 +66,7 @@ describe('LanguageComparison', () => {
     />)
 
     fireEvent.click(screen.getByRole('button', { name: /compare languages/i }))
-    expect(screen.getByRole('button', { name: 'Left comparison language' })).toBeTruthy()
+    expect(screen.getByRole('combobox', { name: 'Left comparison language' })).toBeTruthy()
     expect(screen.getByText('3 chars').className).toContain('language-comparison__value--better')
     expect(screen.getByText('1 junk').className).toContain('language-comparison__value--worse')
     expect(screen.getByText('4 chars').className).toContain('language-comparison__value--worse')

@@ -242,9 +242,9 @@ describe('RecipeBookSim', () => {
     />)
 
     expect(within(screen.getByRole('region', { name: 'Special characters' })).getByText('â')).toBeTruthy()
-    const languageButton = screen.getByRole('button', { name: 'Simulator language' })
-    expect(within(languageButton).getByText('1').getAttribute('style')).toContain('--language-score-position: 0')
-    fireEvent.click(languageButton)
+    const languageInput = screen.getByRole('combobox', { name: 'Simulator language' })
+    expect(screen.getByText('1').getAttribute('style')).toContain('--language-score-position: 0')
+    fireEvent.focus(languageInput)
     const languageChoices = within(screen.getByRole('listbox', { name: 'Simulator language choices' }))
     expect(languageChoices.getByText('9').getAttribute('style')).toContain('--language-score-position: 1')
     fireEvent.click(languageChoices.getByRole('option', { name: /english - english \(united states\)/ }))
@@ -292,8 +292,9 @@ describe('RecipeBookSim', () => {
       onLocaleChange={vi.fn()}
     />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Simulator language' }))
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search simulator languages' }), { target: { value: 'german' } })
+    const languageInput = screen.getByRole('combobox', { name: 'Simulator language' })
+    fireEvent.focus(languageInput)
+    fireEvent.change(languageInput, { target: { value: 'german' } })
     const languageChoices = within(screen.getByRole('listbox', { name: 'Simulator language choices' }))
     expect(languageChoices.getAllByRole('option')).toHaveLength(1)
     expect(languageChoices.getByRole('option', { name: /german/i })).toBeTruthy()

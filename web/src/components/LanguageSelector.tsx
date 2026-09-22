@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type Ref } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode, type Ref } from 'react'
 
 import type { LanguageMetadata, LanguageScoreState } from '../domain/types'
 import { normalizeSearchText } from '../engine/search'
+
+import './LanguageDropdown.css'
 
 const BANNED_LOCALES = new Set([
   'ar_sa',
@@ -330,18 +332,22 @@ export function LanguageDropdown({
   selectedLocale,
   label,
   onSelect,
+  renderAccessory,
 }: {
   languages: readonly LanguageMetadata[]
   selectedLocale: string
   label: string
   onSelect: (locale: string) => void
+  renderAccessory?: (language: LanguageMetadata) => ReactNode
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
+  const listId = useId()
   const normalizedQuery = normalizeSearchText(query.trim())
   const visibleLanguages = useMemo(() => languages.filter((language) => languageMatches(language, normalizedQuery)), [languages, normalizedQuery])
   const selectedLanguage = languages.find((language) => language.locale === selectedLocale)
+  const selectedLabel = selectedLanguage ? `${englishLocaleName(selectedLanguage, languages)} - ${languageDisplayName(selectedLanguage)}` : selectedLocale
 
   useEffect(() => {
     if (!open) return
@@ -355,17 +361,35 @@ export function LanguageDropdown({
   }, [open])
 
   return <div ref={rootRef} className="language-dropdown">
-    <button type="button" className="language-dropdown__toggle" aria-label={label} aria-haspopup="listbox" aria-expanded={open}
-      onClick={() => { setOpen((current) => !current); setQuery('') }}>
-      <span dir="ltr">{selectedLanguage ? `${englishLocaleName(selectedLanguage, languages)} - ${languageDisplayName(selectedLanguage)}` : selectedLocale}</span>
-      <span aria-hidden="true">{open ? '⌃' : '⌄'}</span>
-    </button>
+    <div className="language-dropdown__field">
+      <input
+        type="search"
+        className="language-dropdown__input"
+        role="combobox"
+        aria-label={label}
+        aria-controls={listId}
+        aria-expanded={open}
+        aria-autocomplete="list"
+        placeholder="search languages"
+        value={open ? query : selectedLabel}
+        onFocus={() => {
+          if (open) return
+          setQuery('')
+          setOpen(true)
+        }}
+        onChange={(event) => {
+          if (!open) setOpen(true)
+          setQuery(event.target.value)
+        }}
+      />
+      {selectedLanguage && renderAccessory?.(selectedLanguage)}
+    </div>
     {open && <section className="language-dropdown__menu" aria-label={`${label} choices`}>
-      <input autoFocus type="search" aria-label={`Search ${label.toLocaleLowerCase()}`} placeholder="search languages" value={query} onChange={(event) => setQuery(event.target.value)} />
       {visibleLanguages.length > 0
-        ? <ul role="listbox" aria-label={label}>{visibleLanguages.map((language) => <li key={language.locale}>
+        ? <ul id={listId} role="listbox" aria-label={`${label} choices`}>{visibleLanguages.map((language) => <li key={language.locale}>
           <button type="button" role="option" aria-selected={language.locale === selectedLocale} dir="ltr" onClick={() => { onSelect(language.locale); setOpen(false); setQuery('') }}>
-            {englishLanguageName(language)} - <span dir={isRtlLocale(language.locale) ? 'rtl' : 'ltr'}>{languageDisplayName(language)}</span>
+            <span className="language-dropdown__option-label">{englishLanguageName(language)} - <span dir={isRtlLocale(language.locale) ? 'rtl' : 'ltr'}>{languageDisplayName(language)}</span></span>
+            {renderAccessory?.(language)}
           </button>
         </li>)}</ul>
         : <p className="language-dropdown__empty">no matching languages</p>}
