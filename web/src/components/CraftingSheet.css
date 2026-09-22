@@ -8,6 +8,9 @@
 }
 
 .crafting-sheet__heading { margin: 0; font: inherit; }
+.crafting-sheet__header--actions { display: flex; align-items: stretch; min-width: 0; }
+.crafting-sheet__header--actions .crafting-sheet__heading { flex: 1 1 auto; min-width: 0; }
+.crafting-sheet__compare { flex: 0 0 auto; align-self: center; min-height: 2rem; margin-right: .65rem; padding: .3rem .5rem; font-size: .72rem; }
 .crafting-sheet__toggle { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: .65rem; width: 100%; min-height: 3.25rem; padding: .7rem .85rem; border: 0; border-radius: 0; background: transparent; text-align: start; }
 .crafting-sheet__title { color: var(--accent-strong); font-size: 1.1rem; font-weight: 400; }
 .crafting-sheet__title, .crafting-sheet__toggle-label { font-family: 'Coiny', sans-serif; font-weight: 400; }
@@ -166,6 +169,8 @@
   .crafting-sheet__entry { padding: .6rem; }
   .crafting-sheet__include { font-size: 0; }
   .crafting-sheet__item-cost { width: 100%; margin-inline-start: 2rem; }
+  .crafting-sheet__header--actions { align-items: center; }
+  .crafting-sheet__compare { min-height: 1.7rem; margin-right: .4rem; padding: .22rem .35rem; font-size: .62rem; }
 }
 
 :root[data-theme='dark'] .crafting-sheet__totals .crafting-sheet__score { color: hsl(var(--crafting-sheet-score-hue, 132deg) 54% 69%); }

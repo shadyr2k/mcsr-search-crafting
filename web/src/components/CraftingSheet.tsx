@@ -30,6 +30,7 @@ export interface CraftingSheetProps {
   onOpenChange?: (open: boolean) => void
   layout?: 'inline' | 'page'
   onBack?: () => void
+  onCompare?: () => void
   onSelectItemCraft: (entryId: string, itemId: string, optionId: string) => void
   onMoveItemCraft: (entryId: string, itemId: string, direction: -1 | 1) => void
   onSetEntryDisabled: (entryId: string, disabled: boolean) => void
@@ -342,7 +343,7 @@ function ItemSetList({ entries, items, icons, onSelectItemCraft, onMoveItemCraft
   </section>
 }
 
-export function CraftingSheet({ languageName, entries, characterSet, characterUsages, optimalCharacterCount, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, defaultOpen = false, open, onOpenChange, layout = 'inline', onBack, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, onReset }: CraftingSheetProps) {
+export function CraftingSheet({ languageName, entries, characterSet, characterUsages, optimalCharacterCount, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, defaultOpen = false, open, onOpenChange, layout = 'inline', onBack, onCompare, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, onReset }: CraftingSheetProps) {
   const [localOpen, setLocalOpen] = useState(defaultOpen)
   const [selectedCharacter, setSelectedCharacter] = useState<string>()
   const isOpen = open ?? localOpen
@@ -375,13 +376,13 @@ export function CraftingSheet({ languageName, entries, characterSet, characterUs
   </section>
 
   return <section className="crafting-sheet" aria-label={`${languageName} crafting sheet`}>
-    <header className="crafting-sheet__header"><h2 className="crafting-sheet__heading">
+    <header className="crafting-sheet__header crafting-sheet__header--actions"><h2 className="crafting-sheet__heading">
       <button type="button" className="crafting-sheet__toggle" aria-controls={panelId} aria-expanded={isOpen} onClick={() => setIsOpen(!isOpen)}>
         <span className="crafting-sheet__title">{languageName} search crafts</span>
         <span className="crafting-sheet__toggle-label" aria-hidden="true">crafting sheet</span>
         <span className="crafting-sheet__disclosure" aria-hidden="true"><ArrowSprite direction={open === false && onOpenChange ? 'right' : isOpen ? 'up' : 'down'} compact /></span>
       </button>
-    </h2></header>
+    </h2>{onCompare && <button type="button" className="crafting-sheet__compare" onClick={onCompare}>compare languages</button>}</header>
     <SheetDisclosure id={panelId} open={isOpen}>
     <div className="crafting-sheet__panel">
       <SheetSummary entries={entries} characterSet={characterSet} totalTypedCharacters={totalTypedCharacters} totalScore={totalScore} scoreDelta={scoreDelta} optimalCharacterCount={optimalCharacterCount} selectedCharacter={selectedCharacter} onSelectCharacter={selectCharacter} isCalculating={isCalculating} warning={warning} readyCount={readyCount} onReset={onReset} />

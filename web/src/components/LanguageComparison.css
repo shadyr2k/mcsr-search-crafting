@@ -54,6 +54,19 @@
 .language-comparison__empty,
 .language-comparison__status { padding: .5rem .65rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--panel-selected); }
 
+.language-comparison--page { width: min(100%, 112rem); margin-inline: auto; }
+.language-comparison__header--page button { min-height: 3.6rem; padding: .75rem 1rem; }
+.language-comparison__header--page button > :last-child { display: inline-flex; align-items: center; gap: .35rem; }
+.language-comparison__header--page .arrow-sprite { width: 1rem; height: 1rem; }
+.language-comparison--page .language-comparison__panel { gap: 1rem; padding: 1rem; }
+.language-comparison--page .language-comparison__table > header,
+.language-comparison--page .language-comparison__row { grid-template-columns: minmax(20rem, 1fr) minmax(20rem, 1fr) minmax(15rem, .7fr); gap: .8rem; }
+.language-comparison--page .language-comparison__choice,
+.language-comparison--page .language-comparison__difference { min-height: 8rem; padding: .8rem; }
+.language-comparison--page .language-comparison__choice > header strong { font-size: .86rem; }
+.language-comparison--page .language-comparison__items .item-icon { width: 1.55rem; height: 1.55rem; }
+.language-comparison--page .language-comparison__metrics { font-size: .76rem; }
+
 :root[data-theme='dark'] .language-comparison__value--better { color: #72df93 !important; }
 :root[data-theme='dark'] .language-comparison__value--worse { color: #ff91a5 !important; }
 

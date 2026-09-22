@@ -31,7 +31,7 @@ import { starterWorkspace } from './workspace/starterWorkspace'
 const catifySupportedLocally = import.meta.env.DEV
 
 type OpenEditor = (ItemSetEditorState & { entryId?: string }) | null
-type AppPage = 'home' | 'language-info' | 'craft-lookup' | 'recipe-book-sim' | 'crafting-sheet' | 'settings'
+type AppPage = 'home' | 'language-info' | 'craft-lookup' | 'recipe-book-sim' | 'crafting-sheet' | 'language-comparison' | 'settings'
 type PageTransitionPhase = 'idle' | 'exiting' | 'entering'
 type PageTransitionDirection = 'left' | 'right' | undefined
 
@@ -43,8 +43,8 @@ function sharesLanguageColumn(left: AppPage, right: AppPage): boolean {
 }
 
 function pageTransitionDirectionFor(left: AppPage, right: AppPage): PageTransitionDirection {
-  if (left === 'home' && right === 'crafting-sheet') return 'left'
-  if (left === 'crafting-sheet' && right === 'home') return 'right'
+  if (left === 'home' && (right === 'crafting-sheet' || right === 'language-comparison')) return 'left'
+  if ((left === 'crafting-sheet' || left === 'language-comparison') && right === 'home') return 'right'
   return undefined
 }
 
@@ -469,7 +469,7 @@ function App() {
   const editorNumber = editor?.entryId === undefined ? undefined : entries.findIndex((entry) => entry.id === editor.entryId) + 1
   const selectedLanguage = languages.find((language) => language.locale === selectedLocale)
   const selectedLanguageName = selectedLanguage ? englishLocaleName(selectedLanguage, languages) : 'english (us)'
-  return <main className={`app-shell${tutorialIndex !== null ? ' app-shell--tutorial' : ''}${page === 'crafting-sheet' ? ' app-shell--crafting-sheet' : ''}${appSettings.removeAnimations ? ' app-shell--remove-animations' : ''}${appSettings.compactLayout ? ' app-shell--compact-layout' : ''}`}>
+  return <main className={`app-shell${tutorialIndex !== null ? ' app-shell--tutorial' : ''}${page === 'crafting-sheet' ? ' app-shell--crafting-sheet' : ''}${page === 'language-comparison' ? ' app-shell--language-comparison' : ''}${appSettings.removeAnimations ? ' app-shell--remove-animations' : ''}${appSettings.compactLayout ? ' app-shell--compact-layout' : ''}`}>
     <header className="app-header">
       <div className="app-header__brand">
         {activeIcons && <ItemIcon itemId="minecraft:smithing_table" name="smithing table" manifest={activeIcons} size="detail" className="app-header__icon" />}
@@ -564,7 +564,21 @@ function App() {
       onSetEntryDisabled={craftingSheet.setEntryDisabled}
       onReset={craftingSheet.reset}
     />}
-    {data && activeIcons && page !== 'recipe-book-sim' && page !== 'craft-lookup' && page !== 'crafting-sheet' && page !== 'settings' && <div ref={workspaceTransitionRef} className={`workspace-grid workspace-transition workspace-transition--${page}${usesSharedLanguageTransition ? ' workspace-transition--shared-language' : ''}`}>
+    {baseData && activeIcons && page === 'language-comparison' && <LanguageComparison
+      layout="page"
+      onBack={() => selectPage('home')}
+      baseData={baseData}
+      entries={entries}
+      languages={languages}
+      selectedLocale={selectedLocale}
+      icons={activeIcons}
+      dataBaseUrl={gameVersion.packageBaseUrl}
+      scoringSettings={appSettings.scoring}
+      itemIdSearch={appSettings.itemIdSearch}
+      loadedLocale={selectedLocale}
+      loadedStates={states}
+    />}
+    {data && activeIcons && page !== 'recipe-book-sim' && page !== 'craft-lookup' && page !== 'crafting-sheet' && page !== 'language-comparison' && page !== 'settings' && <div ref={workspaceTransitionRef} className={`workspace-grid workspace-transition workspace-transition--${page}${usesSharedLanguageTransition ? ' workspace-transition--shared-language' : ''}`}>
       <ItemSetWorkspace
         dir={isRtlLocale(selectedLocale) ? 'rtl' : 'ltr'}
         entries={workspace.entries}
@@ -598,17 +612,8 @@ function App() {
           onMoveItemCraft={craftingSheet.moveItemCraft}
           onSetEntryDisabled={craftingSheet.setEntryDisabled}
           onReset={craftingSheet.reset}
+          onCompare={() => { setEditor(null); selectPage('language-comparison') }}
         />
-        {baseData && <LanguageComparison
-          baseData={baseData}
-          entries={entries}
-          languages={languages}
-          selectedLocale={selectedLocale}
-          icons={activeIcons}
-          dataBaseUrl={gameVersion.packageBaseUrl}
-          scoringSettings={appSettings.scoring}
-          itemIdSearch={appSettings.itemIdSearch}
-        />}
         {entries.map((entry, index) => <CalculatedSearchRow
           key={entry.id} entry={entry} entryNumber={index + 1} state={states.get(entry.id)} items={data.items} icons={activeIcons} collections={data.collections} compactLayout={appSettings.compactLayout} hideNumberCraftsByDefault={appSettings.hideNumberCraftsByDefault} removeAnimations={appSettings.removeAnimations} onRetry={() => retry(entry.id)}
         />)}

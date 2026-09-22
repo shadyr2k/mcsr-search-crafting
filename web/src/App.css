@@ -1042,6 +1042,23 @@ h3 {
     min-height: 0;
     max-height: none;
   }
+
+  .app-shell--language-comparison {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    min-height: 0;
+    padding-bottom: 1rem;
+  }
+
+  .app-shell--language-comparison > .page-transition {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .app-shell--language-comparison .app-header { position: relative; top: auto; }
+  .app-shell--language-comparison .language-comparison--page { min-height: 100%; }
 }
 
 .page-transition--exiting {
@@ -3244,6 +3261,17 @@ h3 {
   font-size: .92rem;
 }
 
+/* The comparison is a full workspace page, so it keeps the regular page
+   scale even when dense controls are enabled for the main craft list. */
+.app-shell--compact-layout.app-shell--language-comparison {
+  font-size: 1rem;
+}
+
+.app-shell--compact-layout.app-shell--language-comparison .app-header {
+  margin-bottom: 1.5rem;
+  padding: .75rem 1rem;
+}
+
 .app-shell--compact-layout:not(.app-shell--crafting-sheet) .app-header {
   margin-bottom: 1rem;
   padding: .6rem .8rem;
@@ -3563,7 +3591,7 @@ h3 {
   border-radius: .32rem;
   background: var(--page);
   color: var(--muted);
-  font-family: 'Monocraft', monospace;
+  font-family: 'Figtree', sans-serif;
   font-size: .82rem;
   line-height: 1;
   white-space: nowrap;

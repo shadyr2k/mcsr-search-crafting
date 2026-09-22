@@ -8,6 +8,7 @@ import { useLanguageComparison, type LanguageComparisonState } from '../hooks/us
 import { englishLocaleName } from './LanguageSelector'
 import { CraftPicker, QuerySequence } from './CraftingSheet'
 import { ItemIcon } from './ItemIcon'
+import { ArrowSprite } from './ArrowSprite'
 
 import './LanguageComparison.css'
 
@@ -20,6 +21,10 @@ interface LanguageComparisonProps {
   dataBaseUrl: string
   scoringSettings: ScoringSettings
   itemIdSearch: boolean
+  loadedLocale?: string
+  loadedStates?: ReadonlyMap<string, import('../domain/types').RowOptimizationState>
+  layout?: 'inline' | 'page'
+  onBack?: () => void
 }
 
 type Selections = Record<string, Record<string, string>>
@@ -124,7 +129,7 @@ function Differences({ left, right, leftName, rightName }: {
   </aside>
 }
 
-export function LanguageComparison({ baseData, entries, languages, selectedLocale, icons, dataBaseUrl, scoringSettings, itemIdSearch }: LanguageComparisonProps) {
+export function LanguageComparison({ baseData, entries, languages, selectedLocale, icons, dataBaseUrl, scoringSettings, itemIdSearch, loadedLocale, loadedStates, layout = 'inline', onBack }: LanguageComparisonProps) {
   const availableLocales = useMemo(() => languages.map((language) => language.locale), [languages])
   const fallbackRightLocale = useMemo(() => availableLocales.find((locale) => locale !== selectedLocale) ?? selectedLocale, [availableLocales, selectedLocale])
   const [open, setOpen] = useState(false)
@@ -132,30 +137,25 @@ export function LanguageComparison({ baseData, entries, languages, selectedLocal
   const [rightLocale, setRightLocale] = useState(fallbackRightLocale)
   const [selections, setSelections] = useState<Selections>({})
   const activeEntries = useMemo(() => entries.filter((entry) => entry.enabled && entry.targetIds.length > 0), [entries])
-  const states = useLanguageComparison(baseData, activeEntries, leftLocale, rightLocale, dataBaseUrl, scoringSettings, itemIdSearch, open)
+  const isPage = layout === 'page'
+  const isOpen = isPage || open
+  const states = useLanguageComparison(baseData, activeEntries, leftLocale, rightLocale, dataBaseUrl, scoringSettings, itemIdSearch, isOpen, loadedLocale, loadedStates)
   const leftState = states.get(leftLocale)
   const rightState = states.get(rightLocale)
   const leftName = languageName(leftLocale, languages)
   const rightName = languageName(rightLocale, languages)
 
   useEffect(() => {
-    if (!open) return
+    if (!isOpen) return
     setLeftLocale(selectedLocale)
     setRightLocale((locale) => locale === selectedLocale ? (availableLocales.find((candidate) => candidate !== selectedLocale) ?? selectedLocale) : locale)
-  }, [availableLocales, open, selectedLocale])
+  }, [availableLocales, isOpen, selectedLocale])
 
   function selectCraft(locale: string, entryId: string, optionId: string) {
     setSelections((current) => ({ ...current, [locale]: { ...current[locale], [entryId]: optionId } }))
   }
 
-  return <section className={`language-comparison${open ? ' language-comparison--open' : ''}`} aria-label="Language craft comparison">
-    <header className="language-comparison__header">
-      <button type="button" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
-        <span>compare languages</span>
-        <span>{open ? 'hide' : 'show'}</span>
-      </button>
-    </header>
-    {open && <div className="language-comparison__panel">
+  const panel = <div className="language-comparison__panel">
       <p>Choose a craft for each item set, then compare typed characters, junk, and the calculated score.</p>
       <div className="language-comparison__language-selectors">
         <label>left language
@@ -198,6 +198,25 @@ export function LanguageComparison({ baseData, entries, languages, selectedLocal
           </div>
         })}
       </div>}
-    </div>}
+    </div>
+
+  if (isPage) return <section className="language-comparison language-comparison--page" aria-label="Language craft comparison">
+    <header className="language-comparison__header language-comparison__header--page">
+      <button type="button" aria-label="Back to crafts" onClick={onBack}>
+        <span>compare languages</span>
+        <span>back to crafts <ArrowSprite direction="left" compact /></span>
+      </button>
+    </header>
+    {panel}
+  </section>
+
+  return <section className={`language-comparison${isOpen ? ' language-comparison--open' : ''}`} aria-label="Language craft comparison">
+    <header className="language-comparison__header">
+      <button type="button" aria-expanded={isOpen} onClick={() => setOpen((current) => !current)}>
+        <span>compare languages</span>
+        <span>{isOpen ? 'hide' : 'show'}</span>
+      </button>
+    </header>
+    {isOpen && panel}
   </section>
 }

@@ -117,6 +117,19 @@ describe('App workspace composition', () => {
     expect(document.querySelector('.app-shell')?.classList.contains('app-shell--crafting-sheet')).toBe(false)
   })
 
+  test('opens language comparison as its own full-width page and returns to crafts', async () => {
+    stubData()
+    render(<App />)
+    await screen.findByRole('region', { name: 'Languages' })
+    fireEvent.click(screen.getByRole('button', { name: 'compare languages' }))
+
+    expect(await screen.findByRole('button', { name: 'Back to crafts' })).toBeTruthy()
+    expect(document.querySelector('.language-comparison--page')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Back to crafts' }))
+    expect(await screen.findByRole('region', { name: 'Languages' })).toBeTruthy()
+    expect(document.querySelector('.results-column')).toBeTruthy()
+  })
+
   test('switches to dark mode and restores the saved theme', async () => {
     stubData()
     const first = render(<App />)
