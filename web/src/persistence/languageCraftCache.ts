@@ -1,6 +1,7 @@
 import type { EntryOptimizationOutcome, RankedSearch, TargetWorkspaceEntry } from '../domain/types'
 import type { ScoringSettings } from '../engine/scoring'
 import { scoringSettingsFingerprint } from '../engine/scoring'
+import { SEARCH_ALGORITHM_REVISION } from '../engine/rankedSearch'
 
 const DATABASE_NAME = 'mcsr-language-craft-cache'
 const DATABASE_VERSION = 1
@@ -37,6 +38,7 @@ export function languageCraftEntryKey(
     inventoryItemIds: [...new Set(entry.inventoryItemIds)].sort(),
     gridSize: entry.gridSize,
     retainCraftOrder: entry.retainCraftOrder === true,
+    algorithm: SEARCH_ALGORITHM_REVISION,
     scoring: scoringSettingsFingerprint(scoringSettings),
     itemIdSearch,
   })

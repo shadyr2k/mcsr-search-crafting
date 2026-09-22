@@ -9,7 +9,7 @@ import type {
 import { eligibleRecipes } from './craftability'
 import { optimizeOverlapPreparedCooperatively, type OverlapResult } from './overlapOptimizer'
 import { DEFAULT_SCORING_SETTINGS, type ScoringSettings, incompleteScore, scoreStep } from './scoring'
-import { compareRankedSearches, rankedFromSingle, rankSearches } from './rankedSearch'
+import { compareRankedSearches, rankedFromSingle, rankSearches, removeRedundantItemIdSearches } from './rankedSearch'
 import { maximumJunkItems } from './resultLimit'
 import {
   optimizeSinglePrepared,
@@ -110,14 +110,14 @@ async function optimizeEntry(
   throwIfAborted(options.signal)
   const single = optimizeSinglePrepared(prepared, scoringSettings)
   const itemSearches = Object.fromEntries(entry.targetIds.map((itemId) => [itemId,
-    prepared.candidates.filter((candidate) => candidate.coveredTargetIds.includes(itemId)
+    removeRedundantItemIdSearches(prepared.candidates.filter((candidate) => candidate.coveredTargetIds.includes(itemId)
       && (candidate.query.length <= 5 || (options.itemIdSearch === true && candidate.query.startsWith(':')))
       && candidate.junkItemIds.length <= maximumJunkItems(candidate.coveredTargetIds.length))
       .map((candidate) => rankedFromSingle({
         ...candidate,
         coveredTargetIds: [itemId],
         score: scoreStep(candidate.query.length, candidate.junkItemIds.length, scoringSettings),
-      }, scoringSettings)).sort(compareRankedSearches),
+      }, scoringSettings))).sort(compareRankedSearches),
   ]))
   // One-step paths are single-query crafts. Keeping them out of this category
   // makes the independently displayed overlap alternative meaningful.

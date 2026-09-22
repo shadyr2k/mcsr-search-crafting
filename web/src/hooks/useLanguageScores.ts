@@ -4,6 +4,7 @@ import { isBannedLocale } from '../components/LanguageSelector'
 import { loadLocalizedSearchPayload, parseLocalizedGeneratedData } from '../data/schema'
 import type { GeneratedData, LanguageMetadata, LanguageScoreState, TargetWorkspaceEntry } from '../domain/types'
 import { metricsForOutcome, optimizeWorkspaceEntry } from '../engine/optimizeWorkspace'
+import { SEARCH_ALGORITHM_REVISION } from '../engine/rankedSearch'
 import { DEFAULT_SCORING_SETTINGS, scoringSettingsFingerprint, type ScoringSettings } from '../engine/scoring'
 import { languageCraftEntryKey, loadLanguageCraftOutcomes, pruneLanguageCraftCache, saveLanguageCraftOutcome } from '../persistence/languageCraftCache'
 import { languageScoreCacheGeneration, LEGACY_GAME_VERSION_ID, loadLanguageScoreCache, saveLanguageScoreCache, type CachedLanguageScore, type LanguageScoreCache } from '../persistence/storage'
@@ -26,6 +27,7 @@ function cacheKeyForEntry(entry: TargetWorkspaceEntry): string {
     inventoryItemIds: [...new Set(entry.inventoryItemIds)].sort(),
     gridSize: entry.gridSize,
     retainCraftOrder: entry.retainCraftOrder === true,
+    algorithm: SEARCH_ALGORITHM_REVISION,
   })
 }
 

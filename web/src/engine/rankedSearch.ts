@@ -4,6 +4,9 @@ import type { OverlapResult } from './overlapOptimizer'
 import { DEFAULT_SCORING_SETTINGS, type ScoringSettings, scoreControlKeys, scoreStep, sequenceCharacterReuse } from './scoring'
 import type { SingleResult } from './singleOptimizer'
 
+/** Bump when saved craft outcomes or score-cache ranking semantics change. */
+export const SEARCH_ALGORITHM_REVISION = 2
+
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
@@ -178,10 +181,10 @@ export function rankSearches(
   overlap: readonly OverlapResult[],
   scoringSettings: ScoringSettings = DEFAULT_SCORING_SETTINGS,
 ): RankedSearch[] {
-  const ranked = [
+  const ranked = removeRedundantItemIdSearches([
     ...single.map((result) => rankedFromSingle(result, scoringSettings)),
     ...overlap.map((result) => rankedFromOverlap(result, scoringSettings)),
-  ].sort(compareRankedSearches)
+  ]).sort(compareRankedSearches)
   const result: RankedSearch[] = []
   for (let index = 0; index < ranked.length;) {
     let end = index + 1
