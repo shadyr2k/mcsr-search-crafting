@@ -21,6 +21,7 @@ import { useRowOptimizations } from './hooks/useRowOptimizations'
 import { useCraftingSheet } from './hooks/useCraftingSheet'
 import { useLanguageScores } from './hooks/useLanguageScores'
 import { clearCustomInventorySlot, clearLanguageScoreCache, loadAppSettings, loadCustomInventorySlots, loadGameVersionPreference, loadLanguagePreferences, loadTargetWorkspace, loadThemePreference, saveAppSettings, saveCustomInventorySlot, saveGameVersionPreference, saveLanguagePreferences, saveTargetWorkspace, saveThemePreference, type AppSettings, type ThemeColor, type ThemePreference } from './persistence/storage'
+import { clearLanguageCraftCache } from './persistence/languageCraftCache'
 import { normalizeScoringSettings, scoringSettingsFingerprint } from './engine/scoring'
 import { ThemePicker } from './components/ThemePicker'
 import { VersionPicker } from './components/VersionPicker'
@@ -387,6 +388,7 @@ function App() {
     const cacheWarnings = calculationSettingsChanged
       ? supportedGameVersions.map((version) => clearLanguageScoreCache(undefined, version.id).warning)
       : []
+    if (calculationSettingsChanged) supportedGameVersions.forEach((version) => { void clearLanguageCraftCache(version.id) })
     setAppSettings(nextSettings)
     if (calculationSettingsChanged) setScoringSettingsRevision((revision) => revision + 1)
     setWarning((current) => combineWarnings(current, [saved.warning, ...cacheWarnings].filter(Boolean).join(' ') || undefined))
@@ -433,6 +435,22 @@ function App() {
     }
     const shareLanguageColumn = sharesLanguageColumn(page, nextPage) && canAnimateLanguageColumn()
     const transitionDirection = pageTransitionDirectionFor(page, nextPage)
+    // Ordinary navigation does not need an exit/enter delay. Keep the requested
+    // directional transition only for the sheet and comparison workspaces.
+    if (!shareLanguageColumn && transitionDirection === undefined) {
+      clearPageTransitionTimer()
+      pendingPageRef.current = undefined
+      priorLanguagePositionRef.current = undefined
+      if (selector) {
+        selector.style.transition = ''
+        selector.style.transform = ''
+      }
+      setUsesSharedLanguageTransition(false)
+      setPageTransitionDirection(undefined)
+      setPageTransitionPhase('idle')
+      setPage(nextPage)
+      return
+    }
     if (shareLanguageColumn) {
       clearPageTransitionTimer()
       priorLanguagePositionRef.current = selector?.getBoundingClientRect()
@@ -575,6 +593,7 @@ function App() {
       dataBaseUrl={gameVersion.packageBaseUrl}
       scoringSettings={appSettings.scoring}
       itemIdSearch={appSettings.itemIdSearch}
+      minecraftVersion={gameVersion.id}
       loadedLocale={selectedLocale}
       loadedStates={states}
     />}

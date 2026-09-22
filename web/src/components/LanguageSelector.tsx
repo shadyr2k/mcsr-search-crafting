@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties, type Ref } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type Ref } from 'react'
 
 import type { LanguageMetadata, LanguageScoreState } from '../domain/types'
 import { normalizeSearchText } from '../engine/search'
@@ -322,4 +322,53 @@ export function LanguageSelector({
         : <p className="language-selector__empty">no matching languages</p>}
     </section>
   </section>
+}
+
+/** A compact searchable picker for places that need one language at a time. */
+export function LanguageDropdown({
+  languages,
+  selectedLocale,
+  label,
+  onSelect,
+}: {
+  languages: readonly LanguageMetadata[]
+  selectedLocale: string
+  label: string
+  onSelect: (locale: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const rootRef = useRef<HTMLDivElement>(null)
+  const normalizedQuery = normalizeSearchText(query.trim())
+  const visibleLanguages = useMemo(() => languages.filter((language) => languageMatches(language, normalizedQuery)), [languages, normalizedQuery])
+  const selectedLanguage = languages.find((language) => language.locale === selectedLocale)
+
+  useEffect(() => {
+    if (!open) return
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (rootRef.current?.contains(event.target as Node)) return
+      setOpen(false)
+      setQuery('')
+    }
+    document.addEventListener('pointerdown', closeOnOutsidePointer)
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer)
+  }, [open])
+
+  return <div ref={rootRef} className="language-dropdown">
+    <button type="button" className="language-dropdown__toggle" aria-label={label} aria-haspopup="listbox" aria-expanded={open}
+      onClick={() => { setOpen((current) => !current); setQuery('') }}>
+      <span dir="ltr">{selectedLanguage ? `${englishLocaleName(selectedLanguage, languages)} - ${languageDisplayName(selectedLanguage)}` : selectedLocale}</span>
+      <span aria-hidden="true">{open ? '⌃' : '⌄'}</span>
+    </button>
+    {open && <section className="language-dropdown__menu" aria-label={`${label} choices`}>
+      <input autoFocus type="search" aria-label={`Search ${label.toLocaleLowerCase()}`} placeholder="search languages" value={query} onChange={(event) => setQuery(event.target.value)} />
+      {visibleLanguages.length > 0
+        ? <ul role="listbox" aria-label={label}>{visibleLanguages.map((language) => <li key={language.locale}>
+          <button type="button" role="option" aria-selected={language.locale === selectedLocale} dir="ltr" onClick={() => { onSelect(language.locale); setOpen(false); setQuery('') }}>
+            {englishLanguageName(language)} - <span dir={isRtlLocale(language.locale) ? 'rtl' : 'ltr'}>{languageDisplayName(language)}</span>
+          </button>
+        </li>)}</ul>
+        : <p className="language-dropdown__empty">no matching languages</p>}
+    </section>}
+  </div>
 }

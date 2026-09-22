@@ -250,7 +250,7 @@ export interface AggregateLocaleMetrics {
   leastJunk?: number
 }
 
-function metricsForOutcome(outcome: EntryOptimizationOutcome): Omit<AggregateLocaleMetrics, 'score'> {
+export function metricsForOutcome(outcome: EntryOptimizationOutcome): Omit<AggregateLocaleMetrics, 'score'> {
   if (outcome.kind !== 'ranked' || outcome.rankedSearches.length === 0) return {}
   const optimalSearches = outcome.rankedSearches.filter((search) => search.totalScore === outcome.bestScore)
   return {

@@ -5,6 +5,7 @@ import type { EntryOptimizationOutcome, GeneratedData, RowOptimizationState, Tar
 import { optimizeWorkspaceEntry } from '../engine/optimizeWorkspace'
 import type { ScoringSettings } from '../engine/scoring'
 import { scoringSettingsFingerprint } from '../engine/scoring'
+import { languageCraftEntryKey, loadLanguageCraftOutcomes, saveLanguageCraftOutcome } from '../persistence/languageCraftCache'
 import { entryOptimizationFingerprint } from './useRowOptimizations'
 
 export type LanguageComparisonState =
@@ -33,6 +34,7 @@ export function useLanguageComparison(
   enabled = true,
   loadedLocale?: string,
   loadedStates?: ReadonlyMap<string, RowOptimizationState>,
+  minecraftVersion = '1.16.1',
 ): ReadonlyMap<string, LanguageComparisonState> {
   const [states, setStates] = useState<ReadonlyMap<string, LanguageComparisonState>>(new Map())
   const cacheRef = useRef(new Map<string, CachedOutcomes>())
@@ -75,7 +77,13 @@ export function useLanguageComparison(
           }
           return outcomes
         })()
-    if (reusableOutcomes && loadedLocale) cacheRef.current.set(loadedLocale, { fingerprint: entryFingerprint, outcomes: reusableOutcomes })
+    if (reusableOutcomes && loadedLocale) {
+      cacheRef.current.set(loadedLocale, { fingerprint: entryFingerprint, outcomes: reusableOutcomes })
+      activeEntries.forEach((entry) => {
+        const outcome = reusableOutcomes.get(entry.id)
+        if (outcome) void saveLanguageCraftOutcome(minecraftVersion, languageCraftEntryKey(entry, scoringSettings, itemIdSearch), loadedLocale, outcome)
+      })
+    }
 
     const controller = new AbortController()
     const initialStates = new Map<string, LanguageComparisonState>()
@@ -100,18 +108,44 @@ export function useLanguageComparison(
     void (async () => {
       let payload: unknown | undefined
       try {
-        if (pendingLocales.some((locale) => locale !== 'en_us')) payload = await loadLocalizedSearchPayload(dataBaseUrl)
+        const persistedByLocale = new Map<string, ReadonlyMap<string, EntryOptimizationOutcome>>()
+        await Promise.all(pendingLocales.map(async (locale) => {
+          const storedEntries = await Promise.all(activeEntries.map(async (entry) => [
+            entry.id,
+            (await loadLanguageCraftOutcomes(minecraftVersion, languageCraftEntryKey(entry, scoringSettings, itemIdSearch))).get(locale),
+          ] as const))
+          const outcomes = new Map<string, EntryOptimizationOutcome>()
+          storedEntries.forEach(([entryId, outcome]) => { if (outcome !== undefined) outcomes.set(entryId, outcome) })
+          persistedByLocale.set(locale, outcomes)
+        }))
+        if (controller.signal.aborted) return
+        const localesNeedingCalculation = pendingLocales.filter((locale) => (
+          (persistedByLocale.get(locale)?.size ?? 0) !== activeEntries.length
+        ))
         for (const locale of pendingLocales) {
+          const outcomes = persistedByLocale.get(locale)
+          if (outcomes?.size !== activeEntries.length) continue
+          cacheRef.current.set(locale, { fingerprint: entryFingerprint, outcomes })
+          publish(locale, { status: 'ready', outcomes })
+        }
+        if (localesNeedingCalculation.some((locale) => locale !== 'en_us')) payload = await loadLocalizedSearchPayload(dataBaseUrl)
+        for (const locale of localesNeedingCalculation) {
           if (controller.signal.aborted) return
           const localeData = locale === 'en_us'
             ? baseData
             : parseLocalizedGeneratedData(payload, locale, baseData)
-          const calculated = await Promise.all(activeEntries.map(async (entry) => [entry.id, await optimizeWorkspaceEntry(localeData, entry, {
+          const persisted = persistedByLocale.get(locale) ?? new Map()
+          const calculated = await Promise.all(activeEntries.map(async (entry) => [entry.id, persisted.get(entry.id) ?? await optimizeWorkspaceEntry(localeData, entry, {
               signal: controller.signal,
               scoringSettings,
               itemIdSearch,
             })] as const))
           const outcomes = new Map<string, EntryOptimizationOutcome>(calculated)
+          activeEntries.forEach((entry) => {
+            if (persisted.has(entry.id)) return
+            const outcome = outcomes.get(entry.id)
+            if (outcome) void saveLanguageCraftOutcome(minecraftVersion, languageCraftEntryKey(entry, scoringSettings, itemIdSearch), locale, outcome)
+          })
           cacheRef.current.set(locale, { fingerprint: entryFingerprint, outcomes })
           publish(locale, { status: 'ready', outcomes })
         }
@@ -126,7 +160,7 @@ export function useLanguageComparison(
     })()
 
     return () => controller.abort()
-  }, [activeEntries, baseData, dataBaseUrl, enabled, entryFingerprint, fingerprint, itemIdSearch, leftLocale, loadedLocale, loadedReadyFingerprint, rightLocale, scoringSettings])
+  }, [activeEntries, baseData, dataBaseUrl, enabled, entryFingerprint, fingerprint, itemIdSearch, leftLocale, loadedLocale, loadedReadyFingerprint, minecraftVersion, rightLocale, scoringSettings])
 
   return states
 }

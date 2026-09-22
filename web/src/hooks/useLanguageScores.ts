@@ -3,13 +3,15 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { isBannedLocale } from '../components/LanguageSelector'
 import { loadLocalizedSearchPayload, parseLocalizedGeneratedData } from '../data/schema'
 import type { GeneratedData, LanguageMetadata, LanguageScoreState, TargetWorkspaceEntry } from '../domain/types'
-import { aggregateLocaleMetrics } from '../engine/optimizeWorkspace'
+import { metricsForOutcome, optimizeWorkspaceEntry } from '../engine/optimizeWorkspace'
 import { DEFAULT_SCORING_SETTINGS, scoringSettingsFingerprint, type ScoringSettings } from '../engine/scoring'
+import { languageCraftEntryKey, loadLanguageCraftOutcomes, pruneLanguageCraftCache, saveLanguageCraftOutcome } from '../persistence/languageCraftCache'
 import { languageScoreCacheGeneration, LEGACY_GAME_VERSION_ID, loadLanguageScoreCache, saveLanguageScoreCache, type CachedLanguageScore, type LanguageScoreCache } from '../persistence/storage'
 
 interface ScoringEntry {
   entry: TargetWorkspaceEntry
   cacheKey: string
+  craftCacheKey: string
 }
 
 function isAbortError(error: unknown): boolean {
@@ -70,7 +72,11 @@ export function useLanguageScores(
   const cacheRef = useRef<LanguageScoreCache | undefined>(undefined)
   const scoringEntries = useMemo(() => entries
     .filter((entry) => entry.enabled && entry.targetIds.length > 0)
-    .map((entry) => ({ entry, cacheKey: cacheKeyForEntry(entry) })), [entries])
+    .map((entry) => ({
+      entry,
+      cacheKey: cacheKeyForEntry(entry),
+      craftCacheKey: languageCraftEntryKey(entry, scoringSettings, itemIdSearch),
+    })), [entries, itemIdSearch, scoringSettings])
   const inputFingerprint = useMemo(() => JSON.stringify({
     locales: languages.map((language) => language.locale),
     itemSets: scoringEntries.map(({ cacheKey }) => cacheKey).sort(),
@@ -84,6 +90,11 @@ export function useLanguageScores(
     setLoadedCacheGeneration(languageScoreCacheGeneration(minecraftVersion))
     setLoadedCacheIdentity(cacheIdentity)
   }, [cacheIdentity, minecraftVersion])
+
+  useEffect(() => {
+    if (scoringEntries.length === 0) return
+    void pruneLanguageCraftCache(minecraftVersion, new Set(scoringEntries.map(({ craftCacheKey }) => craftCacheKey)))
+  }, [minecraftVersion, scoringEntries])
 
   useEffect(() => {
     if (loadedCacheIdentity !== cacheIdentity || loadedCacheGeneration === undefined || !baseData || languages.length === 0 || scoringEntries.length === 0) {
@@ -108,8 +119,6 @@ export function useLanguageScores(
       } else initialScores.set(language.locale, { status: 'ready', ...cachedScore })
     }
     setScores(initialScores)
-    if (pendingLocales.size === 0) return
-
     const controller = new AbortController()
 
     function publish(locale: string, state: LanguageScoreState) {
@@ -137,14 +146,22 @@ export function useLanguageScores(
       saveLanguageScoreCache(updatedCache, undefined, minecraftVersion, loadedCacheGeneration)
     }
 
-    async function calculate(locale: string, localeData: GeneratedData) {
+    async function calculate(
+      locale: string,
+      localeData: GeneratedData,
+      cachedOutcomes: ReadonlyMap<string, import('../domain/types').EntryOptimizationOutcome>,
+    ) {
       try {
-        for (const { entry, cacheKey } of scoringEntries) {
-          if (cachedAggregateScore(cacheRef.current, locale, [{ entry, cacheKey }]) !== undefined) continue
-          const score = await aggregateLocaleMetrics(localeData, [entry], { signal: controller.signal, scoringSettings, itemIdSearch })
+        for (const { entry, cacheKey, craftCacheKey } of scoringEntries) {
+          const outcome = cachedOutcomes.get(entry.id) ?? await optimizeWorkspaceEntry(localeData, entry, {
+            signal: controller.signal,
+            scoringSettings,
+            itemIdSearch,
+          })
           if (controller.signal.aborted) return
-          if (score === undefined || !Number.isFinite(score.score)) throw new Error('No language score was available.')
-          rememberScore(cacheKey, locale, score)
+          if (!Number.isFinite(outcome.bestScore)) throw new Error('No language score was available.')
+          if (!cachedOutcomes.has(entry.id)) void saveLanguageCraftOutcome(minecraftVersion, craftCacheKey, locale, outcome)
+          rememberScore(cacheKey, locale, { score: outcome.bestScore, ...metricsForOutcome(outcome) })
         }
         const score = cachedAggregateScore(cacheRef.current, locale, scoringEntries)
         publish(locale, score === undefined ? { status: 'unavailable' } : { status: 'ready', ...score })
@@ -154,12 +171,29 @@ export function useLanguageScores(
     }
 
     void (async () => {
-      if (pendingLocales.has('en_us')) await calculate('en_us', baseData)
+      const cachedByLocale = new Map<string, ReadonlyMap<string, import('../domain/types').EntryOptimizationOutcome>>()
+      await Promise.all(eligibleLanguages.map(async (language) => {
+        const cachedEntries = await Promise.all(scoringEntries.map(async ({ entry, craftCacheKey }) => [
+          entry.id,
+          (await loadLanguageCraftOutcomes(minecraftVersion, craftCacheKey)).get(language.locale),
+        ] as const))
+        const outcomes = new Map<string, import('../domain/types').EntryOptimizationOutcome>()
+        cachedEntries.forEach(([entryId, outcome]) => { if (outcome !== undefined) outcomes.set(entryId, outcome) })
+        cachedByLocale.set(language.locale, outcomes)
+      }))
+      if (controller.signal.aborted) return
+
+      const needsCalculation = (locale: string) => (cachedByLocale.get(locale)?.size ?? 0) !== scoringEntries.length
+      await calculate('en_us', baseData, cachedByLocale.get('en_us') ?? new Map())
       if (controller.signal.aborted) return
 
       const pendingLocalizedLocales = eligibleLanguages.filter((language) => (
-        language.locale !== 'en_us' && pendingLocales.has(language.locale)
+        language.locale !== 'en_us' && needsCalculation(language.locale)
       ))
+      for (const language of eligibleLanguages) {
+        if (language.locale === 'en_us' || needsCalculation(language.locale)) continue
+        await calculate(language.locale, baseData, cachedByLocale.get(language.locale) ?? new Map())
+      }
       if (pendingLocalizedLocales.length === 0) return
 
       let payload: unknown
@@ -173,7 +207,7 @@ export function useLanguageScores(
       for (const language of pendingLocalizedLocales) {
         if (controller.signal.aborted) return
         try {
-          await calculate(language.locale, parseLocalizedGeneratedData(payload, language.locale, baseData))
+          await calculate(language.locale, parseLocalizedGeneratedData(payload, language.locale, baseData), cachedByLocale.get(language.locale) ?? new Map())
         } catch (error) {
           if (!isAbortError(error)) publish(language.locale, { status: 'unavailable' })
         }

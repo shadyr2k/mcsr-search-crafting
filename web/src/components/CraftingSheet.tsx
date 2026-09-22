@@ -382,7 +382,7 @@ export function CraftingSheet({ languageName, entries, characterSet, characterUs
         <span className="crafting-sheet__toggle-label" aria-hidden="true">crafting sheet</span>
         <span className="crafting-sheet__disclosure" aria-hidden="true"><ArrowSprite direction={open === false && onOpenChange ? 'right' : isOpen ? 'up' : 'down'} compact /></span>
       </button>
-    </h2>{onCompare && <button type="button" className="crafting-sheet__compare" onClick={onCompare}>compare languages</button>}</header>
+    </h2>{onCompare && <button type="button" className="crafting-sheet__compare" onClick={onCompare}><span>compare languages</span><span aria-hidden="true"><ArrowSprite direction="right" compact /></span></button>}</header>
     <SheetDisclosure id={panelId} open={isOpen}>
     <div className="crafting-sheet__panel">
       <SheetSummary entries={entries} characterSet={characterSet} totalTypedCharacters={totalTypedCharacters} totalScore={totalScore} scoreDelta={scoreDelta} optimalCharacterCount={optimalCharacterCount} selectedCharacter={selectedCharacter} onSelectCharacter={selectCharacter} isCalculating={isCalculating} warning={warning} readyCount={readyCount} onReset={onReset} />
