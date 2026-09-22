@@ -224,6 +224,7 @@ test('keeps the full sheet and comparison pages fluid in normal and compact layo
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.getByRole('button', { name: 'crafting sheet', exact: true }).click()
     await expect.poll(() => page.locator('.page-transition').getAttribute('class')).toBe('page-transition')
+    await expect(page.locator('.page-transition')).toHaveCSS('pointer-events', 'auto')
     const sheet = page.locator('.crafting-sheet--page')
     await expect(sheet).toBeVisible()
     if (compact) await expect(sheet).toHaveClass(/crafting-sheet--compact/)
@@ -246,6 +247,18 @@ test('keeps the full sheet and comparison pages fluid in normal and compact layo
     }
     await page.getByRole('button', { name: 'Back to crafts' }).click()
     await expect.poll(() => page.locator('.page-transition').getAttribute('class')).toBe('page-transition')
+
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.getByRole('button', { name: 'language info', exact: true }).click()
+    await expect(page.getByRole('heading', { name: /more language info/i })).toBeVisible()
+    await page.getByRole('button', { name: 'craft lookup', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'craft lookup' })).toBeVisible()
+    await page.getByRole('button', { name: 'recipe book sim', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'recipe book simulator' })).toBeVisible()
+    await page.getByRole('button', { name: 'settings', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'scoring settings' })).toBeVisible()
+    await page.getByRole('button', { name: 'search crafting', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'crafting sheet', exact: true })).toBeVisible()
   }
 
   await page.goto('/')

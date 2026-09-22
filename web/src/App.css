@@ -1061,52 +1061,6 @@ h3 {
   .app-shell--language-comparison .language-comparison--page { min-height: 100%; }
 }
 
-.page-transition--exiting {
-  pointer-events: none;
-  animation: page-content-fade-out 320ms cubic-bezier(.4, 0, .2, 1) both;
-}
-
-.page-transition--entering {
-  animation: page-content-fade-in 420ms cubic-bezier(.4, 0, .2, 1) both;
-}
-
-@keyframes page-content-fade-out {
-  from { opacity: 1; }
-  to { opacity: 0; }
-}
-
-@keyframes page-content-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-/* Opening the crafting sheet keeps its work in a separate page while retaining
-   a direct sense of where the crafts page went. */
-.page-transition--slide-left.page-transition--exiting { animation: page-content-slide-out-left 320ms cubic-bezier(.4, 0, .2, 1) both; }
-.page-transition--slide-left.page-transition--entering { animation: page-content-slide-in-right 420ms cubic-bezier(.4, 0, .2, 1) both; }
-.page-transition--slide-right.page-transition--exiting { animation: page-content-slide-out-right 320ms cubic-bezier(.4, 0, .2, 1) both; }
-.page-transition--slide-right.page-transition--entering { animation: page-content-slide-in-left 420ms cubic-bezier(.4, 0, .2, 1) both; }
-
-@keyframes page-content-slide-out-left {
-  from { opacity: 1; transform: translateX(0); }
-  to { opacity: 0; transform: translateX(-110vw); }
-}
-
-@keyframes page-content-slide-in-right {
-  from { opacity: 0; transform: translateX(110vw); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
-@keyframes page-content-slide-out-right {
-  from { opacity: 1; transform: translateX(0); }
-  to { opacity: 0; transform: translateX(110vw); }
-}
-
-@keyframes page-content-slide-in-left {
-  from { opacity: 0; transform: translateX(-110vw); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
 /* One persistent language list moves between the two page layouts. */
 .workspace-transition {
   grid-template-columns: minmax(20rem, 1fr) minmax(16rem, .75fr) minmax(28rem, 1.5fr);
@@ -1171,20 +1125,6 @@ h3 {
 @keyframes workspace-panel-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
-}
-
-/* During a full tab change the page wrapper owns the fade, so the destination
-   appears as one finished layout rather than several independently delayed panels. */
-.page-transition--entering .workspace-transition {
-  transition: none;
-}
-
-.page-transition--entering .workspace-transition > .item-set-workspace,
-.page-transition--entering .workspace-transition > .language-selector,
-.page-transition--entering .workspace-transition > .results-column,
-.page-transition--entering .workspace-transition > .language-info-panel {
-  transition: none !important;
-  animation: none !important;
 }
 
 /* The two desktop layouts share the language list. Fade their other panels

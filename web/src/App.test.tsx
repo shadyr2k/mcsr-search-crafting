@@ -99,18 +99,18 @@ describe('App workspace composition', () => {
     expect(document.querySelector('.results-column .crafting-sheet__action .arrow-sprite')?.classList.contains('arrow-sprite--right')).toBe(true)
   })
 
-  test('opens the crafting sheet as a sliding page and returns to the crafts', async () => {
+  test('opens the crafting sheet immediately and returns to the crafts', async () => {
     stubData()
     render(<App />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'crafting sheet' }))
-    expect(document.querySelector('.page-transition')?.classList.contains('page-transition--slide-left')).toBe(true)
+    expect(document.querySelector('.page-transition')?.className).toBe('page-transition')
 
     const back = await screen.findByRole('button', { name: 'Back to english (us) crafts' })
     expect(document.querySelector('.crafting-sheet--page')).toBeTruthy()
     expect(document.querySelector('.app-shell')?.classList.contains('app-shell--crafting-sheet')).toBe(true)
     fireEvent.click(back)
-    expect(document.querySelector('.page-transition')?.classList.contains('page-transition--slide-right')).toBe(true)
+    expect(document.querySelector('.page-transition')?.className).toBe('page-transition')
 
     await screen.findByRole('region', { name: 'Languages' })
     expect(document.querySelector('.results-column')).toBeTruthy()

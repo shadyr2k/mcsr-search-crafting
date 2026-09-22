@@ -33,20 +33,9 @@ const catifySupportedLocally = import.meta.env.DEV
 
 type OpenEditor = (ItemSetEditorState & { entryId?: string }) | null
 type AppPage = 'home' | 'language-info' | 'craft-lookup' | 'recipe-book-sim' | 'crafting-sheet' | 'language-comparison' | 'settings'
-type PageTransitionPhase = 'idle' | 'exiting' | 'entering'
-type PageTransitionDirection = 'left' | 'right' | undefined
-
-const PAGE_EXIT_DURATION_MS = 320
-const PAGE_ENTER_DURATION_MS = 420
 
 function sharesLanguageColumn(left: AppPage, right: AppPage): boolean {
   return (left === 'home' && right === 'language-info') || (left === 'language-info' && right === 'home')
-}
-
-function pageTransitionDirectionFor(left: AppPage, right: AppPage): PageTransitionDirection {
-  if (left === 'home' && (right === 'crafting-sheet' || right === 'language-comparison')) return 'left'
-  if ((left === 'crafting-sheet' || left === 'language-comparison') && right === 'home') return 'right'
-  return undefined
 }
 
 function canAnimateLanguageColumn(): boolean {
@@ -118,7 +107,6 @@ function App() {
   const [appSettings, setAppSettings] = useState<AppSettings>(initialAppSettings.value)
   const [scoringSettingsRevision, setScoringSettingsRevision] = useState(0)
   const [page, setPage] = useState<AppPage>('home')
-  const [pageTransitionPhase, setPageTransitionPhase] = useState<PageTransitionPhase>('idle')
   const [usesSharedLanguageTransition, setUsesSharedLanguageTransition] = useState(false)
   const [loadingLocale, setLoadingLocale] = useState<string>()
   const [error, setError] = useState<string>()
@@ -135,9 +123,6 @@ function App() {
   const workspaceTransitionRef = useRef<HTMLDivElement>(null)
   const priorLanguagePositionRef = useRef<DOMRect | undefined>(undefined)
   const languageAnimationFrameRef = useRef<number | undefined>(undefined)
-  const pendingPageRef = useRef<AppPage | undefined>(undefined)
-  const pageTransitionTimeoutRef = useRef<number | undefined>(undefined)
-  const [pageTransitionDirection, setPageTransitionDirection] = useState<PageTransitionDirection>()
   const entries = useMemo(() => orderedEntries(workspace.entries), [workspace.entries])
   const gameVersion = gameVersionForId(gameVersionId)
   const activeIcons = useMemo(() => icons && catifySupportedLocally && appSettings.catifyItems && catifiedIconOverrides
@@ -292,7 +277,6 @@ function App() {
 
   useEffect(() => () => {
     if (languageAnimationFrameRef.current !== undefined) cancelAnimationFrame(languageAnimationFrameRef.current)
-    if (pageTransitionTimeoutRef.current !== undefined) clearTimeout(pageTransitionTimeoutRef.current)
   }, [])
 
   function openEdit(entryId: string) {
@@ -396,92 +380,23 @@ function App() {
 
   function selectPage(nextPage: AppPage) {
     if (tutorialIndex !== null) closeTutorial()
-    const clearPageTransitionTimer = () => {
-      if (pageTransitionTimeoutRef.current === undefined) return
-      clearTimeout(pageTransitionTimeoutRef.current)
-      pageTransitionTimeoutRef.current = undefined
-    }
-
-    if (nextPage === page) {
-      if (pageTransitionPhase === 'exiting') {
-        clearPageTransitionTimer()
-        pendingPageRef.current = undefined
-        setPageTransitionDirection(undefined)
-        setPageTransitionPhase('idle')
-      }
-      return
-    }
-    if (pageTransitionPhase === 'exiting') {
-      pendingPageRef.current = nextPage
-      setPageTransitionDirection(pageTransitionDirectionFor(page, nextPage))
-      return
-    }
+    if (nextPage === page) return
 
     if (languageAnimationFrameRef.current !== undefined) cancelAnimationFrame(languageAnimationFrameRef.current)
     const selector = languageSelectorRef.current
-    if (appSettings.removeAnimations) {
-      clearPageTransitionTimer()
-      pendingPageRef.current = undefined
-      priorLanguagePositionRef.current = undefined
-      if (selector) {
-        selector.style.transition = ''
-        selector.style.transform = ''
-      }
-      setUsesSharedLanguageTransition(false)
-      setPageTransitionDirection(undefined)
-      setPageTransitionPhase('idle')
-      setPage(nextPage)
-      return
-    }
-    const shareLanguageColumn = sharesLanguageColumn(page, nextPage) && canAnimateLanguageColumn()
-    const transitionDirection = pageTransitionDirectionFor(page, nextPage)
-    // Ordinary navigation does not need an exit/enter delay. Keep the requested
-    // directional transition only for the sheet and comparison workspaces.
-    if (!shareLanguageColumn && transitionDirection === undefined) {
-      clearPageTransitionTimer()
-      pendingPageRef.current = undefined
-      priorLanguagePositionRef.current = undefined
-      if (selector) {
-        selector.style.transition = ''
-        selector.style.transform = ''
-      }
-      setUsesSharedLanguageTransition(false)
-      setPageTransitionDirection(undefined)
-      setPageTransitionPhase('idle')
-      setPage(nextPage)
-      return
-    }
+    const shareLanguageColumn = !appSettings.removeAnimations && sharesLanguageColumn(page, nextPage) && canAnimateLanguageColumn()
     if (shareLanguageColumn) {
-      clearPageTransitionTimer()
       priorLanguagePositionRef.current = selector?.getBoundingClientRect()
-      setPageTransitionPhase('idle')
       setUsesSharedLanguageTransition(true)
-      setPageTransitionDirection(undefined)
-      setPage(nextPage)
     } else {
       priorLanguagePositionRef.current = undefined
       if (selector) {
         selector.style.transition = ''
         selector.style.transform = ''
       }
-      clearPageTransitionTimer()
-      pendingPageRef.current = nextPage
       setUsesSharedLanguageTransition(false)
-      setPageTransitionDirection(transitionDirection)
-      setPageTransitionPhase('exiting')
-      pageTransitionTimeoutRef.current = window.setTimeout(() => {
-        const pendingPage = pendingPageRef.current
-        pendingPageRef.current = undefined
-        if (pendingPage === undefined) return
-        setPage(pendingPage)
-        setPageTransitionPhase('entering')
-        pageTransitionTimeoutRef.current = window.setTimeout(() => {
-          setPageTransitionPhase('idle')
-          setPageTransitionDirection(undefined)
-          pageTransitionTimeoutRef.current = undefined
-        }, PAGE_ENTER_DURATION_MS)
-      }, PAGE_EXIT_DURATION_MS)
     }
+    setPage(nextPage)
   }
 
   const editorNumber = editor?.entryId === undefined ? undefined : entries.findIndex((entry) => entry.id === editor.entryId) + 1
@@ -504,7 +419,7 @@ function App() {
         </nav>
       </div>
       <div className="app-header__menu">
-        {pageTutorials[page] && <button ref={helpRef} type="button" className="app-header__help" aria-label={`Help for ${page === 'home' ? 'search crafting' : page.replaceAll('-', ' ')}`} disabled={!data || !activeIcons || pageTransitionPhase !== 'idle'} onClick={() => { tutorialPriorView.current = { editor }; setTutorialIndex(0) }}>?</button>}
+        {pageTutorials[page] && <button ref={helpRef} type="button" className="app-header__help" aria-label={`Help for ${page === 'home' ? 'search crafting' : page.replaceAll('-', ' ')}`} disabled={!data || !activeIcons} onClick={() => { tutorialPriorView.current = { editor }; setTutorialIndex(0) }}>?</button>}
         <VersionPicker versions={supportedGameVersions} selectedVersionId={gameVersion.id} onVersionChange={selectGameVersion} />
         {activeIcons && <ThemePicker theme={theme} icons={activeIcons} onThemeColorChange={selectThemeColor} />}
         <button
@@ -522,7 +437,7 @@ function App() {
       </div>
     </header>
     {warning && <p role="alert">{warning}</p>}{error && <p role="alert">{error}</p>}
-    <div className={`page-transition${pageTransitionPhase === 'idle' ? '' : ` page-transition--${pageTransitionPhase}`}${pageTransitionDirection ? ` page-transition--slide-${pageTransitionDirection}` : ''}`}>
+    <div className="page-transition">
     {page === 'settings' && <SettingsPage
       settings={appSettings}
       catifyAvailable={catifySupportedLocally && (!catifyOverridesResolved || catifiedIconOverrides !== undefined)
