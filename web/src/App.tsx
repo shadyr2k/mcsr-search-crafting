@@ -130,7 +130,7 @@ function App() {
     : icons, [appSettings.catifyItems, catifiedIconOverrides, gameVersion.id, icons])
   const { states, retry } = useRowOptimizations(data, workspace.entries, appSettings.scoring, appSettings.itemIdSearch)
   const craftingSheet = useCraftingSheet(selectedLocale, entries, states, gameVersion.id, workspaceLoaded, appSettings.scoring)
-  const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.packageBaseUrl, gameVersion.id, appSettings.scoring, appSettings.itemIdSearch, scoringSettingsRevision)
+  const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.id, appSettings.scoring, appSettings.itemIdSearch, scoringSettingsRevision)
 
   useLayoutEffect(() => {
     if (tutorialIndex === null) return

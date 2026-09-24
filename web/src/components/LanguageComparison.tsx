@@ -30,6 +30,7 @@ interface LanguageComparisonProps {
 }
 
 type Selections = Record<string, Record<string, CraftingSheetSelection>>
+type ComparisonRequest = { leftLocale: string; rightLocale: string }
 
 function scoreText(score: number): string {
   return Number.isInteger(score) ? String(score) : score.toFixed(1)
@@ -134,10 +135,12 @@ export function LanguageComparison({ baseData, entries, languages, selectedLocal
   const [leftLocale, setLeftLocale] = useState(selectedLocale)
   const [rightLocale, setRightLocale] = useState(fallbackRightLocale)
   const [selections, setSelections] = useState<Selections>({})
+  const [comparisonRequest, setComparisonRequest] = useState<ComparisonRequest>()
   const activeEntries = useMemo(() => entries.filter((entry) => entry.enabled && entry.targetIds.length > 0), [entries])
   const isPage = layout === 'page'
   const isOpen = isPage || open
-  const states = useLanguageComparison(baseData, activeEntries, leftLocale, rightLocale, dataBaseUrl, scoringSettings, itemIdSearch, isOpen, loadedLocale, loadedStates, minecraftVersion)
+  const isComparisonRequested = comparisonRequest?.leftLocale === leftLocale && comparisonRequest.rightLocale === rightLocale
+  const states = useLanguageComparison(baseData, activeEntries, leftLocale, rightLocale, dataBaseUrl, scoringSettings, itemIdSearch, isOpen && isComparisonRequested, loadedLocale, loadedStates, minecraftVersion)
   const leftState = states.get(leftLocale)
   const rightState = states.get(rightLocale)
   const leftName = languageName(leftLocale, languages)
@@ -151,7 +154,18 @@ export function LanguageComparison({ baseData, entries, languages, selectedLocal
     if (!isOpen) return
     setLeftLocale(selectedLocale)
     setRightLocale((locale) => locale === selectedLocale ? (availableLocales.find((candidate) => candidate !== selectedLocale) ?? selectedLocale) : locale)
+    setComparisonRequest(undefined)
   }, [availableLocales, isOpen, selectedLocale])
+
+  function chooseLeftLocale(locale: string) {
+    setLeftLocale(locale)
+    setComparisonRequest(undefined)
+  }
+
+  function chooseRightLocale(locale: string) {
+    setRightLocale(locale)
+    setComparisonRequest(undefined)
+  }
 
   function updateSelection(locale: string, entryId: string, update: (selection: CraftingSheetSelection) => CraftingSheetSelection) {
     setSelections((current) => ({ ...current, [locale]: { ...current[locale], [entryId]: update(current[locale]?.[entryId] ?? {}) } }))
@@ -170,15 +184,17 @@ export function LanguageComparison({ baseData, entries, languages, selectedLocal
   }
 
   const panel = <div className="language-comparison__panel">
-    <p>Choose and reorder a craft for every item, then compare typed characters, junk, and the calculated score.</p>
+    <p>Choose two languages, then calculate their crafts before choosing and reordering a craft for each item.</p>
     <div className="language-comparison__language-selectors">
-      <label>left language<LanguageDropdown label="Left comparison language" languages={languages} selectedLocale={leftLocale} onSelect={setLeftLocale} /></label>
-      <label>right language<LanguageDropdown label="Right comparison language" languages={languages} selectedLocale={rightLocale} onSelect={setRightLocale} /></label>
+      <label>left language<LanguageDropdown label="Left comparison language" languages={languages} selectedLocale={leftLocale} onSelect={chooseLeftLocale} /></label>
+      <label>right language<LanguageDropdown label="Right comparison language" languages={languages} selectedLocale={rightLocale} onSelect={chooseRightLocale} /></label>
     </div>
+    <button type="button" className="language-comparison__start" disabled={activeEntries.length === 0} onClick={() => setComparisonRequest({ leftLocale, rightLocale })}>compare</button>
     {activeEntries.length === 0 && <p className="language-comparison__empty">Add an item set with a search goal to compare languages.</p>}
-    {(leftState?.status === 'pending' || rightState?.status === 'pending') && <p className="language-comparison__status">calculating comparison…</p>}
-    {(leftState?.status === 'unavailable' || rightState?.status === 'unavailable') && <p className="language-comparison__status">The comparison could not be calculated for one of these languages.</p>}
-    {activeEntries.length > 0 && <div className="language-comparison__table">
+    {!isComparisonRequested && activeEntries.length > 0 && <p className="language-comparison__status">Choose two languages, then press compare to calculate and save their crafts.</p>}
+    {isComparisonRequested && (leftState?.status === 'pending' || rightState?.status === 'pending') && <p className="language-comparison__status">calculating comparison…</p>}
+    {isComparisonRequested && (leftState?.status === 'unavailable' || rightState?.status === 'unavailable') && <p className="language-comparison__status">The comparison could not be calculated for one of these languages.</p>}
+    {isComparisonRequested && activeEntries.length > 0 && <div className="language-comparison__table">
       <header><strong>{leftName}</strong><strong>{rightName}</strong><strong>differences</strong></header>
       {activeEntries.map((sourceEntry, index) => {
         const left = leftEntries.get(sourceEntry.id)

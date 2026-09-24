@@ -240,6 +240,9 @@ test('keeps the full sheet and comparison pages fluid in normal and compact layo
     await expect(comparison).toBeVisible()
     if (compact) await expect(comparison).toHaveClass(/language-comparison--compact/)
     else await expect(comparison).not.toHaveClass(/language-comparison--compact/)
+    await expect(comparison.locator('.language-comparison__row')).toHaveCount(0)
+    await comparison.getByRole('button', { name: /^compare$/i }).click()
+    await expect(comparison.locator('.language-comparison__row').first()).toBeVisible()
     for (const [width, columns] of [[1280, 3], [768, 2], [375, 1]] as const) {
       await page.setViewportSize({ width, height: 900 })
       await expectPageFits('.language-comparison--page')

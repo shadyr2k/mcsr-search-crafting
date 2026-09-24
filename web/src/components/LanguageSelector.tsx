@@ -125,9 +125,10 @@ function scoreText(score: number): string {
 
 function scoreRank(score: LanguageScoreState | undefined): number {
   if (score?.status === 'ready') return 0
-  if (score?.status === 'pending') return 1
-  if (score?.status === 'unavailable') return 2
-  return 3
+  if (score?.status === 'not-calculated') return 1
+  if (score?.status === 'pending') return 2
+  if (score?.status === 'unavailable') return 3
+  return 4
 }
 
 function scorePositions(scores: ReadonlyMap<string, LanguageScoreState>): ReadonlyMap<string, number> {
@@ -242,6 +243,7 @@ function LanguageOption({
         aria-hidden="true"
       >{scoreText(score.score)}</strong>}
       {score?.status === 'pending' && <span className="language-selector__score" aria-hidden="true">…</span>}
+      {score?.status === 'not-calculated' && <span className="language-selector__score" title="Calculate this language from Compare languages." aria-hidden="true">—</span>}
     </button>
     {banned && (compactLayout
       ? <div className="language-selector__enable-options" role="group" aria-label={`Enable ${displayName} for calculation`}>

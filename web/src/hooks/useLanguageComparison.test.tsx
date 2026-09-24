@@ -3,6 +3,8 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import type { EntryOptimizationOutcome, GeneratedData, TargetWorkspaceEntry } from '../domain/types'
 import { DEFAULT_SCORING_SETTINGS } from '../engine/scoring'
+import { languageScoreEntryKey } from '../persistence/languageScoreCache'
+import { loadLanguageScoreCache } from '../persistence/storage'
 import { entryOptimizationFingerprint } from './useRowOptimizations'
 
 const mocks = vi.hoisted(() => ({
@@ -18,11 +20,15 @@ vi.mock('../data/schema', () => ({
 
 vi.mock('../engine/optimizeWorkspace', () => ({
   optimizeWorkspaceEntry: mocks.optimizeWorkspaceEntry,
+  metricsForOutcome: () => ({}),
 }))
 
 import { useLanguageComparison } from './useLanguageComparison'
 
-afterEach(() => vi.clearAllMocks())
+afterEach(() => {
+  localStorage.clear()
+  vi.clearAllMocks()
+})
 
 const entry: TargetWorkspaceEntry = { id: 'tools', targetIds: ['minecraft:stick'], inventoryItemIds: [], enabled: true, gridSize: 3, order: 0 }
 const entries = [entry]
@@ -57,5 +63,6 @@ describe('useLanguageComparison', () => {
     await waitFor(() => expect(hook.result.current.get('de_de')).toMatchObject({ status: 'ready' }))
     expect(mocks.optimizeWorkspaceEntry).toHaveBeenCalledTimes(1)
     expect(mocks.optimizeWorkspaceEntry).toHaveBeenCalledWith(localizedData, entry, expect.objectContaining({ itemIdSearch: false }))
+    expect(loadLanguageScoreCache().value.entryScores[languageScoreEntryKey(entry)]).toEqual({ en_us: { score: 0 }, de_de: { score: 0 } })
   })
 })

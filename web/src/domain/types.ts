@@ -91,6 +91,7 @@ export interface LocalizedLanguageInfo {
 
 export type LanguageScoreState =
   | { status: 'pending' }
+  | { status: 'not-calculated' }
   | {
       status: 'ready'
       score: number

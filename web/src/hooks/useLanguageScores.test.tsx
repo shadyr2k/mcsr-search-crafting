@@ -1,24 +1,9 @@
 import { cleanup, renderHook, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test } from 'vitest'
 
-import type { EntryOptimizationOutcome, GeneratedData, LanguageMetadata, TargetWorkspaceEntry } from '../domain/types'
-
-const mocks = vi.hoisted(() => ({
-  optimizeWorkspaceEntry: vi.fn(),
-  loadLocalizedSearchPayload: vi.fn(),
-  parseLocalizedGeneratedData: vi.fn(),
-}))
-
-vi.mock('../engine/optimizeWorkspace', () => ({
-  optimizeWorkspaceEntry: mocks.optimizeWorkspaceEntry,
-  metricsForOutcome: (outcome: EntryOptimizationOutcome) => ({ optimalCharacterCount: outcome.bestScore + 1, leastJunk: outcome.bestScore % 3 }),
-}))
-
-vi.mock('../data/schema', () => ({
-  loadLocalizedSearchPayload: mocks.loadLocalizedSearchPayload,
-  parseLocalizedGeneratedData: mocks.parseLocalizedGeneratedData,
-}))
-
+import type { GeneratedData, LanguageMetadata, TargetWorkspaceEntry } from '../domain/types'
+import { LANGUAGE_SCORE_CACHE_UPDATED_EVENT, languageScoreEntryKey } from '../persistence/languageScoreCache'
+import { saveLanguageScoreCache } from '../persistence/storage'
 import { useLanguageScores } from './useLanguageScores'
 
 const data: GeneratedData = {
@@ -34,8 +19,8 @@ const languages: LanguageMetadata[] = [
   { locale: 'en_us', name: 'English', region: 'US', script: 'latin' },
   { locale: 'de_de', name: 'Deutsch', region: 'DE', script: 'latin' },
 ]
-const englishOnly = [languages[0]]
 const noBannedLocales = new Set<string>()
+const minecraftVersion = 'language-score-hook-test'
 
 function entry(id: string, targetId: string): TargetWorkspaceEntry {
   return {
@@ -48,69 +33,50 @@ function entry(id: string, targetId: string): TargetWorkspaceEntry {
   }
 }
 
-function scoreFor(locale: string, targetId: string): number {
-  const targetScore = targetId === 'minecraft:stick' ? 3 : 5
-  return locale === 'de_de' ? targetScore + 100 : targetScore
-}
-
-beforeEach(() => {
-  mocks.loadLocalizedSearchPayload.mockResolvedValue({})
-  mocks.parseLocalizedGeneratedData.mockImplementation((_payload: unknown, locale: string) => (
-    { ...data, locale } as GeneratedData
-  ))
-  mocks.optimizeWorkspaceEntry.mockImplementation(async (
-    localeData: GeneratedData,
-    currentEntry: TargetWorkspaceEntry,
-  ) => {
-    const score = scoreFor(
-      (localeData as GeneratedData & { locale?: string }).locale ?? 'en_us',
-      currentEntry.targetIds[0],
-    )
-    return { kind: 'ranked', entryId: currentEntry.id, rankedSearches: [], bestScore: score, visibleItemIds: [] } satisfies EntryOptimizationOutcome
-  })
-})
-
 afterEach(() => {
   cleanup()
   localStorage.clear()
-  vi.clearAllMocks()
 })
 
 describe('useLanguageScores', () => {
-  test('restores completed scores for every language after a reload', async () => {
+  test('shows only already cached language scores without starting optimizations', async () => {
     const itemSets = [entry('tools', 'minecraft:stick'), entry('blocks', 'minecraft:crafting_table')]
-    const first = renderHook(() => useLanguageScores(data, languages, itemSets, noBannedLocales, '/versions/26.1.2/', '26.1.2'))
+    saveLanguageScoreCache({
+      entryScores: {
+        [languageScoreEntryKey(itemSets[0])]: {
+          en_us: { score: 3, optimalCharacterCount: 4, leastJunk: 0 },
+          de_de: { score: 103, optimalCharacterCount: 104, leastJunk: 1 },
+        },
+        [languageScoreEntryKey(itemSets[1])]: {
+          en_us: { score: 5, optimalCharacterCount: 6, leastJunk: 2 },
+          de_de: { score: 105, optimalCharacterCount: 106, leastJunk: 0 },
+        },
+      },
+    }, undefined, minecraftVersion)
 
-    await waitFor(() => expect(first.result.current.get('de_de')).toEqual({ status: 'ready', score: 208, optimalCharacterCount: 210, leastJunk: 1 }))
-    expect(mocks.optimizeWorkspaceEntry).toHaveBeenCalledTimes(4)
-
-    first.unmount()
-    mocks.optimizeWorkspaceEntry.mockClear()
-    mocks.loadLocalizedSearchPayload.mockClear()
-
-    const reloaded = renderHook(() => useLanguageScores(data, languages, itemSets, noBannedLocales, '/versions/26.1.2/', '26.1.2'))
-
-    await waitFor(() => expect(reloaded.result.current.get('en_us')).toEqual({ status: 'ready', score: 8, optimalCharacterCount: 10, leastJunk: 2 }))
-    expect(reloaded.result.current.get('de_de')).toEqual({ status: 'ready', score: 208, optimalCharacterCount: 210, leastJunk: 1 })
-    expect(mocks.optimizeWorkspaceEntry).not.toHaveBeenCalled()
-    expect(mocks.loadLocalizedSearchPayload).not.toHaveBeenCalled()
-  })
-
-  test('calculates only an item set that is not already cached', async () => {
-    const tools = entry('tools', 'minecraft:stick')
-    const blocks = entry('blocks', 'minecraft:crafting_table')
-    const hook = renderHook(({ itemSets }) => useLanguageScores(data, englishOnly, itemSets, noBannedLocales, '/versions/26.1.2/', 'unit-test-2'), {
-      initialProps: { itemSets: [tools] },
-    })
-
-    await waitFor(() => expect(hook.result.current.get('en_us')).toEqual({ status: 'ready', score: 3, optimalCharacterCount: 4, leastJunk: 0 }))
-    expect(mocks.optimizeWorkspaceEntry).toHaveBeenCalledTimes(1)
-
-    hook.rerender({ itemSets: [tools, blocks] })
+    const hook = renderHook(() => useLanguageScores(data, languages, itemSets, noBannedLocales, minecraftVersion))
 
     await waitFor(() => expect(hook.result.current.get('en_us')).toEqual({ status: 'ready', score: 8, optimalCharacterCount: 10, leastJunk: 2 }))
-    expect(mocks.optimizeWorkspaceEntry).toHaveBeenCalledTimes(2)
-    expect(mocks.optimizeWorkspaceEntry.mock.calls[1][1]).toEqual(blocks)
+    expect(hook.result.current.get('de_de')).toEqual({ status: 'ready', score: 208, optimalCharacterCount: 210, leastJunk: 1 })
+  })
+
+  test('keeps an uncached language uncalculated until an explicit comparison saves it', async () => {
+    const itemSets = [entry('tools', 'minecraft:stick')]
+    const hook = renderHook(() => useLanguageScores(data, languages, itemSets, noBannedLocales, minecraftVersion))
+
+    await waitFor(() => expect(hook.result.current.get('en_us')).toEqual({ status: 'not-calculated' }))
+    expect(hook.result.current.get('de_de')).toEqual({ status: 'not-calculated' })
+
+    saveLanguageScoreCache({
+      entryScores: {
+        [languageScoreEntryKey(itemSets[0])]: {
+          en_us: { score: 3, optimalCharacterCount: 4, leastJunk: 0 },
+        },
+      },
+    }, undefined, minecraftVersion)
+    window.dispatchEvent(new Event(LANGUAGE_SCORE_CACHE_UPDATED_EVENT))
+
+    await waitFor(() => expect(hook.result.current.get('en_us')).toEqual({ status: 'ready', score: 3, optimalCharacterCount: 4, leastJunk: 0 }))
+    expect(hook.result.current.get('de_de')).toEqual({ status: 'not-calculated' })
   })
 })
-
