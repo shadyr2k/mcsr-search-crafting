@@ -223,7 +223,7 @@ test('keeps the full sheet and comparison pages fluid in normal and compact layo
   async function checkPages(compact: boolean) {
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.getByRole('button', { name: 'crafting sheet', exact: true }).click()
-    await expect.poll(() => page.locator('.page-transition').getAttribute('class')).toBe('page-transition')
+    await expect(page.locator('.page-transition__content')).toHaveClass(/page-transition__content--entering/)
     await expect(page.locator('.page-transition')).toHaveCSS('pointer-events', 'auto')
     const sheet = page.locator('.crafting-sheet--page')
     await expect(sheet).toBeVisible()
@@ -235,7 +235,7 @@ test('keeps the full sheet and comparison pages fluid in normal and compact layo
     }
     await page.getByRole('button', { name: /Back to .* crafts/ }).click()
     await page.getByRole('button', { name: 'compare languages', exact: true }).click()
-    await expect.poll(() => page.locator('.page-transition').getAttribute('class')).toBe('page-transition')
+    await expect(page.locator('.page-transition__content')).toHaveClass(/page-transition__content--entering/)
     const comparison = page.getByRole('region', { name: 'Language craft comparison' })
     await expect(comparison).toBeVisible()
     if (compact) await expect(comparison).toHaveClass(/language-comparison--compact/)
@@ -249,7 +249,7 @@ test('keeps the full sheet and comparison pages fluid in normal and compact layo
       await expect.poll(() => comparison.locator('.language-comparison__row').first().evaluate((row) => getComputedStyle(row).gridTemplateColumns.trim().split(/\s+/).length)).toBe(columns)
     }
     await page.getByRole('button', { name: 'Back to crafts' }).click()
-    await expect.poll(() => page.locator('.page-transition').getAttribute('class')).toBe('page-transition')
+    await expect(page.locator('.page-transition__content')).toHaveClass(/page-transition__content--entering/)
 
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.getByRole('button', { name: 'language info', exact: true }).click()

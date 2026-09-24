@@ -21,7 +21,7 @@ for (const width of [1440, 375]) {
       ['Retain item order', '.item-set-editor .craft-order-switch'],
       ['Your inventory', '.item-set-editor__inventory'],
       ['Custom inventories', '.item-set-editor .custom-slots'],
-      ['Choose a language', width > 1152 ? '.language-selector__dropdown .language-selector__language' : '.language-selector'],
+      ['Choose a language', width > 1152 ? '.language-selector__category .language-selector__language' : '.language-selector'],
       ['Your top crafts', '.results-column .calculated-search-row:has(.craft-preview--single):has(.craft-preview--overlap) .calculated-search-row__summary'],
       ['Your crafting sheet', '.crafting-sheet__totals'],
     ]

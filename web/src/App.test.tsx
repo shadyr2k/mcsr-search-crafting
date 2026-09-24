@@ -99,18 +99,20 @@ describe('App workspace composition', () => {
     expect(document.querySelector('.results-column .crafting-sheet__action .arrow-sprite')?.classList.contains('arrow-sprite--right')).toBe(true)
   })
 
-  test('opens the crafting sheet immediately and returns to the crafts', async () => {
+  test('animates the crafting sheet into view without blocking navigation', async () => {
     stubData()
     render(<App />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'crafting sheet' }))
-    expect(document.querySelector('.page-transition')?.className).toBe('page-transition')
+    expect(document.querySelector('.page-transition__content')?.classList.contains('page-transition__content--entering')).toBe(true)
+    expect(document.querySelector('.page-transition__content')?.classList.contains('page-transition__content--slide-left')).toBe(true)
 
     const back = await screen.findByRole('button', { name: 'Back to english (us) crafts' })
     expect(document.querySelector('.crafting-sheet--page')).toBeTruthy()
     expect(document.querySelector('.app-shell')?.classList.contains('app-shell--crafting-sheet')).toBe(true)
     fireEvent.click(back)
-    expect(document.querySelector('.page-transition')?.className).toBe('page-transition')
+    expect(document.querySelector('.page-transition__content')?.classList.contains('page-transition__content--entering')).toBe(true)
+    expect(document.querySelector('.page-transition__content')?.classList.contains('page-transition__content--slide-right')).toBe(true)
 
     await screen.findByRole('region', { name: 'Languages' })
     expect(document.querySelector('.results-column')).toBeTruthy()

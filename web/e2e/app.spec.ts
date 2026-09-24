@@ -289,49 +289,52 @@ test('stacks the three workspace columns on a narrow viewport', async ({ page })
   expect(columnCount).toBe(1)
 })
 
-test('keeps the searchable language dropdown on the stacked language-info page', async ({ page }) => {
+test('keeps categorized language lists on the stacked normal language-info page', async ({ page }) => {
   await page.setViewportSize({ width: 720, height: 1000 })
   await page.goto('/')
   await page.getByRole('button', { name: 'language info' }).click()
   await expect(page.getByRole('heading', { name: /more language info/i })).toBeVisible()
 
   const languagePicker = await page.locator('.workspace-transition--language-info > .language-selector').evaluate((selector) => ({
-    dropdownDisplay: getComputedStyle(selector.querySelector<HTMLElement>('.language-selector__dropdown')!).display,
+    categoriesDisplay: getComputedStyle(selector.querySelector<HTMLElement>('.language-selector__categories')!).display,
+    latinDisplay: getComputedStyle(selector.querySelector<HTMLElement>('.language-selector__category')!).display,
     searchDisplay: getComputedStyle(selector.querySelector<HTMLElement>('.language-selector__search')!).display,
     titleDisplay: getComputedStyle(selector.querySelector<HTMLElement>('.language-selector__title')!).display,
   }))
   expect(languagePicker.titleDisplay).not.toBe('none')
-  expect(languagePicker.dropdownDisplay).not.toBe('none')
+  expect(languagePicker.categoriesDisplay).not.toBe('none')
+  expect(languagePicker.latinDisplay).not.toBe('none')
   expect(languagePicker.searchDisplay).not.toBe('none')
 })
 
-test('keeps every main navigation destination immediately interactive', async ({ page }) => {
+test('animates every main navigation destination without blocking interaction', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto('/')
-  const pageTransition = page.locator('.page-transition')
+  const pageTransition = page.locator('.page-transition__content')
   await page.getByRole('button', { name: 'recipe book sim' }).click()
   await expect(page.locator('.recipe-book-sim')).toBeVisible()
-  await expect(pageTransition).toHaveClass(/^page-transition$/)
+  await expect(pageTransition).toHaveClass(/page-transition__content--entering/)
+  await expect(page.locator('.page-transition')).toHaveCSS('pointer-events', 'auto')
   await page.getByRole('button', { name: 'language info' }).click()
   await expect(page.getByRole('heading', { name: /more language info/i })).toBeVisible()
-  await expect(pageTransition).toHaveClass(/^page-transition$/)
+  await expect(pageTransition).toHaveClass(/page-transition__content--entering/)
 
   await page.getByRole('button', { name: 'recipe book sim' }).click()
   await expect(page.locator('.recipe-book-sim')).toBeVisible()
-  await expect(pageTransition).toHaveClass(/^page-transition$/)
+  await expect(pageTransition).toHaveClass(/page-transition__content--entering/)
 
   await page.getByRole('button', { name: 'search crafting' }).click()
   await expect(page.locator('.workspace-transition--home')).toBeVisible()
-  await expect(pageTransition).toHaveClass(/^page-transition$/)
+  await expect(pageTransition).toHaveClass(/page-transition__content--entering/)
 })
 
 test('keeps the shared language selector visible when returning to search crafting', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto('/')
-  const pageTransition = page.locator('.page-transition')
+  const pageTransition = page.locator('.page-transition__content')
   await page.getByRole('button', { name: 'language info' }).click()
   await expect(page.getByRole('heading', { name: /more language info/i })).toBeVisible()
-  await expect(pageTransition).not.toHaveClass(/page-transition--(exiting|entering)/)
+  await expect(pageTransition).not.toHaveClass(/page-transition__content--(exiting|entering)/)
   await page.getByRole('button', { name: 'search crafting' }).click()
 
   const languageTransition = await page.locator('.workspace-transition--home > .language-selector').evaluate((selector) => ({
@@ -342,16 +345,17 @@ test('keeps the shared language selector visible when returning to search crafti
   expect(languageTransition.fadesLanguage).toBe(false)
   expect(languageTransition.animation).toBe('none')
   expect(languageTransition.opacity).toBe('1')
-  await expect(pageTransition).not.toHaveClass(/page-transition--(exiting|entering)/)
+  await expect(pageTransition).not.toHaveClass(/page-transition__content--(exiting|entering)/)
 })
 
-test('keeps stacked craft and language-info pages interactive', async ({ page }) => {
+test('animates stacked craft and language-info pages without blocking interaction', async ({ page }) => {
   await page.setViewportSize({ width: 720, height: 1000 })
   await page.goto('/')
-  const pageTransition = page.locator('.page-transition')
+  const pageTransition = page.locator('.page-transition__content')
   await page.getByRole('button', { name: 'language info' }).click()
   await expect(page.getByRole('heading', { name: /more language info/i })).toBeVisible()
-  await expect(pageTransition).toHaveClass(/^page-transition$/)
+  await expect(pageTransition).toHaveClass(/page-transition__content--entering/)
+  await expect(page.locator('.page-transition')).toHaveCSS('pointer-events', 'auto')
 })
 
 test('keeps items added from recipe details after a reload', async ({ page }) => {

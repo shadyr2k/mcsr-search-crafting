@@ -282,6 +282,11 @@ export function LanguageSelector({
   const visibleLanguages = useMemo(() => languages
     .filter((language) => languageMatches(language, normalizedQuery))
     .sort((left, right) => compareLanguages(left, right, scores, sortMode)), [languages, normalizedQuery, scores, sortMode])
+  const categories = useMemo(() => [
+    { id: 'latin', title: 'latin text', languages: visibleLanguages.filter((language) => !isBannedLocale(language.locale) && language.script === 'latin') },
+    { id: 'non-latin', title: 'non-latin text', languages: visibleLanguages.filter((language) => !isBannedLocale(language.locale) && language.script !== 'latin') },
+    { id: 'banned', title: 'banned', languages: visibleLanguages.filter((language) => isBannedLocale(language.locale)) },
+  ].filter((category) => category.languages.length > 0), [visibleLanguages])
   const languageOptionProps = {
     selectedLocale,
     enabledBannedLocales,
@@ -296,35 +301,51 @@ export function LanguageSelector({
     compactLayout,
   }
 
-  return <section ref={containerRef} className="language-selector" aria-label="Languages">
-    <div className="language-selector__toolbar">
-      <h2 className="language-selector__title">language list</h2>
-      <div className="language-selector__sort">
-        <button type="button" aria-label="Sort languages" aria-expanded={sortOpen} aria-controls="language-sort-options" onClick={() => setSortOpen((open) => !open)}>sort by</button>
-        {sortOpen && <div id="language-sort-options" className="language-selector__sort-options" role="menu" aria-label="Sort languages by">
-          {(Object.keys(sortLabels) as LanguageSortMode[]).map((mode) => <button
-            key={mode}
-            type="button"
-            role="menuitemradio"
-            aria-checked={sortMode === mode}
-            onClick={() => { setSortMode(mode); setSortOpen(false) }}
-          >{sortLabels[mode]}</button>)}
-        </div>}
-      </div>
+  const toolbar = <div className="language-selector__toolbar">
+    <h2 className="language-selector__title">language list</h2>
+    <div className="language-selector__sort">
+      <button type="button" aria-label="Sort languages" aria-expanded={sortOpen} aria-controls="language-sort-options" onClick={() => setSortOpen((open) => !open)}>sort by</button>
+      {sortOpen && <div id="language-sort-options" className="language-selector__sort-options" role="menu" aria-label="Sort languages by">
+        {(Object.keys(sortLabels) as LanguageSortMode[]).map((mode) => <button
+          key={mode}
+          type="button"
+          role="menuitemradio"
+          aria-checked={sortMode === mode}
+          onClick={() => { setSortMode(mode); setSortOpen(false) }}
+        >{sortLabels[mode]}</button>)}
+      </div>}
     </div>
-    <input
-      className="language-selector__search"
-      type="search"
-      aria-label="Search languages"
-      placeholder="search languages"
-      value={query}
-      onChange={(event) => setQuery(event.target.value)}
-    />
+  </div>
+  const search = <input
+    className="language-selector__search"
+    type="search"
+    aria-label="Search languages"
+    placeholder="search languages"
+    value={query}
+    onChange={(event) => setQuery(event.target.value)}
+  />
+
+  if (compactLayout) return <section ref={containerRef} className="language-selector language-selector--compact" aria-label="Languages">
+    {toolbar}
+    {search}
     <section className="language-selector__dropdown" aria-label="Language choices">
       {visibleLanguages.length > 0
         ? <ul>{visibleLanguages.map((language) => <LanguageOption key={language.locale} language={language} {...languageOptionProps} />)}</ul>
         : <p className="language-selector__empty">no matching languages</p>}
     </section>
+  </section>
+
+  return <section ref={containerRef} className="language-selector" aria-label="Languages">
+    {toolbar}
+    {search}
+    <div className="language-selector__categories" role="region" aria-label="Language choices">
+      {categories.length > 0
+        ? categories.map((category) => <section key={category.id} className="language-selector__category" aria-label={category.title}>
+          <h2>{category.title}</h2>
+          <ul>{category.languages.map((language) => <LanguageOption key={language.locale} language={language} {...languageOptionProps} />)}</ul>
+        </section>)
+        : <p className="language-selector__empty">no matching languages</p>}
+    </div>
   </section>
 }
 

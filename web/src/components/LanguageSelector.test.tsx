@@ -17,15 +17,26 @@ const languages = [
 afterEach(cleanup)
 
 describe('LanguageSelector', () => {
-  test('shows English and Minecraft names in one scrollable language dropdown', () => {
+  test('groups the normal language list into Latin, non-Latin, and banned categories', () => {
     render(<LanguageSelector languages={languages} selectedLocale="en_us" enabledBannedLocales={new Set()} scores={new Map()} onSelect={vi.fn()} onBannedLocaleEnabledChange={vi.fn()} />)
 
     expect(screen.getByRole('heading', { name: 'language list' })).toBeTruthy()
     const choices = screen.getByRole('region', { name: 'Language choices' })
+    expect(screen.getByRole('region', { name: 'latin text' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'non-latin text' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'banned' })).toBeTruthy()
     expect(within(choices).getByRole('button', { name: 'english - english (united states)' }).getAttribute('aria-pressed')).toBe('true')
     expect(within(choices).getByRole('button', { name: 'elfdalian - övdalska (swerre)' })).toBeTruthy()
     expect(within(choices).getByRole('button', { name: /ɥs/ })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Sort languages' })).toBeTruthy()
+  })
+
+  test('uses the single searchable language list only in compact layout', () => {
+    render(<LanguageSelector languages={languages} selectedLocale="en_us" enabledBannedLocales={new Set()} scores={new Map()} compactLayout onSelect={vi.fn()} onBannedLocaleEnabledChange={vi.fn()} />)
+
+    expect(document.querySelector('.language-selector')?.classList.contains('language-selector--compact')).toBe(true)
+    expect(screen.queryByRole('region', { name: 'latin text' })).toBeNull()
+    expect(screen.getByRole('region', { name: 'Language choices' }).className).toContain('language-selector__dropdown')
   })
 
   test('uses English dialect names for the results title only when variants exist', () => {

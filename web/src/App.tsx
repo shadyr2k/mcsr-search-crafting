@@ -33,9 +33,22 @@ const catifySupportedLocally = import.meta.env.DEV
 
 type OpenEditor = (ItemSetEditorState & { entryId?: string }) | null
 type AppPage = 'home' | 'language-info' | 'craft-lookup' | 'recipe-book-sim' | 'crafting-sheet' | 'language-comparison' | 'settings'
+type PageTransitionDirection = 'left' | 'right' | undefined
+
+interface PageContentTransition {
+  key: number
+  animated: boolean
+  direction: PageTransitionDirection
+}
 
 function sharesLanguageColumn(left: AppPage, right: AppPage): boolean {
   return (left === 'home' && right === 'language-info') || (left === 'language-info' && right === 'home')
+}
+
+function pageTransitionDirectionFor(left: AppPage, right: AppPage): PageTransitionDirection {
+  if (left === 'home' && (right === 'crafting-sheet' || right === 'language-comparison')) return 'left'
+  if ((left === 'crafting-sheet' || left === 'language-comparison') && right === 'home') return 'right'
+  return undefined
 }
 
 function canAnimateLanguageColumn(): boolean {
@@ -107,6 +120,7 @@ function App() {
   const [appSettings, setAppSettings] = useState<AppSettings>(initialAppSettings.value)
   const [scoringSettingsRevision, setScoringSettingsRevision] = useState(0)
   const [page, setPage] = useState<AppPage>('home')
+  const [pageContentTransition, setPageContentTransition] = useState<PageContentTransition>({ key: 0, animated: false, direction: undefined })
   const [usesSharedLanguageTransition, setUsesSharedLanguageTransition] = useState(false)
   const [loadingLocale, setLoadingLocale] = useState<string>()
   const [error, setError] = useState<string>()
@@ -388,6 +402,7 @@ function App() {
     if (shareLanguageColumn) {
       priorLanguagePositionRef.current = selector?.getBoundingClientRect()
       setUsesSharedLanguageTransition(true)
+      setPageContentTransition((current) => current.animated ? { ...current, animated: false, direction: undefined } : current)
     } else {
       priorLanguagePositionRef.current = undefined
       if (selector) {
@@ -395,6 +410,8 @@ function App() {
         selector.style.transform = ''
       }
       setUsesSharedLanguageTransition(false)
+      if (appSettings.removeAnimations) setPageContentTransition((current) => current.animated ? { ...current, animated: false, direction: undefined } : current)
+      else setPageContentTransition((current) => ({ key: current.key + 1, animated: true, direction: pageTransitionDirectionFor(page, nextPage) }))
     }
     setPage(nextPage)
   }
@@ -438,6 +455,7 @@ function App() {
     </header>
     {warning && <p role="alert">{warning}</p>}{error && <p role="alert">{error}</p>}
     <div className="page-transition">
+    <div key={pageContentTransition.key} className={`page-transition__content${pageContentTransition.animated ? ' page-transition__content--entering' : ''}${pageContentTransition.direction ? ` page-transition__content--slide-${pageContentTransition.direction}` : ''}`}>
     {page === 'settings' && <SettingsPage
       settings={appSettings}
       catifyAvailable={catifySupportedLocally && (!catifyOverridesResolved || catifiedIconOverrides !== undefined)
@@ -568,6 +586,7 @@ function App() {
       </div>}
       {languages.length > 0 && <LanguageInfoPanel locale={selectedLocale} languageName={selectedLanguageName} dataBaseUrl={gameVersion.packageBaseUrl} />}
     </div>}
+    </div>
     </div>
     {tutorialIndex !== null && pageTutorials[page] && <PageTutorial steps={pageTutorials[page]} index={tutorialIndex} onChange={setTutorialIndex} onClose={closeTutorial} />}
   </main>
