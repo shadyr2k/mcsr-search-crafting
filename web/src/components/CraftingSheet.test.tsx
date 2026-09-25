@@ -182,6 +182,20 @@ describe('CraftingSheet', () => {
     expect(input.onSetItemQuery).toHaveBeenCalledWith('bed-anchor', 'bed', 'runner craft')
   })
 
+  test('uses the site arrow sprite to submit a query and a text arrow in compact layout', () => {
+    const input = props()
+    const { unmount } = render(<CraftingSheet {...input} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Expand item set 1' }))
+    expect(within(screen.getByRole('button', { name: 'Use query for bed' })).getByRole('img', { name: 'Fast forward' })).toBeVisible()
+    unmount()
+
+    const { container: compactContainer } = render(<CraftingSheet {...input} compactLayout />)
+    fireEvent.click(screen.getByRole('button', { name: 'Expand item set 1' }))
+    const submit = screen.getByRole('button', { name: 'Use query for bed' })
+    expect(submit).toHaveTextContent('→')
+    expect(compactContainer.querySelector('.crafting-sheet__query-submit .arrow-sprite')).toBeNull()
+  })
+
   test('offers one editor for query choices and reordering without mode tabs', () => {
     const input = props()
     render(<CraftingSheet {...input} />)

@@ -107,6 +107,7 @@ function ChoiceCell({
   icons,
   data,
   metricClasses,
+  compactLayout = false,
   onSetItemQuery,
   onMoveItemCraft,
 }: {
@@ -116,6 +117,7 @@ function ChoiceCell({
   icons: IconManifest
   data: GeneratedData | undefined
   metricClasses: { characters?: string; junk?: string; score?: string }
+  compactLayout?: boolean
   onSetItemQuery: (entryId: string, itemId: string, query: string) => CraftQueryResult
   onMoveItemCraft: (entryId: string, itemId: string, direction: -1 | 1) => void
 }) {
@@ -143,7 +145,7 @@ function ChoiceCell({
               </span>
               <ItemIcon itemId={choice.itemId} name={name} manifest={icons} />
               {selected && <QuerySequence search={selected.search} />}
-              <CraftQueryInput label={`${name} in ${locale}`} value={selected?.search.queries[0] ?? ''} suggestions={choice.suggestions} onSubmit={(query) => onSetItemQuery(entry.id, choice.itemId, query)} />
+              <CraftQueryInput compact={compactLayout} label={`${name} in ${locale}`} value={selected?.search.queries[0] ?? ''} suggestions={choice.suggestions} onSubmit={(query) => onSetItemQuery(entry.id, choice.itemId, query)} />
             </div>
           })}
         </div>
@@ -283,8 +285,8 @@ export function LanguageComparison({ baseData, entries, languages, selectedLocal
       <div className="language-comparison__table">
         <header><strong>{leftName}</strong><strong>{rightName}</strong><strong>differences</strong></header>
         <div className="language-comparison__row">
-          <ChoiceCell entry={left} entryNumber={selectedEntryIndex + 1} locale={leftName} icons={icons} data={leftData} metricClasses={{ characters: ready ? comparisonClass(left.totalTypedCharacters, right.totalTypedCharacters, 'left') : undefined, junk: ready ? comparisonClass(junkFor(left), junkFor(right), 'left') : undefined, score: ready ? comparisonClass(left.totalScore, right.totalScore, 'left') : undefined }} onSetItemQuery={(entryId, itemId, query) => setItemQuery(leftLocale, entryId, itemId, query)} onMoveItemCraft={(entryId, itemId, direction) => moveItemCraft(leftLocale, entryId, itemId, direction)} />
-          <ChoiceCell entry={right} entryNumber={selectedEntryIndex + 1} locale={rightName} icons={icons} data={rightData} metricClasses={{ characters: ready ? comparisonClass(left.totalTypedCharacters, right.totalTypedCharacters, 'right') : undefined, junk: ready ? comparisonClass(junkFor(left), junkFor(right), 'right') : undefined, score: ready ? comparisonClass(left.totalScore, right.totalScore, 'right') : undefined }} onSetItemQuery={(entryId, itemId, query) => setItemQuery(rightLocale, entryId, itemId, query)} onMoveItemCraft={(entryId, itemId, direction) => moveItemCraft(rightLocale, entryId, itemId, direction)} />
+          <ChoiceCell entry={left} entryNumber={selectedEntryIndex + 1} locale={leftName} icons={icons} data={leftData} compactLayout={compactLayout} metricClasses={{ characters: ready ? comparisonClass(left.totalTypedCharacters, right.totalTypedCharacters, 'left') : undefined, junk: ready ? comparisonClass(junkFor(left), junkFor(right), 'left') : undefined, score: ready ? comparisonClass(left.totalScore, right.totalScore, 'left') : undefined }} onSetItemQuery={(entryId, itemId, query) => setItemQuery(leftLocale, entryId, itemId, query)} onMoveItemCraft={(entryId, itemId, direction) => moveItemCraft(leftLocale, entryId, itemId, direction)} />
+          <ChoiceCell entry={right} entryNumber={selectedEntryIndex + 1} locale={rightName} icons={icons} data={rightData} compactLayout={compactLayout} metricClasses={{ characters: ready ? comparisonClass(left.totalTypedCharacters, right.totalTypedCharacters, 'right') : undefined, junk: ready ? comparisonClass(junkFor(left), junkFor(right), 'right') : undefined, score: ready ? comparisonClass(left.totalScore, right.totalScore, 'right') : undefined }} onSetItemQuery={(entryId, itemId, query) => setItemQuery(rightLocale, entryId, itemId, query)} onMoveItemCraft={(entryId, itemId, direction) => moveItemCraft(rightLocale, entryId, itemId, direction)} />
           <Differences left={left} right={right} leftName={leftName} rightName={rightName} />
         </div>
       </div>
