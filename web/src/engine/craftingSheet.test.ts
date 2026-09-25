@@ -209,13 +209,13 @@ describe('crafting sheet model', () => {
     expect(model.characterSet).toEqual(['a', 'b', 'd', 'e', 'w'])
   })
 
-  test('offers choices beyond ten while enforcing per-query character and result limits', () => {
+  test('keeps every optimizer-supplied choice beyond ten for the craft sheet', () => {
     const itemSet = entry('first', 0)
     const tooMuchJunk = search('junk')
     tooMuchJunk.steps[0].junkItemIds = Array.from({ length: 40 }, (_, index) => `junk:${index}`)
     const searches = [...Array.from({ length: 12 }, (_, index) => search(`q${index}`, index)), search('abcdef', 20), tooMuchJunk]
     const model = createCraftingSheetModel([itemSet], new Map([[itemSet.id, ready(itemSet.id, searches)]]))
-    expect(model.entries[0].options).toHaveLength(12)
+    expect(model.entries[0].options).toHaveLength(14)
     expect(model.entries[0].options[11]).toMatchObject({ label: 'q11', scoreDelta: 11 })
   })
 

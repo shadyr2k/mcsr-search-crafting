@@ -22,7 +22,9 @@
 .crafting-sheet__details {
   display: grid;
   grid-template-rows: 0fr;
+  min-height: 0;
   min-width: 0;
+  overflow: hidden;
   opacity: 0;
   pointer-events: none;
   transition: grid-template-rows 420ms cubic-bezier(.4, 0, .2, 1), opacity 220ms ease;

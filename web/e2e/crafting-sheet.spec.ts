@@ -36,6 +36,7 @@ test('expands a sheet item set without clipping its controls inside a compact ro
   expect(await entry.evaluate((element) => element.scrollHeight <= element.clientHeight + 1)).toBe(true)
   await entry.getByRole('button', { name: 'Collapse item set 1' }).click()
   await expect.poll(async () => (await entry.locator('.crafting-sheet__details').boundingBox())!.height).toBe(0)
+  await expect(entry.locator('.crafting-sheet__details')).toHaveCSS('overflow', 'hidden')
   expect(await entry.evaluate((element) => element.getBoundingClientRect().width)).toBeCloseTo(collapsedWidth, 0)
 })
 

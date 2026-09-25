@@ -11,6 +11,8 @@ import { candidateQueriesForTargets } from './candidates'
 import { eligibleRecipes } from './craftability'
 import { matchEligibleCollectionOutputs } from './collectionSearch'
 import { optimizeOverlap } from './overlapOptimizer'
+import { optimizeWorkspaceEntry } from './optimizeWorkspace'
+import { createCraftingSheetModel } from './craftingSheet'
 
 const data = parseGeneratedData(
   searchItemsPayload,
@@ -100,6 +102,33 @@ describe('generated Minecraft 1.16.1 collection search data', () => {
     expect(uleIndex).toBeGreaterThan(9)
     expect(ule?.junkItemIds).toEqual(['minecraft:white_carpet'])
     expect(ule?.score.total).toBe(4.5)
+  })
+
+  test('keeps the ranked Latin iron-tools craft available in the crafting sheet', async () => {
+    const bastion = data.presets.get('nether-bastion')!
+    const entry = {
+      id: 'latin-iron-tools',
+      targetIds: ['minecraft:iron_ingot', 'minecraft:iron_sword', 'minecraft:iron_axe'],
+      inventoryItemIds: bastion.itemIds,
+      gridSize: 3 as const,
+      retainCraftOrder: true,
+      enabled: true,
+      order: 0,
+    }
+    const outcome = await optimizeWorkspaceEntry(latinData, entry, { itemIdSearch: true })
+    expect(outcome.kind).toBe('ranked')
+    if (outcome.kind !== 'ranked') return
+
+    const model = createCraftingSheetModel([entry], new Map([[entry.id, {
+      status: 'ready' as const,
+      fingerprint: entry.id,
+      outcome,
+    }]]))
+    expect(outcome.rankedSearches).not.toHaveLength(0)
+    expect(model.entries[0]).toMatchObject({ status: 'ready', id: entry.id })
+    expect(model.entries[0].options.some((option) => (
+      option.search.queries.join('|') === ':on_i|:on_sw|:on_a'
+    ))).toBe(true)
   })
 
   test('explains the Latin rmat helmet match through its Armatura attribute', () => {
