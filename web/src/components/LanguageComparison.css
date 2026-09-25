@@ -31,6 +31,11 @@
 .language-comparison__language-selectors label { display: grid; gap: .28rem; color: var(--muted); font-size: .72rem; }
 .language-comparison__language-selectors .language-dropdown { min-width: 0; }
 .language-comparison__start { justify-self: start; min-height: 2.25rem; padding: .35rem .8rem; }
+.language-comparison__navigator { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: end; gap: .4rem; padding: .5rem; border: 1px solid var(--border); border-radius: .55rem; background: var(--page); }
+.language-comparison__navigator label { display: grid; gap: .22rem; color: var(--muted); font-size: .7rem; }
+.language-comparison__navigator select { width: 100%; min-width: 0; min-height: 2.1rem; padding: .25rem .4rem; font: inherit; font-size: .76rem; }
+.language-comparison__navigator > button { display: grid; place-items: center; width: 2.1rem; min-height: 2.1rem; padding: .2rem; }
+.language-comparison__navigator .arrow-sprite { width: 1rem; height: 1rem; }
 .language-comparison__table { display: grid; gap: .5rem; min-width: 0; }
 .language-comparison__table > header,
 .language-comparison__row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(12rem, .64fr); gap: .5rem; min-width: 0; }
@@ -46,12 +51,10 @@
 .language-comparison__choice-footer { display: flex; align-items: center; justify-content: space-between; gap: .45rem; flex-wrap: wrap; }
 .language-comparison__metrics { display: flex; flex-wrap: wrap; gap: .25rem .45rem; color: var(--muted); font-size: .68rem; }
 .language-comparison__items-editor { display: grid; gap: .3rem; min-width: 0; }
-.language-comparison__item-choice { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: .3rem; min-width: 0; padding: .28rem; border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); border-radius: .4rem; }
+.language-comparison__item-choice { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: .3rem; min-width: 0; padding: .28rem; border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); border-radius: .4rem; }
 .language-comparison__item-choice > .item-icon { width: 1.2rem; height: 1.2rem; }
 .language-comparison__item-choice .crafting-sheet__sequence { min-width: 0; overflow: hidden; }
-.language-comparison__item-choice .crafting-sheet__choice-toggle { min-height: 2rem; padding: .2rem .35rem; font-size: .66rem; }
-.language-comparison__item-choice .crafting-sheet__picker { position: relative; }
-.language-comparison__item-choice .crafting-sheet__choice-menu { position: absolute; z-index: 30; top: calc(100% + .35rem); right: 0; width: min(26rem, calc(100vw - 2rem)); margin-top: 0; }
+.language-comparison__item-choice .crafting-sheet__query-input { grid-column: 1 / -1; }
 .language-comparison__reorder { display: inline-grid; grid-template-columns: repeat(2, 2.2rem); gap: .15rem; }
 .language-comparison__reorder button { display: grid; place-items: center; width: 2.2rem; min-height: 2.2rem; padding: .1rem; border-radius: .28rem; }
 .language-comparison__reorder .arrow-sprite { width: 1rem !important; height: 1rem !important; }
@@ -62,6 +65,10 @@
 .language-comparison__difference > div { display: grid; grid-template-columns: minmax(4.5rem, 1fr) auto auto auto; gap: .25rem; align-items: baseline; }
 .language-comparison__difference > div > span:not(:first-child) { text-align: right; }
 .language-comparison__difference p { margin: .15rem 0 0; font-size: .66rem; line-height: 1.35; }
+.language-comparison__overall { display: grid; grid-template-columns: repeat(4, auto); justify-content: start; align-items: baseline; gap: .35rem .55rem; padding: .65rem; border: 1px solid var(--border); border-radius: .55rem; background: var(--panel-selected); color: var(--muted); font-size: .72rem; }
+.language-comparison__overall > strong { grid-column: 1 / -1; color: var(--accent-strong); font-size: .82rem; }
+.language-comparison__overall > span { color: var(--text); }
+.language-comparison__overall > p { grid-column: 1 / -1; margin: .1rem 0 0; font-size: .7rem; }
 .language-comparison__empty,
 .language-comparison__status { padding: .5rem .65rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--panel-selected); }
 
@@ -93,10 +100,14 @@
 .language-comparison--page.language-comparison--compact .language-comparison__metrics { gap: .18rem .35rem; font-size: .64rem; }
 .language-comparison--page.language-comparison--compact .language-comparison__items-editor { gap: .2rem; }
 .language-comparison--page.language-comparison--compact .language-comparison__item-choice { gap: .2rem; padding: .2rem; }
-.language-comparison--page.language-comparison--compact .language-comparison__item-choice .crafting-sheet__choice-toggle { min-height: 1.75rem; padding: .16rem .28rem; font-size: .61rem; }
+.language-comparison--page.language-comparison--compact .language-comparison__item-choice .crafting-sheet__query-input { gap: .2rem; }
+.language-comparison--page.language-comparison--compact .language-comparison__item-choice .crafting-sheet__query-input input,
+.language-comparison--page.language-comparison--compact .language-comparison__item-choice .crafting-sheet__query-input form button { min-height: 1.75rem; font-size: .61rem; }
 .language-comparison--page.language-comparison--compact .language-comparison__reorder { grid-template-columns: repeat(2, 1.8rem); }
 .language-comparison--page.language-comparison--compact .language-comparison__reorder button { width: 1.8rem; min-height: 1.8rem; }
 .language-comparison--page.language-comparison--compact .language-comparison__difference { font-size: .64rem; }
+.language-comparison--page.language-comparison--compact .language-comparison__navigator { padding: .4rem; }
+.language-comparison--page.language-comparison--compact .language-comparison__overall { padding: .5rem; font-size: .66rem; }
 
 /* The page’s more specific desktop grid used to override this breakpoint. On
    mid-size displays keep the two languages side by side and put their shared
@@ -117,8 +128,6 @@
   .language-comparison__item-choice .language-comparison__reorder { grid-column: 1; grid-row: 1; }
   .language-comparison__item-choice > .item-icon { grid-column: 2; grid-row: 1; }
   .language-comparison__item-choice .crafting-sheet__sequence { grid-column: 1 / -1; grid-row: 2; }
-  .language-comparison__item-choice .crafting-sheet__picker { grid-column: 3; grid-row: 1; justify-self: end; }
-  .language-comparison__item-choice .crafting-sheet__choice-menu { width: min(21rem, calc(100vw - 1.5rem)); }
 }
 
 :root[data-theme='dark'] .language-comparison__value--better { color: #72df93 !important; }
@@ -132,4 +141,5 @@
 
 @media (max-width: 34rem) {
   .language-comparison__language-selectors { grid-template-columns: minmax(0, 1fr); }
+  .language-comparison__overall { grid-template-columns: minmax(4.25rem, 1fr) auto auto auto; }
 }

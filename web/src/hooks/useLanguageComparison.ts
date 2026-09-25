@@ -13,11 +13,12 @@ import { entryOptimizationFingerprint } from './useRowOptimizations'
 export type LanguageComparisonState =
   | { status: 'pending' }
   | { status: 'unavailable'; message?: string }
-  | { status: 'ready'; outcomes: ReadonlyMap<string, EntryOptimizationOutcome> }
+  | { status: 'ready'; outcomes: ReadonlyMap<string, EntryOptimizationOutcome>; data: GeneratedData }
 
 interface CachedOutcomes {
   fingerprint: string
   outcomes: ReadonlyMap<string, EntryOptimizationOutcome>
+  data: GeneratedData
 }
 
 function isAbortError(error: unknown): boolean {
@@ -36,6 +37,7 @@ export function useLanguageComparison(
   enabled = true,
   loadedLocale?: string,
   loadedStates?: ReadonlyMap<string, RowOptimizationState>,
+  loadedData?: GeneratedData,
   minecraftVersion = '1.16.1',
 ): ReadonlyMap<string, LanguageComparisonState> {
   const [states, setStates] = useState<ReadonlyMap<string, LanguageComparisonState>>(new Map())
@@ -80,8 +82,9 @@ export function useLanguageComparison(
           }
           return outcomes
         })()
-    if (reusableOutcomes && loadedLocale) {
-      cacheRef.current.set(loadedLocale, { fingerprint: entryFingerprint, outcomes: reusableOutcomes })
+    const reusableData = loadedData ?? (loadedLocale === 'en_us' ? baseData : undefined)
+    if (reusableOutcomes && loadedLocale && reusableData) {
+      cacheRef.current.set(loadedLocale, { fingerprint: entryFingerprint, outcomes: reusableOutcomes, data: reusableData })
       cacheLanguageOutcomeScores(minecraftVersion, activeEntries, loadedLocale, reusableOutcomes, scoreCacheGeneration)
       activeEntries.forEach((entry) => {
         const outcome = reusableOutcomes.get(entry.id)
@@ -94,7 +97,7 @@ export function useLanguageComparison(
     for (const locale of locales) {
       const cached = cacheRef.current.get(locale)
       initialStates.set(locale, cached?.fingerprint === entryFingerprint
-        ? { status: 'ready', outcomes: cached.outcomes }
+        ? { status: 'ready', outcomes: cached.outcomes, data: cached.data }
         : { status: 'pending' })
     }
     setStates(initialStates)
@@ -129,9 +132,11 @@ export function useLanguageComparison(
         for (const locale of pendingLocales) {
           const outcomes = persistedByLocale.get(locale)
           if (outcomes?.size !== activeEntries.length) continue
+          if (locale !== 'en_us' && payload === undefined) payload = await loadLocalizedSearchPayload(dataBaseUrl)
+          const localeData = locale === 'en_us' ? baseData : parseLocalizedGeneratedData(payload, locale, baseData)
           cacheLanguageOutcomeScores(minecraftVersion, activeEntries, locale, outcomes, scoreCacheGeneration)
-          cacheRef.current.set(locale, { fingerprint: entryFingerprint, outcomes })
-          publish(locale, { status: 'ready', outcomes })
+          cacheRef.current.set(locale, { fingerprint: entryFingerprint, outcomes, data: localeData })
+          publish(locale, { status: 'ready', outcomes, data: localeData })
         }
         if (localesNeedingCalculation.some((locale) => locale !== 'en_us')) payload = await loadLocalizedSearchPayload(dataBaseUrl)
         for (const locale of localesNeedingCalculation) {
@@ -156,8 +161,8 @@ export function useLanguageComparison(
             if (outcome) void saveLanguageCraftOutcome(minecraftVersion, languageCraftEntryKey(entry, scoringSettings, itemIdSearch), locale, outcome)
           })
           cacheLanguageOutcomeScores(minecraftVersion, activeEntries, locale, outcomes, scoreCacheGeneration)
-          cacheRef.current.set(locale, { fingerprint: entryFingerprint, outcomes })
-          publish(locale, { status: 'ready', outcomes })
+          cacheRef.current.set(locale, { fingerprint: entryFingerprint, outcomes, data: localeData })
+          publish(locale, { status: 'ready', outcomes, data: localeData })
         }
       } catch (error) {
         if (isAbortError(error)) return
@@ -170,7 +175,7 @@ export function useLanguageComparison(
     })()
 
     return () => controller.abort()
-  }, [activeEntries, baseData, dataBaseUrl, enabled, entryFingerprint, fingerprint, itemIdSearch, leftLocale, loadedLocale, loadedReadyFingerprint, minecraftVersion, rightLocale, scoringSettings])
+  }, [activeEntries, baseData, dataBaseUrl, enabled, entryFingerprint, fingerprint, itemIdSearch, leftLocale, loadedData, loadedLocale, loadedReadyFingerprint, minecraftVersion, rightLocale, scoringSettings])
 
   return states
 }

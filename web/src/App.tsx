@@ -143,7 +143,7 @@ function App() {
     ? withIconOverrides(icons, catifiedIconOverrides)
     : icons, [appSettings.catifyItems, catifiedIconOverrides, gameVersion.id, icons])
   const { states, retry } = useRowOptimizations(data, workspace.entries, appSettings.scoring, appSettings.itemIdSearch)
-  const craftingSheet = useCraftingSheet(selectedLocale, entries, states, gameVersion.id, workspaceLoaded, appSettings.scoring)
+  const craftingSheet = useCraftingSheet(selectedLocale, entries, states, gameVersion.id, workspaceLoaded, appSettings.scoring, data, appSettings.itemIdSearch)
   const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.id, appSettings.scoring, appSettings.itemIdSearch, scoringSettingsRevision)
 
   useLayoutEffect(() => {
@@ -511,7 +511,7 @@ function App() {
       icons={activeIcons}
       isCalculating={craftingSheet.isCalculating}
       warning={craftingSheet.warning}
-      onSelectItemCraft={craftingSheet.selectItemCraft}
+      onSetItemQuery={craftingSheet.setItemQuery}
       onMoveItemCraft={craftingSheet.moveItemCraft}
       onSetEntryDisabled={craftingSheet.setEntryDisabled}
       onReset={craftingSheet.reset}
@@ -531,6 +531,7 @@ function App() {
       minecraftVersion={gameVersion.id}
       loadedLocale={selectedLocale}
       loadedStates={states}
+      loadedData={data}
     />}
     {data && activeIcons && page !== 'recipe-book-sim' && page !== 'craft-lookup' && page !== 'crafting-sheet' && page !== 'language-comparison' && page !== 'settings' && <div ref={workspaceTransitionRef} className={`workspace-grid workspace-transition workspace-transition--${page}${usesSharedLanguageTransition ? ' workspace-transition--shared-language' : ''}`}>
       <ItemSetWorkspace
@@ -562,7 +563,7 @@ function App() {
           icons={activeIcons}
           isCalculating={craftingSheet.isCalculating}
           warning={craftingSheet.warning}
-          onSelectItemCraft={craftingSheet.selectItemCraft}
+          onSetItemQuery={craftingSheet.setItemQuery}
           onMoveItemCraft={craftingSheet.moveItemCraft}
           onSetEntryDisabled={craftingSheet.setEntryDisabled}
           onReset={craftingSheet.reset}

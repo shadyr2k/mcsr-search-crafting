@@ -23,7 +23,7 @@ for (const width of [1440, 375]) {
       ['Custom inventories', '.item-set-editor .custom-slots'],
       ['Choose a language', width > 1152 ? '.language-selector__category .language-selector__language' : '.language-selector'],
       ['Your top crafts', '.results-column .calculated-search-row:has(.craft-preview--single):has(.craft-preview--overlap) .calculated-search-row__summary'],
-      ['Your crafting sheet', '.crafting-sheet__totals'],
+      ['Your crafting sheet', '.crafting-sheet__actions'],
     ]
     for (const [title, target] of targets) {
       await tutorial.getByRole('button', { name: 'next', exact: true }).click()
@@ -33,8 +33,8 @@ for (const width of [1440, 375]) {
       await expect.poll(() => page.evaluate((selector) => {
         const target = document.querySelector(selector)!.getBoundingClientRect()
         const highlight = document.querySelector('.page-tutorial__spotlight')!.getBoundingClientRect()
-        return highlight.left >= target.left - 5 && highlight.right <= target.right + 5
-          && highlight.top >= target.top - 5 && highlight.bottom <= target.bottom + 5
+        return highlight.right > target.left && highlight.left < target.right
+          && highlight.bottom > target.top && highlight.top < target.bottom
       }, target)).toBe(true)
       if (['Craft space', 'Retain item order', 'Your inventory', 'Custom inventories'].includes(title)) {
         await expect(page.locator('.item-set-editor')).toHaveAttribute('data-test-instance', 'kept-open')
@@ -43,8 +43,8 @@ for (const width of [1440, 375]) {
         await page.screenshot({ path: `test-results/tutorial-${width}-${title.replaceAll(' ', '-')}.png` })
       }
     }
-    await expect(page.locator('.crafting-sheet__toggle')).toHaveAttribute('aria-expanded', 'true')
-    await expect(page.locator('.calculated-search-row').first()).toBeHidden()
+    await expect(page.getByRole('button', { name: 'crafting sheet', exact: true })).toBeVisible()
+    await expect(page.locator('.calculated-search-row').first()).toBeVisible()
     await tutorial.getByRole('button', { name: 'finish' }).click()
     await expect(tutorial).toHaveCount(0)
     await expect(page.locator('.calculated-search-row').first()).toBeVisible()
@@ -103,16 +103,12 @@ test('scrolling keeps the highlight on its visible target without a sticky heade
   await expect(page.locator('.app-header')).toHaveCSS('position', 'sticky')
 })
 
-test('crafting sheet hides crafts until dismissed outside or with Escape', async ({ page }) => {
+test('crafting sheet opens as its own page and returns to the calculated crafts', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: /english.*search crafts/ }).click()
-  await expect(page.locator('.calculated-search-row').first()).toBeHidden()
-  await page.locator('.crafting-sheet__totals').click()
-  await expect(page.locator('.crafting-sheet__toggle')).toHaveAttribute('aria-expanded', 'true')
-  await page.getByRole('heading', { name: 'MCSR search crafting' }).click()
-  await expect(page.locator('.calculated-search-row').first()).toBeVisible()
-  await page.locator('.crafting-sheet__toggle').click()
-  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).click()
+  await expect(page.locator('.crafting-sheet--page')).toBeVisible()
+  await expect(page.locator('.calculated-search-row')).toHaveCount(0)
+  await page.getByRole('button', { name: /Back to .* crafts/ }).click()
   await expect(page.locator('.calculated-search-row').first()).toBeVisible()
 })
 

@@ -2451,6 +2451,7 @@ h3 {
     grid-template-columns: repeat(5, minmax(0, 1fr));
     width: auto;
     gap: .2rem;
+    align-items: stretch;
     justify-content: center;
   }
 

@@ -33,7 +33,7 @@ export interface CraftingSheetProps {
   compactLayout?: boolean
   onBack?: () => void
   onCompare?: () => void
-  onSelectItemCraft: (entryId: string, itemId: string, optionId: string) => void
+  onSetItemQuery: (entryId: string, itemId: string, query: string) => CraftQueryResult
   onMoveItemCraft: (entryId: string, itemId: string, direction: -1 | 1) => void
   onSetEntryDisabled: (entryId: string, disabled: boolean) => void
   onReset: () => void
@@ -84,70 +84,6 @@ export function QuerySequence({ search }: { search: RankedSearch }) {
   </span>
 }
 
-export function CraftPicker({ label, options, selectedOptionId, onSelect, closeOnOutsidePointer = false }: {
-  label: string
-  options: readonly CraftingSheetOption[]
-  selectedOptionId: string
-  onSelect: (optionId: string) => void
-  /** Comparison pickers are transient menus, so a click elsewhere dismisses them. */
-  closeOnOutsidePointer?: boolean
-}) {
-  const [isOpen, setIsOpen] = useState(false)
-  const [filter, setFilter] = useState('')
-  const [visibleCount, setVisibleCount] = useState(30)
-  const pickerRef = useRef<HTMLDivElement>(null)
-  const toggleRef = useRef<HTMLButtonElement>(null)
-  const menuId = useId()
-  const filtered = useMemo(() => options.filter((option) => (
-    option.label.toLocaleLowerCase().includes(filter.toLocaleLowerCase().replaceAll(' ', '_'))
-    || option.search.queries.some((query) => query.toLocaleLowerCase().includes(filter.toLocaleLowerCase().replaceAll('_', ' ')))
-  )), [filter, options])
-  const selected = options.find((option) => option.id === selectedOptionId)
-  function close() { setIsOpen(false); toggleRef.current?.focus() }
-
-  useEffect(() => {
-    if (!isOpen || !closeOnOutsidePointer) return
-    function closeOnOutsidePointerDown(event: PointerEvent) {
-      if (isScrollbarPointer(event)) return
-      if (event.target instanceof Node && pickerRef.current?.contains(event.target)) return
-      setIsOpen(false)
-    }
-    document.addEventListener('pointerdown', closeOnOutsidePointerDown)
-    return () => document.removeEventListener('pointerdown', closeOnOutsidePointerDown)
-  }, [closeOnOutsidePointer, isOpen])
-
-  return <div ref={pickerRef} className="crafting-sheet__picker" onKeyDown={(event) => {
-    if (event.key === 'Escape' && isOpen) { event.stopPropagation(); close() }
-  }}>
-    <button ref={toggleRef} type="button" className="crafting-sheet__choice-toggle" aria-label={`choose craft for ${label}`} aria-expanded={isOpen} aria-controls={menuId} disabled={options.length === 0}
-      onClick={() => { setIsOpen(!isOpen); setFilter(''); setVisibleCount(30) }}>
-      <span>choose craft</span><span className="crafting-sheet__option-count">{options.length}</span>
-      <span aria-hidden="true"><ArrowSprite direction={isOpen ? 'up' : 'down'} compact /></span>
-    </button>
-    {isOpen && <section id={menuId} className="crafting-sheet__choice-menu" aria-label={`Calculated crafts for ${label}`}>
-      <div className="crafting-sheet__filter">
-        <input autoFocus type="search" value={filter} aria-label={`Filter crafts for ${label}`} placeholder="find a query…" onChange={(event) => { setFilter(event.target.value); setVisibleCount(30) }} />
-        {!closeOnOutsidePointer && <button type="button" onClick={close} aria-label={`Close crafts for ${label}`}>close</button>}
-      </div>
-      <p className="crafting-sheet__hint">Up to 5 characters per query and 2 pages of results. Lower score is better.</p>
-      <ul>
-        {filtered.slice(0, visibleCount).map((option) => <li key={option.id}>
-          <button type="button" aria-pressed={option.id === selectedOptionId} onClick={() => { onSelect(option.id); close() }}>
-            <QuerySequence search={option.search} />
-            <span className="crafting-sheet__option-metrics">
-              <span>{option.totalTypedCharacters} chars · {option.junkCount} junk</span>
-              <span className={option.isOptimal ? 'crafting-sheet__optimal' : ''}>{deltaLabel(option.scoreDelta)}</span>
-              {selected && option.id !== selected.id && <span className="crafting-sheet__change">{option.totalScore - selected.totalScore > 0 ? '+' : ''}{option.totalScore - selected.totalScore} vs selected</span>}
-            </span>
-          </button>
-        </li>)}
-      </ul>
-      {filtered.length === 0 && <p className="crafting-sheet__empty">No crafts match this query.</p>}
-      {filtered.length > visibleCount && <button type="button" className="crafting-sheet__show-more" onClick={() => setVisibleCount((count) => count + 30)}>show more crafts ({filtered.length - visibleCount} remaining)</button>}
-    </section>}
-  </div>
-}
-
 function ItemLabels({ itemIds, items, icons }: { itemIds: readonly string[]; items: CraftingSheetProps['items']; icons: CraftingSheetProps['icons'] }) {
   return <span className="crafting-sheet__items">{itemIds.map((itemId) => <span key={itemId} className="crafting-sheet__item">
     {icons && <ItemIcon itemId={itemId} name={itemName(itemId, items)} manifest={icons} />}
@@ -155,7 +91,7 @@ function ItemLabels({ itemIds, items, icons }: { itemIds: readonly string[]; ite
   </span>)}</span>
 }
 
-function ItemSetCard({ entry, items, icons, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, onOpenChange }: Pick<CraftingSheetProps, 'items' | 'icons' | 'onSelectItemCraft' | 'onMoveItemCraft' | 'onSetEntryDisabled'> & { entry: CraftingSheetEntry; onOpenChange?: (open: boolean) => void }) {
+function ItemSetCard({ entry, items, icons, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, onOpenChange }: Pick<CraftingSheetProps, 'items' | 'icons' | 'onSetItemQuery' | 'onMoveItemCraft' | 'onSetEntryDisabled'> & { entry: CraftingSheetEntry; onOpenChange?: (open: boolean) => void }) {
   const [isOpen, setIsOpen] = useState(false)
   const headingId = useId()
   const detailsId = useId()
@@ -224,7 +160,7 @@ function ItemSetCard({ entry, items, icons, onSelectItemCraft, onMoveItemCraft, 
                   <ItemLabels itemIds={[choice.itemId]} items={items} icons={icons} />
                   {selected && <><QuerySequence search={selected.search} /><span className="crafting-sheet__item-cost">{selected.totalTypedCharacters} chars · {selected.junkCount} junk · {deltaLabel(choice.scoreDelta)}</span></>}
                 </div>
-                <CraftPicker label={itemName(choice.itemId, items)} options={choice.options} selectedOptionId={choice.selectedOptionId} onSelect={(id) => onSelectItemCraft(entry.id, choice.itemId, id)} />
+                <CraftQueryInput label={itemName(choice.itemId, items)} value={selected?.search.queries[0] ?? ''} suggestions={choice.suggestions} onSubmit={(query) => onSetItemQuery(entry.id, choice.itemId, query)} />
               </div>
             })}
           </div>
@@ -238,6 +174,63 @@ function CharacterUsageQuery({ usage, queryLabel }: { usage: CraftingSheetCharac
   return <span className="crafting-sheet__usage-query">{queryLabel.replaceAll('Shift+Home', 'SH').split(/(\(SH\)|←+|→)/).map((part, index) => /^(\(SH\)|←|→)/.test(part)
     ? <span key={index}> {part} </span>
     : <span key={index} className="crafting-sheet__query-text">{Array.from(part).map((character, characterIndex) => character === usage.character ? <mark key={characterIndex}>{character}</mark> : character)}</span>)}</span>
+}
+
+export interface CraftQueryResult {
+  valid: boolean
+  query: string
+  message?: string
+}
+
+/** A typed query is validated only when the runner submits it. */
+export function CraftQueryInput({ label, value, suggestions, onSubmit }: {
+  label: string
+  value: string
+  suggestions: readonly CraftingSheetOption[]
+  onSubmit: (query: string) => CraftQueryResult
+}) {
+  const [draft, setDraft] = useState(value)
+  const [isOpen, setIsOpen] = useState(false)
+  const [message, setMessage] = useState<string>()
+  const inputRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { setDraft(value) }, [value])
+  useEffect(() => {
+    if (!isOpen) return
+    function closeOnOutsidePointerDown(event: PointerEvent) {
+      if (isScrollbarPointer(event)) return
+      if (event.target instanceof Node && inputRef.current?.contains(event.target)) return
+      setIsOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutsidePointerDown)
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointerDown)
+  }, [isOpen])
+
+  function submit(query: string) {
+    const result = onSubmit(query)
+    setDraft(result.query)
+    setMessage(result.message)
+    setIsOpen(false)
+  }
+
+  return <div ref={inputRef} className="crafting-sheet__query-input">
+    <form onSubmit={(event) => { event.preventDefault(); submit(draft) }}>
+      <input type="search" value={draft} aria-label={`Craft query for ${label}`} placeholder="type a craft…"
+        onFocus={() => setIsOpen(true)}
+        onChange={(event) => { setDraft(event.target.value); setMessage(undefined); setIsOpen(true) }}
+        onKeyDown={(event) => { if (event.key === 'Escape') setIsOpen(false) }} />
+      <button type="submit" aria-label={`Use query for ${label}`}>enter</button>
+    </form>
+    {message && <p className="crafting-sheet__query-status" role="status">{message}</p>}
+    {isOpen && suggestions.length > 0 && <ul className="crafting-sheet__query-suggestions" aria-label={`Calculated craft suggestions for ${label}`}>
+      {suggestions.slice(0, 10).map((option) => <li key={option.id}>
+        <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => submit(option.search.queries[0])}>
+          <QuerySequence search={option.search} />
+          <span>{option.totalTypedCharacters} chars · {option.junkCount} junk · {deltaLabel(option.scoreDelta)}</span>
+        </button>
+      </li>)}
+    </ul>}
+  </div>
 }
 
 function CharacterDetails({ selectedCharacter, usages }: { selectedCharacter: string | undefined; usages: readonly CraftingSheetCharacterUsage[] }) {
@@ -303,7 +296,7 @@ function SheetSummary({
   </>
 }
 
-function ItemSetList({ entries, items, icons, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, columns = false }: Pick<CraftingSheetProps, 'entries' | 'items' | 'icons' | 'onSelectItemCraft' | 'onMoveItemCraft' | 'onSetEntryDisabled'> & { columns?: boolean }) {
+function ItemSetList({ entries, items, icons, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, columns = false }: Pick<CraftingSheetProps, 'entries' | 'items' | 'icons' | 'onSetItemQuery' | 'onMoveItemCraft' | 'onSetEntryDisabled'> & { columns?: boolean }) {
   const columnsRef = useRef<HTMLDivElement>(null)
   const [openEntryIds, setOpenEntryIds] = useState<readonly string[]>([])
   const [rowCount, setRowCount] = useState<number>()
@@ -363,7 +356,7 @@ function ItemSetList({ entries, items, icons, onSelectItemCraft, onMoveItemCraft
   }
 
   function renderEntry(entry: CraftingSheetEntry) {
-    return <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={setEntryDisabled} onOpenChange={columns ? (open) => setEntryOpen(entry.id, open) : undefined} />
+    return <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={setEntryDisabled} onOpenChange={columns ? (open) => setEntryOpen(entry.id, open) : undefined} />
   }
 
   return <section className={`crafting-sheet__sets${columns ? ' crafting-sheet__sets--columns' : ''}`} aria-label="Selected item sets"><h3>item sets</h3>
@@ -372,7 +365,7 @@ function ItemSetList({ entries, items, icons, onSelectItemCraft, onMoveItemCraft
   </section>
 }
 
-export function CraftingSheet({ languageName, entries, characterSet, characterUsages, optimalCharacterCount, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, defaultOpen = false, open, onOpenChange, layout = 'inline', compactLayout = false, onBack, onCompare, onSelectItemCraft, onMoveItemCraft, onSetEntryDisabled, onReset }: CraftingSheetProps) {
+export function CraftingSheet({ languageName, entries, characterSet, characterUsages, optimalCharacterCount, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, defaultOpen = false, open, onOpenChange, layout = 'inline', compactLayout = false, onBack, onCompare, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, onReset }: CraftingSheetProps) {
   const [localOpen, setLocalOpen] = useState(defaultOpen)
   const [selectedCharacter, setSelectedCharacter] = useState<string>()
   const isOpen = open ?? localOpen
@@ -400,7 +393,7 @@ export function CraftingSheet({ languageName, entries, characterSet, characterUs
         <CharacterDetails selectedCharacter={selectedCharacter} usages={usages} />
       </aside>
       <UsageChart usages={usages} className="crafting-sheet__chart--page" />
-      <ItemSetList columns entries={entries} items={items} icons={icons} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />
+      <ItemSetList columns entries={entries} items={items} icons={icons} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />
     </div>
   </section>
 
@@ -417,7 +410,7 @@ export function CraftingSheet({ languageName, entries, characterSet, characterUs
     <SheetDisclosure id={panelId} open={isOpen}>
     <div className="crafting-sheet__panel">
       <SheetSummary entries={entries} characterSet={characterSet} totalTypedCharacters={totalTypedCharacters} totalScore={totalScore} scoreDelta={scoreDelta} optimalCharacterCount={optimalCharacterCount} selectedCharacter={selectedCharacter} onSelectCharacter={selectCharacter} isCalculating={isCalculating} warning={warning} readyCount={readyCount} onReset={onReset} />
-      <ItemSetList entries={entries} items={items} icons={icons} onSelectItemCraft={onSelectItemCraft} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />
+      <ItemSetList entries={entries} items={items} icons={icons} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />
       <CharacterDetails selectedCharacter={selectedCharacter} usages={usages} />
     </div>
     </SheetDisclosure>

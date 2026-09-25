@@ -4,7 +4,7 @@ import '@testing-library/jest-dom/vitest'
 
 import type { RankedSearch, RowOptimizationState, TargetWorkspaceEntry } from '../domain/types'
 import { createCraftingSheetModel } from '../engine/craftingSheet'
-import { CraftPicker, CraftingSheet, type CraftingSheetProps } from './CraftingSheet'
+import { CraftingSheet, type CraftingSheetProps } from './CraftingSheet'
 
 afterEach(cleanup)
 
@@ -29,7 +29,7 @@ function props(): CraftingSheetProps {
   return {
     languageName: 'english', ...createCraftingSheetModel([entry], new Map([[entry.id, state]])),
     defaultOpen: true, onSetEntryDisabled: vi.fn(), onReset: vi.fn(),
-    onSelectItemCraft: vi.fn(), onMoveItemCraft: vi.fn(),
+    onSetItemQuery: vi.fn(() => ({ valid: true, query: 'be' })), onMoveItemCraft: vi.fn(),
   }
 }
 
@@ -48,7 +48,7 @@ describe('CraftingSheet', () => {
     expect(screen.queryByText('anchor')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Expand item set 1' })).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByLabelText('Selected query for bed')).toHaveTextContent('be')
-    expect(screen.queryByRole('button', { name: 'choose craft for bed' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('searchbox', { name: 'Craft query for bed' })).not.toBeInTheDocument()
   })
 
   test('groups items with the same selected craft in the compact summary', () => {
@@ -156,32 +156,30 @@ describe('CraftingSheet', () => {
     expect(input.onSetEntryDisabled).toHaveBeenCalledWith('bed-anchor', true)
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(toggle)
-    expect(screen.getByRole('button', { name: 'choose craft for bed' })).toBeVisible()
+    expect(screen.getByRole('searchbox', { name: 'Craft query for bed' })).toBeVisible()
     expect(screen.getByText('4 chars')).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: 'Collapse item set 1' }))
     const details = document.getElementById(toggle.getAttribute('aria-controls')!)!
     expect(details).toHaveAttribute('aria-hidden', 'true')
     expect(details).toHaveAttribute('inert')
-    expect(within(details).getAllByText('choose craft')).toHaveLength(2)
-    expect(screen.queryByRole('button', { name: 'choose craft for bed' })).not.toBeInTheDocument()
+    expect(within(details).getAllByRole('searchbox', { hidden: true })).toHaveLength(2)
+    expect(screen.queryByRole('searchbox', { name: 'Craft query for bed' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'crafting sheet' }))
     expect(screen.queryByRole('region', { name: 'Selected item sets' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'crafting sheet' }))
     expect(screen.getByRole('button', { name: 'Expand item set 1' })).toBeVisible()
   })
 
-  test('filters alternatives beyond the top ten and displays their efficiency cost', () => {
+  test('offers ten calculated suggestions and validates a submitted query', () => {
     const input = props()
     render(<CraftingSheet {...input} />)
     fireEvent.click(screen.getByRole('button', { name: 'Expand item set 1' }))
-    fireEvent.click(screen.getByRole('button', { name: 'choose craft for bed' }))
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Filter crafts for bed' }), { target: { value: 'q44' } })
-    const choices = screen.getByRole('region', { name: 'Calculated crafts for bed' })
-    const option = within(choices).getByRole('button', { name: /q44/ })
-    expect(option).toHaveTextContent('+1 score')
-    fireEvent.click(option)
-    expect(input.onSelectItemCraft).toHaveBeenCalledWith('bed-anchor', 'bed', input.entries[0].itemChoices[0].options.find((value) => value.label === 'q44')!.id)
-    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
+    const query = screen.getByRole('searchbox', { name: 'Craft query for bed' })
+    fireEvent.focus(query)
+    expect(within(screen.getByRole('list', { name: 'Calculated craft suggestions for bed' })).getAllByRole('button')).toHaveLength(10)
+    fireEvent.change(query, { target: { value: 'runner craft' } })
+    fireEvent.submit(query.closest('form')!)
+    expect(input.onSetItemQuery).toHaveBeenCalledWith('bed-anchor', 'bed', 'runner craft')
   })
 
   test('offers one editor for query choices and reordering without mode tabs', () => {
@@ -194,10 +192,10 @@ describe('CraftingSheet', () => {
     expect(screen.getByRole('button', { name: 'Move anchor down' })).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: 'Move anchor up' }))
     expect(input.onMoveItemCraft).toHaveBeenCalledWith('bed-anchor', 'anchor', -1)
-    fireEvent.click(screen.getByRole('button', { name: 'choose craft for bed' }))
-    const choices = screen.getByRole('region', { name: 'Calculated crafts for bed' })
-    fireEvent.click(within(choices).getByRole('button', { name: /^bed / }))
-    expect(input.onSelectItemCraft).toHaveBeenCalledWith('bed-anchor', 'bed', input.entries[0].itemChoices[0].options.find((value) => value.label === 'bed')!.id)
+    const query = screen.getByRole('searchbox', { name: 'Craft query for bed' })
+    fireEvent.focus(query)
+    fireEvent.click(within(screen.getByRole('list', { name: 'Calculated craft suggestions for bed' })).getByRole('button', { name: /bed/ }))
+    expect(input.onSetItemQuery).toHaveBeenCalledWith('bed-anchor', 'bed', 'bed')
   })
 
   test('collapses disabled sets to a compact row until they are re-enabled', () => {
@@ -210,7 +208,7 @@ describe('CraftingSheet', () => {
     const row = screen.getByRole('region', { name: 'item set 1' })
     expect(row).toHaveClass('crafting-sheet__entry--disabled')
     expect(screen.queryByRole('button', { name: /item set 1/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'choose craft for bed' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('searchbox', { name: 'Craft query for bed' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('checkbox', { name: 'Include item set 1' }))
     expect(input.onSetEntryDisabled).toHaveBeenCalledWith('bed-anchor', false)
 
@@ -218,18 +216,6 @@ describe('CraftingSheet', () => {
     expect(screen.getByRole('button', { name: 'Collapse item set 1' })).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: 'reset sheet' }))
     expect(input.onReset).toHaveBeenCalledOnce()
-  })
-
-  test('dismisses a comparison craft picker when its pointer leaves the menu', () => {
-    const input = props()
-    const choice = input.entries[0].itemChoices[0]
-    render(<><CraftPicker label="bed in english" options={choice.options} selectedOptionId={choice.selectedOptionId} onSelect={vi.fn()} closeOnOutsidePointer /><button type="button">outside picker</button></>)
-
-    fireEvent.click(screen.getByRole('button', { name: 'choose craft for bed in english' }))
-    expect(screen.getByRole('searchbox', { name: 'Filter crafts for bed in english' })).toBeVisible()
-    expect(screen.queryByRole('button', { name: 'Close crafts for bed in english' })).not.toBeInTheDocument()
-    fireEvent.pointerDown(screen.getByRole('button', { name: 'outside picker' }))
-    expect(screen.queryByRole('searchbox', { name: 'Filter crafts for bed in english' })).not.toBeInTheDocument()
   })
 
   test('shows pending and unavailable sets with clear status messages', () => {

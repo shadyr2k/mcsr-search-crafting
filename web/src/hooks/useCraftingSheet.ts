@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import type { CraftingSheetPreferences, CraftingSheetSelection, RowOptimizationState, TargetWorkspaceEntry } from '../domain/types'
-import { createCraftingSheetModel, type CraftingSheetModel } from '../engine/craftingSheet'
+import type { CraftingSheetPreferences, CraftingSheetSelection, GeneratedData, RowOptimizationState, TargetWorkspaceEntry } from '../domain/types'
+import { createCraftingSheetModel, type CraftingSheetModel, type ManualCraftSearches } from '../engine/craftingSheet'
+import { validateManualItemCraft } from '../engine/manualCraft'
 import { DEFAULT_SCORING_SETTINGS, type ScoringSettings } from '../engine/scoring'
 import { loadCraftingSheetPreferences, saveCraftingSheetPreferences } from '../persistence/storage'
 
@@ -15,10 +16,17 @@ export type {
 export interface CraftingSheetState extends CraftingSheetModel {
   warning: string | undefined
   selectItemCraft(entryId: string, itemId: string, optionId: string): void
+  setItemQuery(entryId: string, itemId: string, query: string): CraftQueryResult
   moveItemCraft(entryId: string, itemId: string, direction: -1 | 1): void
   setEntryDisabled(entryId: string, disabled: boolean): void
   /** Restores this language's calculated craft choices and re-enables every row. */
   reset(): void
+}
+
+export interface CraftQueryResult {
+  valid: boolean
+  query: string
+  message?: string
 }
 
 function combineWarnings(current: string | undefined, next: string | undefined): string | undefined {
@@ -90,6 +98,29 @@ function resetLocaleSelections(preferences: CraftingSheetPreferences, locale: st
   return { selectionsByLocale }
 }
 
+function manualSearchesFor(
+  entries: readonly TargetWorkspaceEntry[],
+  selections: Readonly<Record<string, CraftingSheetSelection>>,
+  data: GeneratedData | undefined,
+  scoringSettings: ScoringSettings,
+  itemIdSearch: boolean,
+): ManualCraftSearches {
+  if (data === undefined) return new Map()
+  const searches = new Map<string, Map<string, ReturnType<typeof validateManualItemCraft>>>()
+  for (const entry of entries) {
+    const queries = selections[entry.id]?.itemQueries
+    if (queries === undefined) continue
+    for (const [itemId, query] of Object.entries(queries)) {
+      const search = validateManualItemCraft(data, entry, itemId, query, scoringSettings, itemIdSearch)
+      if (search === undefined) continue
+      const entrySearches = searches.get(entry.id) ?? new Map()
+      entrySearches.set(itemId, search)
+      searches.set(entry.id, entrySearches)
+    }
+  }
+  return searches as ManualCraftSearches
+}
+
 /**
  * Keeps language-specific sheet choices out of the workspace record. Each
  * saved choice includes the item set inputs that produced it, so edits cannot
@@ -102,6 +133,8 @@ export function useCraftingSheet(
   minecraftVersion = '1.16.1',
   entriesReady = true,
   scoringSettings: ScoringSettings = DEFAULT_SCORING_SETTINGS,
+  data?: GeneratedData,
+  itemIdSearch = false,
 ): CraftingSheetState {
   const [initial] = useState(() => loadCraftingSheetPreferences(undefined, minecraftVersion))
   const [preferences, setPreferences] = useState<CraftingSheetPreferences>(initial.value)
@@ -144,14 +177,50 @@ export function useCraftingSheet(
     if (optionId.length === 0) return
     const entry = entries.find((candidate) => candidate.id === entryId)
     if (!entry) return
-    const current = createCraftingSheetModel(entries, states, preferencesRef.current.selectionsByLocale[locale], scoringSettings).entries.find((entry) => entry.id === entryId)
+    const selections = preferencesRef.current.selectionsByLocale[locale] ?? {}
+    const manualSearches = manualSearchesFor(entries, selections, data, scoringSettings, itemIdSearch)
+    const current = createCraftingSheetModel(entries, states, selections, scoringSettings, manualSearches).entries.find((entry) => entry.id === entryId)
     if (!current?.itemChoices.find((choice) => choice.itemId === itemId)?.options.some((option) => option.id === optionId)) return
     persist(updateLocaleSelection(preferencesRef.current, locale, entryId, entryFingerprint(entry), (selection) => ({
       disabled: selection.disabled,
       itemOrder: current.itemChoices.map((choice) => choice.itemId),
       itemCraftKeys: { ...Object.fromEntries(current.itemChoices.map((choice) => [choice.itemId, choice.selectedOptionId])), [itemId]: optionId },
     })))
-  }, [entries, states, locale, persist, scoringSettings])
+  }, [data, entries, itemIdSearch, states, locale, persist, scoringSettings])
+
+  const setItemQuery = useCallback((entryId: string, itemId: string, value: string): CraftQueryResult => {
+    const entry = entries.find((candidate) => candidate.id === entryId)
+    if (!entry || data === undefined) return { valid: false, query: '', message: 'Craft data is still loading.' }
+    const selections = preferencesRef.current.selectionsByLocale[locale] ?? {}
+    const manualSearches = manualSearchesFor(entries, selections, data, scoringSettings, itemIdSearch)
+    const current = createCraftingSheetModel(entries, states, selections, scoringSettings, manualSearches).entries.find((candidate) => candidate.id === entryId)
+    const choice = current?.itemChoices.find((candidate) => candidate.itemId === itemId)
+    const defaultQuery = choice?.suggestions[0]?.search.queries[0] ?? ''
+    const validated = validateManualItemCraft(data, entry, itemId, value, scoringSettings, itemIdSearch)
+    const itemOrder = current?.itemChoices.map((candidate) => candidate.itemId) ?? entry.targetIds
+
+    if (validated === undefined) {
+      persist(updateLocaleSelection(preferencesRef.current, locale, entryId, entryFingerprint(entry), (selection) => {
+        const itemQueries = { ...selection.itemQueries }
+        delete itemQueries[itemId]
+        return {
+          disabled: selection.disabled,
+          mode: 'individual',
+          itemOrder,
+          ...(Object.keys(itemQueries).length > 0 ? { itemQueries } : {}),
+        }
+      }))
+      return { valid: false, query: defaultQuery, message: 'That query does not find this item. Restored the calculated default.' }
+    }
+
+    persist(updateLocaleSelection(preferencesRef.current, locale, entryId, entryFingerprint(entry), (selection) => ({
+      disabled: selection.disabled,
+      mode: 'individual',
+      itemOrder,
+      itemQueries: { ...selection.itemQueries, [itemId]: validated.queries[0] },
+    })))
+    return { valid: true, query: validated.queries[0] }
+  }, [data, entries, itemIdSearch, locale, persist, scoringSettings, states])
 
   const reset = useCallback(() => {
     persist(resetLocaleSelections(preferencesRef.current, locale))
@@ -160,7 +229,9 @@ export function useCraftingSheet(
   const moveItemCraft = useCallback((entryId: string, itemId: string, direction: -1 | 1) => {
     const entry = entries.find((candidate) => candidate.id === entryId)
     if (!entry) return
-    const current = createCraftingSheetModel(entries, states, preferencesRef.current.selectionsByLocale[locale], scoringSettings).entries.find((entry) => entry.id === entryId)
+    const selections = preferencesRef.current.selectionsByLocale[locale] ?? {}
+    const manualSearches = manualSearchesFor(entries, selections, data, scoringSettings, itemIdSearch)
+    const current = createCraftingSheetModel(entries, states, selections, scoringSettings, manualSearches).entries.find((entry) => entry.id === entryId)
     if (!current) return
     const itemOrder = current.itemChoices.map((choice) => choice.itemId)
     const index = itemOrder.indexOf(itemId)
@@ -173,13 +244,18 @@ export function useCraftingSheet(
       disabled: selection.disabled,
       itemOrder,
       itemCraftKeys: Object.fromEntries(current.itemChoices.map((choice) => [choice.itemId, choice.selectedOptionId])),
+      itemQueries: selection.itemQueries,
     })))
-  }, [entries, states, locale, persist, scoringSettings])
+  }, [data, entries, itemIdSearch, states, locale, persist, scoringSettings])
 
   const selections = preferences.selectionsByLocale[locale] ?? {}
-  const model = useMemo(
-    () => createCraftingSheetModel(entries, states, selections, scoringSettings),
-    [entries, selections, scoringSettings, states],
+  const manualSearches = useMemo(
+    () => manualSearchesFor(entries, selections, data, scoringSettings, itemIdSearch),
+    [data, entries, itemIdSearch, scoringSettings, selections],
   )
-  return { ...model, warning, selectItemCraft, moveItemCraft, setEntryDisabled, reset }
+  const model = useMemo(
+    () => createCraftingSheetModel(entries, states, selections, scoringSettings, manualSearches),
+    [entries, manualSearches, selections, scoringSettings, states],
+  )
+  return { ...model, warning, selectItemCraft, setItemQuery, moveItemCraft, setEntryDisabled, reset }
 }

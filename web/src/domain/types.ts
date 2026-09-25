@@ -141,6 +141,8 @@ export interface CraftingSheetSelection {
   /** Legacy saved mode, retained only to restore pre-unification choices. */
   mode?: 'combined' | 'individual'
   itemCraftKeys?: Record<string, string>
+  /** Runner-supplied per-item queries, validated again for the current language. */
+  itemQueries?: Record<string, string>
   itemOrder?: string[]
 }
 

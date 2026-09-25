@@ -417,13 +417,13 @@ describe('crafting sheet persistence', () => {
   test('round trips independent item choices and recovers malformed execution preferences', () => {
     const storage = new MemoryStorage()
     const preferences = { selectionsByLocale: { en_us: { beds: {
-      mode: 'individual' as const, itemCraftKeys: { bed: 'query:bed', anchor: 'query:aw' }, itemOrder: ['anchor', 'bed'],
+      mode: 'individual' as const, itemCraftKeys: { bed: 'query:bed', anchor: 'query:aw' }, itemQueries: { bed: 'bed', anchor: 'aw' }, itemOrder: ['anchor', 'bed'],
     } } } }
     saveCraftingSheetPreferences(preferences, storage)
     expect(loadCraftingSheetPreferences(storage)).toEqual({ value: preferences, warning: undefined })
     const raw = JSON.stringify({ schemaVersion: 1, selectionsByLocale: { en_us: {
       ...preferences.selectionsByLocale.en_us,
-      badMode: { mode: 'unsupported' }, badItems: { itemCraftKeys: { bed: 123 } },
+      badMode: { mode: 'unsupported' }, badItems: { itemCraftKeys: { bed: 123 } }, badQueries: { itemQueries: { bed: 123 } },
       badOrder: { itemOrder: ['bed', 123] },
     } } })
     storage.setItem('mcsr.crafting-sheet.v1', raw)

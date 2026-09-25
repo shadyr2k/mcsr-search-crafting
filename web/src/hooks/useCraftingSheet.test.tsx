@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, test } from 'vitest'
 
-import type { RankedSearch, RowOptimizationState, TargetWorkspaceEntry } from '../domain/types'
+import type { GeneratedData, RankedSearch, RowOptimizationState, TargetWorkspaceEntry } from '../domain/types'
 import { craftingSheetCraftKey } from '../engine/craftingSheet'
 import { useCraftingSheet } from './useCraftingSheet'
 
@@ -166,5 +166,43 @@ describe('useCraftingSheet', () => {
     expect(hook.result.current.entries).toHaveLength(1)
     expect(hook.result.current.entries[0]).toMatchObject({ disabled: true })
     expect(hook.result.current.disabledEntries).toHaveLength(1)
+  })
+
+  test('uses a submitted query only when it finds that item, then restores the calculated default after an invalid query', () => {
+    const itemId = 'minecraft:oak_planks'
+    const junkId = 'minecraft:stone'
+    const itemSet: TargetWorkspaceEntry = { ...entry('building'), targetIds: [itemId] }
+    const defaultSearch = search('oak')
+    defaultSearch.coveredTargetIds = [itemId]
+    defaultSearch.steps[0].coveredTargetIds = [itemId]
+    defaultSearch.steps[0].newTargetIds = [itemId]
+    const states = statesFor(itemSet.id, [defaultSearch])
+    const state = states.get(itemSet.id)
+    if (state?.status === 'ready' && state.outcome.kind === 'ranked') state.outcome.itemSearches = { [itemId]: [defaultSearch] }
+    const data: GeneratedData = {
+      schemaVersion: 3,
+      items: new Map([
+        [itemId, { id: itemId, name: 'Oak Planks', confidence: 'exact', searchLines: [{ source: 'name', text: 'Oak Planks' }] }],
+        [junkId, { id: junkId, name: 'Stone', confidence: 'exact', searchLines: [{ source: 'name', text: 'Stone' }] }],
+      ]),
+      inventoryItems: new Map(),
+      recipes: [
+        { id: 'oak', recipeGroup: null, recipeBookCategory: 'crafting_building_blocks', resultCollectionId: 'collection:building', outputItemId: itemId, outputCount: 1, ingredientSlots: [], fits2x2: true, fits3x3: true },
+        { id: 'stone', recipeGroup: null, recipeBookCategory: 'crafting_building_blocks', resultCollectionId: 'collection:building', outputItemId: junkId, outputCount: 1, ingredientSlots: [], fits2x2: true, fits3x3: true },
+      ],
+      collections: new Map([['collection:building', { id: 'collection:building', recipeBookCategory: 'crafting_building_blocks', recipeGroup: null, recipeIds: ['oak', 'stone'], outputItemIds: [itemId, junkId] }]]),
+      presets: new Map(),
+    }
+    const hook = renderHook(() => useCraftingSheet('en_us', [itemSet], states, '1.16.1', true, undefined, data))
+
+    let result: ReturnType<typeof hook.result.current.setItemQuery>
+    act(() => { result = hook.result.current.setItemQuery(itemSet.id, itemId, 'oak_p') })
+    expect(result!).toMatchObject({ valid: true, query: 'oak p' })
+    expect(hook.result.current.entries[0].itemChoices[0].options.find((option) => option.id === hook.result.current.entries[0].itemChoices[0].selectedOptionId)?.search.queries).toEqual(['oak p'])
+
+    act(() => { result = hook.result.current.setItemQuery(itemSet.id, itemId, 'not found') })
+    expect(result!).toMatchObject({ valid: false, query: 'oak', message: expect.stringMatching(/restored/i) })
+    expect(hook.result.current.entries[0].itemChoices[0].options.find((option) => option.id === hook.result.current.entries[0].itemChoices[0].selectedOptionId)?.search.queries).toEqual(['oak'])
+    expect(localStorage.getItem('mcsr.crafting-sheet.v1')).not.toContain('itemQueries')
   })
 })

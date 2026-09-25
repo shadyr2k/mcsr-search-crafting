@@ -46,7 +46,7 @@ function search(query: string, junk: number, score: number): RankedSearch {
 }
 
 function ready(outcome: EntryOptimizationOutcome): LanguageComparisonState {
-  return { status: 'ready', outcomes: new Map([[entry.id, outcome]]) }
+  return { status: 'ready', outcomes: new Map([[entry.id, outcome]]), data }
 }
 
 describe('LanguageComparison', () => {

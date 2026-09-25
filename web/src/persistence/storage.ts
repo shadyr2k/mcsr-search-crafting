@@ -727,7 +727,7 @@ function defaultCraftingSheetPreferences(): CraftingSheetPreferences {
 
 function normalizeCraftingSheetSelection(value: unknown, allowEntryFingerprint: boolean): CraftingSheetSelection | undefined | null {
   if (!isRecord(value)) return null
-  const knownKeys = ['craftKey', 'disabled', 'mode', 'itemCraftKeys', 'itemOrder']
+  const knownKeys = ['craftKey', 'disabled', 'mode', 'itemCraftKeys', 'itemQueries', 'itemOrder']
   if (allowEntryFingerprint) knownKeys.push('entryFingerprint')
   if (!Object.keys(value).every((key) => knownKeys.includes(key))) return null
   if (value.entryFingerprint !== undefined && (typeof value.entryFingerprint !== 'string' || value.entryFingerprint.length === 0)) return null
@@ -738,6 +738,8 @@ function normalizeCraftingSheetSelection(value: unknown, allowEntryFingerprint: 
     || !value.itemOrder.every((itemId) => typeof itemId === 'string' && itemId.length > 0))) return null
   if (value.itemCraftKeys !== undefined && (!isRecord(value.itemCraftKeys)
     || !Object.values(value.itemCraftKeys).every((key) => typeof key === 'string' && key.length > 0))) return null
+  if (value.itemQueries !== undefined && (!isRecord(value.itemQueries)
+    || !Object.values(value.itemQueries).every((query) => typeof query === 'string' && query.length > 0))) return null
   const selection: CraftingSheetSelection = {}
   if (typeof value.entryFingerprint === 'string') selection.entryFingerprint = value.entryFingerprint
   if (typeof value.craftKey === 'string') selection.craftKey = value.craftKey
@@ -746,6 +748,9 @@ function normalizeCraftingSheetSelection(value: unknown, allowEntryFingerprint: 
   if (Array.isArray(value.itemOrder) && value.itemOrder.length > 0) selection.itemOrder = [...new Set(value.itemOrder)]
   if (isRecord(value.itemCraftKeys) && Object.keys(value.itemCraftKeys).length > 0) {
     selection.itemCraftKeys = Object.fromEntries(Object.entries(value.itemCraftKeys).sort(([left], [right]) => left.localeCompare(right))) as Record<string, string>
+  }
+  if (isRecord(value.itemQueries) && Object.keys(value.itemQueries).length > 0) {
+    selection.itemQueries = Object.fromEntries(Object.entries(value.itemQueries).sort(([left], [right]) => left.localeCompare(right))) as Record<string, string>
   }
   return Object.keys(selection).length > 0 ? selection : undefined
 }
