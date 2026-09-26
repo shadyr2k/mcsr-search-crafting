@@ -81,7 +81,12 @@ describe('LanguageComparison', () => {
     expect(screen.getByText('4 chars').className).toContain('language-comparison__value--worse')
     expect(screen.getByText('0 junk').className).toContain('language-comparison__value--better')
     expect(screen.getByRole('complementary', { name: 'Item set 1 scores' })).toBeTruthy()
-    expect(screen.getByRole('complementary', { name: 'Item set 1 scores' }).textContent).toMatch(/chars.*junk.*score/)
+    const itemScores = screen.getByRole('complementary', { name: 'Item set 1 scores' })
+    expect(itemScores.textContent).toMatch(/chars.*junk.*score/)
+    const characterPair = itemScores.querySelector('.language-comparison__score-pair')!
+    expect(characterPair.textContent).toBe('3 / 4')
+    expect(characterPair.children[0].className).toContain('language-comparison__value--better')
+    expect(characterPair.children[2].className).toContain('language-comparison__value--worse')
     const scoreBoxes = screen.getByRole('complementary', { name: 'Overall language comparison' }).querySelectorAll('.language-comparison__score-box')
     expect(scoreBoxes[0].getAttribute('style')).toContain('67')
     expect(scoreBoxes[1].getAttribute('style')).toContain('80')

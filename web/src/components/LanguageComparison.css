@@ -133,8 +133,8 @@
 
 .language-comparison__comparison-rows {
   grid-column: 2 / -1;
-  grid-template-columns: minmax(30rem, 1.7fr) minmax(12rem, .55fr);
-  align-items: stretch;
+  grid-template-columns: minmax(0, 1.7fr) minmax(10.5rem, .55fr);
+  align-items: start;
   column-gap: .7rem;
 }
 
@@ -142,6 +142,18 @@
   padding: .05rem .1rem .2rem;
   color: var(--accent-strong);
   font-size: .82rem;
+}
+
+.language-comparison__item-sets-heading { grid-column: 1; }
+.language-comparison__item-scores-heading { grid-column: 2; }
+
+.language-comparison__item-set-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1.7fr) minmax(10.5rem, .55fr);
+  align-items: stretch;
+  gap: .7rem;
+  min-width: 0;
 }
 
 .language-comparison__overall { color: var(--muted); font-size: .72rem; }
@@ -171,8 +183,7 @@
 
 .language-comparison__item-score-card {
   display: grid;
-  gap: .3rem;
-  height: 100%;
+  align-content: center;
   min-width: 0;
   padding: .45rem;
   border: 1px solid var(--border);
@@ -182,7 +193,6 @@
   font-size: .66rem;
 }
 
-.language-comparison__item-score-card > strong { color: var(--accent-strong); font-size: .72rem; }
 .language-comparison__item-score-values {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -192,9 +202,9 @@
 
 .language-comparison__item-score-values > div {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  gap: .12rem;
+  grid-template-rows: auto auto;
   align-content: center;
+  justify-items: center;
   min-width: 0;
   padding: .28rem .2rem;
   border-inline-end: 1px solid var(--border);
@@ -202,16 +212,18 @@
 }
 
 .language-comparison__item-score-values > div:last-child { border-inline-end: 0; }
-.language-comparison__item-score-values strong { grid-column: 1 / -1; color: var(--muted); font-size: .55rem; }
-.language-comparison__item-score-values span { min-width: 0; font-family: 'Coiny', sans-serif; font-size: .84rem; font-weight: 400; }
-.language-comparison__item-score-values span:nth-child(3) { color: var(--muted); font-family: 'Geom', system-ui, sans-serif; font-size: .58rem; font-weight: 800; }
+.language-comparison__item-score-values strong { color: var(--muted); font-size: .55rem; }
+.language-comparison__score-pair { display: inline-flex; align-items: center; justify-content: center; gap: .1rem; min-width: 0; font-family: 'Coiny', sans-serif; font-size: .84rem; font-weight: 400; white-space: nowrap; }
+.language-comparison__score-pair > span:nth-child(2) { color: var(--muted); font-family: 'Geom', system-ui, sans-serif; font-size: .58rem; font-weight: 800; }
 
 .language-comparison__item-set {
-  height: 100%;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   border: 1px solid var(--border);
   border-radius: .45rem;
   background: var(--panel-selected);
+  overflow: hidden;
 }
 
 .language-comparison__item-set-toggle {
@@ -221,6 +233,7 @@
   gap: .5rem;
   width: 100%;
   min-width: 0;
+  min-height: 3.55rem;
   padding: .42rem .48rem;
   border: 0;
   border-radius: .45rem;
@@ -309,7 +322,8 @@
 .language-comparison--page.language-comparison--compact .language-comparison__comparison-grid { grid-template-columns: minmax(11rem, .7fr) minmax(0, 1.5fr); gap: .5rem; }
 .language-comparison--page.language-comparison--compact .language-comparison__overall,
 .language-comparison--page.language-comparison--compact .language-comparison__comparison-rows { gap: .35rem; padding: .5rem; }
-.language-comparison--page.language-comparison--compact .language-comparison__comparison-rows { grid-column: 2; grid-template-columns: minmax(0, 1fr); }
+.language-comparison--page.language-comparison--compact .language-comparison__comparison-rows { grid-column: 2; grid-template-columns: minmax(0, 1.7fr) minmax(9.5rem, .55fr); }
+.language-comparison--page.language-comparison--compact .language-comparison__item-set-row { grid-template-columns: minmax(0, 1.7fr) minmax(9.5rem, .55fr); gap: .5rem; }
 .language-comparison--page.language-comparison--compact .language-comparison__item-set-toggle { grid-template-columns: minmax(5.5rem, .65fr) minmax(0, 1.35fr) auto; padding: .35rem; }
 .language-comparison--page.language-comparison--compact .language-comparison__item-set-details { grid-template-columns: minmax(0, 1fr); padding: .35rem; }
 .language-comparison--page.language-comparison--compact .language-comparison__language-row { gap: .25rem; padding: .35rem; }
@@ -331,7 +345,7 @@
 @media (max-width: 70rem) {
   .language-comparison__language-selectors { grid-template-columns: minmax(0, 1fr); }
   .language-comparison__comparison-grid { grid-template-columns: minmax(12rem, .55fr) minmax(0, 1.45fr); }
-  .language-comparison__comparison-rows { grid-column: 2; grid-template-columns: minmax(0, 1fr); }
+  .language-comparison__comparison-rows { grid-column: 2; }
 }
 
 @media (max-width: 47rem) {
@@ -341,6 +355,14 @@
   .language-comparison__comparison-rows { grid-column: auto; }
   .language-comparison--page.language-comparison--compact .language-comparison__comparison-rows { grid-column: auto; }
   .language-comparison__item-set-details { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 34rem) {
+  .language-comparison__comparison-rows,
+  .language-comparison--page.language-comparison--compact .language-comparison__comparison-rows { grid-template-columns: minmax(0, 1fr); }
+  .language-comparison__item-scores-heading { display: none; }
+  .language-comparison__item-set-row,
+  .language-comparison--page.language-comparison--compact .language-comparison__item-set-row { grid-template-columns: minmax(0, 1fr); gap: .4rem; }
 }
 
 @media (max-width: 38rem) {

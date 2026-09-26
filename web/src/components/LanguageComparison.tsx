@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useId, useMemo, useState, type CSSProperties } from 'react'
 
 import type { IconManifest } from '../data/iconManifest'
 import type { GeneratedData, LanguageMetadata, LanguageScoreState, RowOptimizationState, TargetWorkspaceEntry } from '../domain/types'
@@ -185,19 +185,16 @@ function OverallComparison({ leftScore, rightScore, leftName, rightName, range }
 }
 
 function ItemSetScoreCard({ entryNumber, left, right }: { entryNumber: number; left: CraftingSheetEntry | undefined; right: CraftingSheetEntry | undefined }) {
-  if (left?.status !== 'ready' || right?.status !== 'ready') return <aside className="language-comparison__item-score-card"><strong>item set {entryNumber}</strong><span>scores will appear when both crafts are ready.</span></aside>
+  if (left?.status !== 'ready' || right?.status !== 'ready') return <aside className="language-comparison__item-score-card" aria-label={`Item set ${entryNumber} scores`}><span>scores will appear when both crafts are ready.</span></aside>
   const metrics: Array<[string, number, number, boolean]> = [
     ['chars', left.totalTypedCharacters, right.totalTypedCharacters, false],
     ['junk', junkFor(left), junkFor(right), false],
     ['score', left.totalScore, right.totalScore, true],
   ]
   return <aside className="language-comparison__item-score-card" aria-label={`Item set ${entryNumber} scores`}>
-    <strong>item set {entryNumber}</strong>
     <div className="language-comparison__item-score-values">{metrics.map(([label, leftValue, rightValue, isScore]) => <div key={label}>
       <strong>{label}</strong>
-      <span className={comparisonClass(leftValue, rightValue, 'left')}>{isScore ? scoreText(leftValue) : leftValue}</span>
-      <span aria-hidden="true">/</span>
-      <span className={comparisonClass(leftValue, rightValue, 'right')}>{isScore ? scoreText(rightValue) : rightValue}</span>
+      <span className="language-comparison__score-pair"><span className={comparisonClass(leftValue, rightValue, 'left')}>{isScore ? scoreText(leftValue) : leftValue}</span><span aria-hidden="true"> / </span><span className={comparisonClass(leftValue, rightValue, 'right')}>{isScore ? scoreText(rightValue) : rightValue}</span></span>
     </div>)}</div>
   </aside>
 }
@@ -269,10 +266,10 @@ export function LanguageComparison({ baseData, entries, languages, selectedLocal
         <section className="language-comparison__comparison-rows" aria-label="Compared item sets">
           <header className="language-comparison__item-sets-heading"><strong>{compactLayout ? 'selected item set' : 'item sets'}</strong></header>
           <header className="language-comparison__item-scores-heading"><strong>item set scores</strong></header>
-          {displayedComparisons.map((comparison) => <Fragment key={comparison.entry.id}>
+          {displayedComparisons.map((comparison) => <div key={comparison.entry.id} className="language-comparison__item-set-row">
             <ItemSetComparison entry={comparison.entry} entryNumber={comparison.index + 1} baseData={baseData} left={comparison.left} right={comparison.right} leftName={leftName} rightName={rightName} icons={icons} leftData={leftData} rightData={rightData} compactLayout={compactLayout} onSetItemQuery={(side, entryId, itemId, query) => (side === 'left' ? leftSheet : rightSheet).setItemQuery(entryId, itemId, query)} onMoveItemCraft={(side, entryId, itemId, direction) => (side === 'left' ? leftSheet : rightSheet).moveItemCraft(entryId, itemId, direction)} />
             <ItemSetScoreCard entryNumber={comparison.index + 1} left={comparison.left} right={comparison.right} />
-          </Fragment>)}
+          </div>)}
         </section>
       </div>
     </>}
