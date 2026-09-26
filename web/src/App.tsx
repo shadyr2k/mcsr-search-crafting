@@ -20,6 +20,7 @@ import type { CustomInventoryPreset, EntryOptimizationOutcome, GeneratedData, It
 import { entryOptimizationFingerprint, useRowOptimizations } from './hooks/useRowOptimizations'
 import { useCraftingSheet } from './hooks/useCraftingSheet'
 import { useLanguageScores } from './hooks/useLanguageScores'
+import { useWarmLanguageScores } from './hooks/useWarmLanguageScores'
 import { clearCustomInventorySlot, clearLanguageScoreCache, loadAppSettings, loadCustomInventorySlots, loadGameVersionPreference, loadLanguagePreferences, loadTargetWorkspace, loadThemePreference, saveAppSettings, saveCustomInventorySlot, saveGameVersionPreference, saveLanguagePreferences, saveTargetWorkspace, saveThemePreference, type AppSettings, type ThemeColor, type ThemePreference } from './persistence/storage'
 import { clearLanguageCraftCache } from './persistence/languageCraftCache'
 import { cacheLanguageOutcomeScores } from './persistence/languageScoreCache'
@@ -146,6 +147,7 @@ function App() {
   const { states, retry } = useRowOptimizations(data, workspace.entries, appSettings.scoring, appSettings.itemIdSearch)
   const craftingSheet = useCraftingSheet(selectedLocale, entries, states, gameVersion.id, workspaceLoaded, appSettings.scoring, data, appSettings.itemIdSearch, true)
   const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.id, appSettings.scoring, appSettings.itemIdSearch, scoringSettingsRevision)
+  useWarmLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.id, appSettings.scoring, appSettings.itemIdSearch, gameVersion.packageBaseUrl)
 
   useEffect(() => {
     const activeEntries = entries.filter((entry) => entry.enabled && entry.targetIds.length > 0)
