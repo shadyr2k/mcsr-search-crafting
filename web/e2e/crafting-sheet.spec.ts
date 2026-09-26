@@ -238,13 +238,15 @@ test('keeps the full sheet and comparison pages fluid in normal and compact layo
     await expect(comparison).toBeVisible()
     if (compact) await expect(comparison).toHaveClass(/language-comparison--compact/)
     else await expect(comparison).not.toHaveClass(/language-comparison--compact/)
-    await expect(comparison.locator('.language-comparison__row')).toHaveCount(0)
+    await expect(comparison.locator('.language-comparison__comparison-grid')).toHaveCount(0)
     await comparison.getByRole('button', { name: /^compare$/i }).click()
-    await expect(comparison.locator('.language-comparison__row').first()).toBeVisible()
-    for (const [width, columns] of [[1280, 3], [768, 2], [375, 1]] as const) {
+    const comparisonGrid = comparison.locator('.language-comparison__comparison-grid')
+    await expect(comparisonGrid).toBeVisible()
+    await expect(comparison.locator('.language-comparison__navigator')).toHaveCount(compact ? 1 : 0)
+    for (const [width, normalColumns, compactColumns] of [[1280, 3, 2], [768, 2, 2], [375, 1, 1]] as const) {
       await page.setViewportSize({ width, height: 900 })
       await expectPageFits('.language-comparison--page')
-      await expect.poll(() => comparison.locator('.language-comparison__row').first().evaluate((row) => getComputedStyle(row).gridTemplateColumns.trim().split(/\s+/).length)).toBe(columns)
+      await expect.poll(() => comparisonGrid.evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).length)).toBe(compact ? compactColumns : normalColumns)
     }
     await page.getByRole('button', { name: 'Back to crafts' }).click()
     await expect(page.locator('.page-transition__content')).toHaveClass(/page-transition__content--entering/)

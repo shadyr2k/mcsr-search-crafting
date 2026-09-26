@@ -190,12 +190,13 @@ export function CraftQueryInput({ label, value, suggestions, onSubmit, compact =
   onSubmit: (query: string) => CraftQueryResult
   compact?: boolean
 }) {
-  const [draft, setDraft] = useState(value)
+  const displayQuery = (query: string) => query.replaceAll(' ', '_')
+  const [draft, setDraft] = useState(displayQuery(value))
   const [isOpen, setIsOpen] = useState(false)
   const [message, setMessage] = useState<string>()
   const inputRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { setDraft(value) }, [value])
+  useEffect(() => { setDraft(displayQuery(value)) }, [value])
   useEffect(() => {
     if (!isOpen) return
     function closeOnOutsidePointerDown(event: PointerEvent) {
@@ -209,7 +210,7 @@ export function CraftQueryInput({ label, value, suggestions, onSubmit, compact =
 
   function submit(query: string) {
     const result = onSubmit(query)
-    setDraft(result.query)
+    setDraft(displayQuery(result.query))
     setMessage(result.message)
     setIsOpen(false)
   }
@@ -218,9 +219,9 @@ export function CraftQueryInput({ label, value, suggestions, onSubmit, compact =
     <form onSubmit={(event) => { event.preventDefault(); submit(draft) }}>
       <input type="search" value={draft} aria-label={`Craft query for ${label}`} placeholder="type a craft…"
         onFocus={() => setIsOpen(true)}
-        onChange={(event) => { setDraft(event.target.value); setMessage(undefined); setIsOpen(true) }}
+        onChange={(event) => { setDraft(displayQuery(event.target.value)); setMessage(undefined); setIsOpen(true) }}
         onKeyDown={(event) => { if (event.key === 'Escape') setIsOpen(false) }} />
-      <button type="submit" className="crafting-sheet__query-submit" aria-label={`Use query for ${label}`}><span>{compact ? '→' : 'enter'}</span>{!compact && <ArrowSprite direction="right" />}</button>
+      <button type="submit" className="crafting-sheet__query-submit" aria-label={`Use query for ${label}`}><ArrowSprite direction="right" compact={compact} /></button>
     </form>
     {message && <p className="crafting-sheet__query-status" role="status">{message}</p>}
     {isOpen && suggestions.length > 0 && <ul className="crafting-sheet__query-suggestions" aria-label={`Calculated craft suggestions for ${label}`}>

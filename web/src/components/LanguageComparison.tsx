@@ -9,7 +9,7 @@ import { useLanguageComparison, type LanguageComparisonState } from '../hooks/us
 import { ArrowSprite } from './ArrowSprite'
 import { CraftQueryInput, type CraftQueryResult, QuerySequence } from './CraftingSheet'
 import { ItemIcon } from './ItemIcon'
-import { englishLocaleName, LanguageDropdown } from './LanguageSelector'
+import { englishLocaleName, languageDisplayName, LanguageDropdown } from './LanguageSelector'
 
 import './LanguageComparison.css'
 
@@ -41,6 +41,11 @@ function scoreText(score: number): string {
 function languageName(locale: string, languages: readonly LanguageMetadata[]): string {
   const language = languages.find((candidate) => candidate.locale === locale)
   return language ? englishLocaleName(language, languages) : locale
+}
+
+function selectedLanguageLabel(locale: string, languages: readonly LanguageMetadata[]): string {
+  const language = languages.find((candidate) => candidate.locale === locale)
+  return language ? `${englishLocaleName(language, languages)} - ${languageDisplayName(language)}` : locale
 }
 
 function itemName(itemId: string, data: GeneratedData): string {
@@ -100,7 +105,7 @@ function manualSearchesFor(
   return result as ManualCraftSearches
 }
 
-function ChoiceCell({
+function LanguageCraftRow({
   entry,
   entryNumber,
   locale,
@@ -122,19 +127,22 @@ function ChoiceCell({
   onMoveItemCraft: (entryId: string, itemId: string, direction: -1 | 1) => void
 }) {
   const nameFor = (itemId: string) => data === undefined ? itemId.replace(/^minecraft:/, '').replaceAll('_', ' ') : itemName(itemId, data)
-  return <section className="language-comparison__choice" aria-label={`Item set ${entryNumber} in ${locale}`}>
+  const ready = entry?.status === 'ready'
+  return <section className="language-comparison__language-row" aria-label={`Item set ${entryNumber} in ${locale}`}>
     <header>
-      <strong>item set {entryNumber}</strong>
+      <strong>{locale}</strong>
       <span className="language-comparison__items">{entry?.itemIds.map((itemId) => <ItemIcon key={itemId} itemId={itemId} name={nameFor(itemId)} manifest={icons} />)}</span>
     </header>
-    {entry?.status === 'ready'
+    {ready
       ? <>
-        {entry.selectedSearch && <QuerySequence search={entry.selectedSearch} />}
-        <div className="language-comparison__choice-footer"><span className="language-comparison__metrics">
+        <div className="language-comparison__selected-craft">
+          {entry.selectedSearch && <QuerySequence search={entry.selectedSearch} />}
+          <span className="language-comparison__metrics">
           <span className={metricClasses.characters}>{entry.totalTypedCharacters} chars</span>
           <span className={metricClasses.junk}>{junkFor(entry)} junk</span>
           <span className={metricClasses.score}>{scoreText(entry.totalScore)} score</span>
-        </span></div>
+          </span>
+        </div>
         <div className="language-comparison__items-editor">
           {entry.itemChoices.map((choice, index) => {
             const selected = choice.options.find((option) => option.id === choice.selectedOptionId)
@@ -154,12 +162,58 @@ function ChoiceCell({
   </section>
 }
 
-function Differences({ left, right, leftName, rightName }: { left: CraftingSheetEntry | undefined; right: CraftingSheetEntry | undefined; leftName: string; rightName: string }) {
-  if (left?.status !== 'ready' || right?.status !== 'ready') return <aside className="language-comparison__difference"><span>craft comparison will appear when both languages have a result.</span></aside>
+function ItemSetComparison({
+  entry,
+  entryNumber,
+  baseData,
+  left,
+  right,
+  leftName,
+  rightName,
+  icons,
+  leftData,
+  rightData,
+  compactLayout,
+  onSetItemQuery,
+  onMoveItemCraft,
+}: {
+  entry: TargetWorkspaceEntry
+  entryNumber: number
+  baseData: GeneratedData
+  left: CraftingSheetEntry | undefined
+  right: CraftingSheetEntry | undefined
+  leftName: string
+  rightName: string
+  icons: IconManifest
+  leftData: GeneratedData | undefined
+  rightData: GeneratedData | undefined
+  compactLayout: boolean
+  onSetItemQuery: (locale: string, entryId: string, itemId: string, query: string) => CraftQueryResult
+  onMoveItemCraft: (locale: string, entryId: string, itemId: string, direction: -1 | 1) => void
+}) {
+  const ready = left?.status === 'ready' && right?.status === 'ready'
+  return <section className="language-comparison__item-set" aria-label={`Item set ${entryNumber} comparison`}>
+    <header>
+      <strong>{entryLabel(entry, entryNumber - 1, baseData)}</strong>
+      <span className="language-comparison__items">{entry.targetIds.map((itemId) => <ItemIcon key={itemId} itemId={itemId} name={itemName(itemId, baseData)} manifest={icons} />)}</span>
+    </header>
+    <div className="language-comparison__language-rows">
+      <LanguageCraftRow entry={left} entryNumber={entryNumber} locale={leftName} icons={icons} data={leftData} compactLayout={compactLayout}
+        metricClasses={{ characters: ready ? comparisonClass(left.totalTypedCharacters, right.totalTypedCharacters, 'left') : undefined, junk: ready ? comparisonClass(junkFor(left), junkFor(right), 'left') : undefined, score: ready ? comparisonClass(left.totalScore, right.totalScore, 'left') : undefined }}
+        onSetItemQuery={(entryId, itemId, query) => onSetItemQuery('left', entryId, itemId, query)} onMoveItemCraft={(entryId, itemId, direction) => onMoveItemCraft('left', entryId, itemId, direction)} />
+      <LanguageCraftRow entry={right} entryNumber={entryNumber} locale={rightName} icons={icons} data={rightData} compactLayout={compactLayout}
+        metricClasses={{ characters: ready ? comparisonClass(left.totalTypedCharacters, right.totalTypedCharacters, 'right') : undefined, junk: ready ? comparisonClass(junkFor(left), junkFor(right), 'right') : undefined, score: ready ? comparisonClass(left.totalScore, right.totalScore, 'right') : undefined }}
+        onSetItemQuery={(entryId, itemId, query) => onSetItemQuery('right', entryId, itemId, query)} onMoveItemCraft={(entryId, itemId, direction) => onMoveItemCraft('right', entryId, itemId, direction)} />
+    </div>
+  </section>
+}
+
+function Differences({ left, right, leftName, rightName, entryNumber }: { left: CraftingSheetEntry | undefined; right: CraftingSheetEntry | undefined; leftName: string; rightName: string; entryNumber?: number }) {
+  if (left?.status !== 'ready' || right?.status !== 'ready') return <aside className="language-comparison__difference"><strong>{entryNumber === undefined ? 'comparison' : `item set ${entryNumber}`}</strong><span>craft comparison will appear when both languages have a result.</span></aside>
   const metrics: Array<[string, number, number]> = [['characters', left.totalTypedCharacters, right.totalTypedCharacters], ['junk', junkFor(left), junkFor(right)], ['score', left.totalScore, right.totalScore]]
   const scoreWinner = left.totalScore === right.totalScore ? 'the same calculated score' : `${left.totalScore < right.totalScore ? leftName : rightName} has the lower calculated score`
   return <aside className="language-comparison__difference" aria-label="Craft differences">
-    <strong>comparison</strong>
+    <strong>{entryNumber === undefined ? 'comparison' : `item set ${entryNumber}`}</strong>
     {metrics.map(([label, leftValue, rightValue]) => <div key={label}><span>{label}</span><span className={comparisonClass(leftValue, rightValue, 'left')}>{label === 'score' ? scoreText(leftValue) : leftValue}</span><span aria-hidden="true">/</span><span className={comparisonClass(leftValue, rightValue, 'right')}>{label === 'score' ? scoreText(rightValue) : rightValue}</span></div>)}
     <p>{scoreWinner}.</p>
   </aside>
@@ -204,6 +258,8 @@ export function LanguageComparison({ baseData, entries, languages, selectedLocal
   const rightState = states.get(rightLocale)
   const leftName = languageName(leftLocale, languages)
   const rightName = languageName(rightLocale, languages)
+  const leftSelectedLanguage = selectedLanguageLabel(leftLocale, languages)
+  const rightSelectedLanguage = selectedLanguageLabel(rightLocale, languages)
   const leftData = leftState?.status === 'ready' ? leftState.data : undefined
   const rightData = rightState?.status === 'ready' ? rightState.data : undefined
   const leftManualSearches = useMemo(() => manualSearchesFor(activeEntries, selections[leftLocale], leftData, scoringSettings, itemIdSearch), [activeEntries, itemIdSearch, leftData, leftLocale, scoringSettings, selections])
@@ -262,35 +318,50 @@ export function LanguageComparison({ baseData, entries, languages, selectedLocal
     updateSelection(locale, entryId, (selection) => ({ mode: 'individual', itemOrder: order, itemQueries: selection.itemQueries }))
   }
 
-  const left = selectedEntry === undefined ? undefined : leftEntries.get(selectedEntry.id)
-  const right = selectedEntry === undefined ? undefined : rightEntries.get(selectedEntry.id)
-  const ready = left?.status === 'ready' && right?.status === 'ready'
+  const comparisonEntries = activeEntries.map((entry, index) => ({
+    entry,
+    index,
+    left: leftEntries.get(entry.id),
+    right: rightEntries.get(entry.id),
+  }))
+  const selectedComparison = selectedEntry === undefined
+    ? undefined
+    : comparisonEntries.find((comparison) => comparison.entry.id === selectedEntry.id)
+  const displayedComparisons = compactLayout && selectedComparison ? [selectedComparison] : comparisonEntries
   const panel = <div className="language-comparison__panel">
-    <p>Compare one item set at a time. Use a calculated suggestion or type a query, then press Enter to validate it.</p>
-    <div className="language-comparison__language-selectors">
-      <label>left language<LanguageDropdown label="Left comparison language" languages={languages} selectedLocale={leftLocale} onSelect={chooseLeftLocale} /></label>
-      <label>right language<LanguageDropdown label="Right comparison language" languages={languages} selectedLocale={rightLocale} onSelect={chooseRightLocale} /></label>
-    </div>
-    <button type="button" className="language-comparison__start" disabled={activeEntries.length === 0} onClick={() => setComparisonRequest({ leftLocale, rightLocale })}>compare</button>
+    <header className="language-comparison__selection-header">
+      <p>Select two languages, then compare their calculated crafts. You can replace any craft with a valid query.</p>
+      <div className="language-comparison__language-selectors">
+        <label><span className="language-comparison__selected-language"><small>left language</small><strong>{leftSelectedLanguage}</strong></span><LanguageDropdown label="Left comparison language" languages={languages} selectedLocale={leftLocale} onSelect={chooseLeftLocale} /></label>
+        <label><span className="language-comparison__selected-language"><small>right language</small><strong>{rightSelectedLanguage}</strong></span><LanguageDropdown label="Right comparison language" languages={languages} selectedLocale={rightLocale} onSelect={chooseRightLocale} /></label>
+      </div>
+      <button type="button" className="language-comparison__start" disabled={activeEntries.length === 0} onClick={() => setComparisonRequest({ leftLocale, rightLocale })}>compare</button>
+    </header>
     {activeEntries.length === 0 && <p className="language-comparison__empty">Add an item set with a search goal to compare languages.</p>}
     {!isComparisonRequested && activeEntries.length > 0 && <p className="language-comparison__status">Choose two languages, then press compare to calculate and save their default crafts.</p>}
     {isComparisonRequested && (leftState?.status === 'pending' || rightState?.status === 'pending') && <p className="language-comparison__status">calculating comparison…</p>}
     {isComparisonRequested && (leftState?.status === 'unavailable' || rightState?.status === 'unavailable') && <p className="language-comparison__status">The comparison could not be calculated for one of these languages.</p>}
-    {isComparisonRequested && selectedEntry && <>
-      <nav className="language-comparison__navigator" aria-label="Item set navigation">
+    {isComparisonRequested && selectedComparison && <>
+      {compactLayout && <nav className="language-comparison__navigator" aria-label="Item set navigation">
         <button type="button" aria-label="Previous item set" disabled={selectedEntryIndex === 0} onClick={() => setSelectedEntryId(activeEntries[selectedEntryIndex - 1]?.id)}><ArrowSprite direction="left" compact /></button>
         <label>item set<select aria-label="Compared item set" value={selectedEntry.id} onChange={(event) => setSelectedEntryId(event.target.value)}>{activeEntries.map((entry, index) => <option key={entry.id} value={entry.id}>{entryLabel(entry, index, baseData)}</option>)}</select></label>
         <button type="button" aria-label="Next item set" disabled={selectedEntryIndex === activeEntries.length - 1} onClick={() => setSelectedEntryId(activeEntries[selectedEntryIndex + 1]?.id)}><ArrowSprite direction="right" compact /></button>
-      </nav>
-      <div className="language-comparison__table">
-        <header><strong>{leftName}</strong><strong>{rightName}</strong><strong>differences</strong></header>
-        <div className="language-comparison__row">
-          <ChoiceCell entry={left} entryNumber={selectedEntryIndex + 1} locale={leftName} icons={icons} data={leftData} compactLayout={compactLayout} metricClasses={{ characters: ready ? comparisonClass(left.totalTypedCharacters, right.totalTypedCharacters, 'left') : undefined, junk: ready ? comparisonClass(junkFor(left), junkFor(right), 'left') : undefined, score: ready ? comparisonClass(left.totalScore, right.totalScore, 'left') : undefined }} onSetItemQuery={(entryId, itemId, query) => setItemQuery(leftLocale, entryId, itemId, query)} onMoveItemCraft={(entryId, itemId, direction) => moveItemCraft(leftLocale, entryId, itemId, direction)} />
-          <ChoiceCell entry={right} entryNumber={selectedEntryIndex + 1} locale={rightName} icons={icons} data={rightData} compactLayout={compactLayout} metricClasses={{ characters: ready ? comparisonClass(left.totalTypedCharacters, right.totalTypedCharacters, 'right') : undefined, junk: ready ? comparisonClass(junkFor(left), junkFor(right), 'right') : undefined, score: ready ? comparisonClass(left.totalScore, right.totalScore, 'right') : undefined }} onSetItemQuery={(entryId, itemId, query) => setItemQuery(rightLocale, entryId, itemId, query)} onMoveItemCraft={(entryId, itemId, direction) => moveItemCraft(rightLocale, entryId, itemId, direction)} />
-          <Differences left={left} right={right} leftName={leftName} rightName={rightName} />
-        </div>
+      </nav>}
+      <div className="language-comparison__comparison-grid">
+        <OverallComparison leftModel={leftModel} rightModel={rightModel} leftName={leftName} rightName={rightName} />
+        <section className="language-comparison__item-sets" aria-label="Compared item sets">
+          <header><strong>{compactLayout ? 'selected item set' : 'item sets'}</strong></header>
+          {displayedComparisons.map((comparison) => <ItemSetComparison key={comparison.entry.id} entry={comparison.entry} entryNumber={comparison.index + 1} baseData={baseData}
+            left={comparison.left} right={comparison.right} leftName={leftName} rightName={rightName} icons={icons} leftData={leftData} rightData={rightData} compactLayout={compactLayout}
+            onSetItemQuery={(side, entryId, itemId, query) => setItemQuery(side === 'left' ? leftLocale : rightLocale, entryId, itemId, query)}
+            onMoveItemCraft={(side, entryId, itemId, direction) => moveItemCraft(side === 'left' ? leftLocale : rightLocale, entryId, itemId, direction)} />)}
+          {compactLayout && <Differences left={selectedComparison.left} right={selectedComparison.right} leftName={leftName} rightName={rightName} entryNumber={selectedComparison.index + 1} />}
+        </section>
+        {!compactLayout && <section className="language-comparison__differences" aria-label="Craft differences by item set">
+          <header><strong>craft differences</strong></header>
+          {comparisonEntries.map((comparison) => <Differences key={comparison.entry.id} left={comparison.left} right={comparison.right} leftName={leftName} rightName={rightName} entryNumber={comparison.index + 1} />)}
+        </section>}
       </div>
-      {ready && <OverallComparison leftModel={leftModel} rightModel={rightModel} leftName={leftName} rightName={rightName} />}
     </>}
   </div>
 

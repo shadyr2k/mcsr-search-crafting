@@ -178,11 +178,12 @@ describe('CraftingSheet', () => {
     fireEvent.focus(query)
     expect(within(screen.getByRole('list', { name: 'Calculated craft suggestions for bed' })).getAllByRole('button')).toHaveLength(10)
     fireEvent.change(query, { target: { value: 'runner craft' } })
+    expect(query).toHaveValue('runner_craft')
     fireEvent.submit(query.closest('form')!)
-    expect(input.onSetItemQuery).toHaveBeenCalledWith('bed-anchor', 'bed', 'runner craft')
+    expect(input.onSetItemQuery).toHaveBeenCalledWith('bed-anchor', 'bed', 'runner_craft')
   })
 
-  test('uses the site arrow sprite to submit a query and a text arrow in compact layout', () => {
+  test('uses a compact site arrow sprite to submit a query in both layouts', () => {
     const input = props()
     const { unmount } = render(<CraftingSheet {...input} />)
     fireEvent.click(screen.getByRole('button', { name: 'Expand item set 1' }))
@@ -191,9 +192,8 @@ describe('CraftingSheet', () => {
 
     const { container: compactContainer } = render(<CraftingSheet {...input} compactLayout />)
     fireEvent.click(screen.getByRole('button', { name: 'Expand item set 1' }))
-    const submit = screen.getByRole('button', { name: 'Use query for bed' })
-    expect(submit).toHaveTextContent('→')
-    expect(compactContainer.querySelector('.crafting-sheet__query-submit .arrow-sprite')).toBeNull()
+    expect(within(screen.getByRole('button', { name: 'Use query for bed' })).getByRole('img', { name: 'Fast forward' })).toBeVisible()
+    expect(compactContainer.querySelector('.crafting-sheet__query-submit .arrow-sprite')).not.toBeNull()
   })
 
   test('offers one editor for query choices and reordering without mode tabs', () => {

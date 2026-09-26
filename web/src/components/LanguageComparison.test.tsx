@@ -75,4 +75,39 @@ describe('LanguageComparison', () => {
     expect(screen.getByText('0 junk').className).toContain('language-comparison__value--better')
     expect(within(screen.getByLabelText('Craft differences')).getByText('german has the lower calculated score.')).toBeTruthy()
   })
+
+  test('shows all paired item sets in the normal layout and one navigable set in compact layout', () => {
+    const secondEntry: TargetWorkspaceEntry = { ...entry, id: 'tools-two', order: 1 }
+    const outcomeFor = (entryId: string, query: string): EntryOptimizationOutcome => ({
+      kind: 'ranked', entryId, rankedSearches: [search(query, 0, query.length)], bestScore: query.length, visibleItemIds: [],
+    })
+    comparisonStates.set('en_us', { status: 'ready', outcomes: new Map([
+      [entry.id, outcomeFor(entry.id, 'cat')],
+      [secondEntry.id, outcomeFor(secondEntry.id, 'cats')],
+    ]), data })
+    comparisonStates.set('de_de', { status: 'ready', outcomes: new Map([
+      [entry.id, outcomeFor(entry.id, 'dog')],
+      [secondEntry.id, outcomeFor(secondEntry.id, 'dogs')],
+    ]), data })
+
+    const props = {
+      baseData: data, entries: [entry, secondEntry], languages, selectedLocale: 'en_us', icons, dataBaseUrl: '/', scoringSettings: DEFAULT_SCORING_SETTINGS, itemIdSearch: false,
+    }
+    const { unmount } = render(<LanguageComparison {...props} />)
+    fireEvent.click(screen.getByRole('button', { name: /compare languages/i }))
+    expect(screen.getByText('english - english (united states)')).toBeTruthy()
+    expect(screen.getByText('german - deutsch (deutschland)')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /^compare$/i }))
+    expect(screen.getAllByRole('region', { name: /item set \d comparison/i })).toHaveLength(2)
+    expect(screen.getByRole('complementary', { name: 'Overall language comparison' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Craft differences by item set' })).toBeTruthy()
+    expect(screen.queryByRole('combobox', { name: 'Compared item set' })).toBeNull()
+    unmount()
+
+    render(<LanguageComparison {...props} layout="page" compactLayout />)
+    fireEvent.click(screen.getByRole('button', { name: /^compare$/i }))
+    expect(screen.getAllByRole('region', { name: /item set \d comparison/i })).toHaveLength(1)
+    expect(screen.getByRole('combobox', { name: 'Compared item set' })).toBeTruthy()
+    expect(screen.getByRole('complementary', { name: 'Craft differences' })).toBeTruthy()
+  })
 })
