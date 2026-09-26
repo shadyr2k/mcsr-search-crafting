@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import type { IconManifest } from '../data/iconManifest'
+import { normalizeSearchText } from '../engine/search'
 import { ItemIcon } from './ItemIcon'
 import { isScrollbarPointer } from './outsidePointer'
 
@@ -45,7 +46,7 @@ export function ItemPicker({
   const searchId = useId()
   const searchLabel = label.startsWith('Search ') ? label : `Search ${label}`
   const selected = useMemo(() => new Set(selectedIds), [selectedIds])
-  const normalizedQuery = query.trim().toLocaleLowerCase()
+  const normalizedQuery = normalizeSearchText(query.trim())
   const selectedItems = useMemo(() => {
     const uniqueSelectedIds = [...new Set(selectedIds)]
     const selectedItems = uniqueSelectedIds
@@ -57,8 +58,8 @@ export function ItemPicker({
   const matches = useMemo(() => sortItems(items.values()).filter((item) =>
     !selected.has(item.id)
     && (normalizedQuery === ''
-      || item.name.toLocaleLowerCase().includes(normalizedQuery)
-      || item.id.toLocaleLowerCase().includes(normalizedQuery)),
+      || normalizeSearchText(item.name).includes(normalizedQuery)
+      || normalizeSearchText(item.id).includes(normalizedQuery)),
   ).slice(0, 40), [items, normalizedQuery, selected])
 
   useEffect(() => {

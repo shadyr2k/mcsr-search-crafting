@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import type { SearchItem } from '../domain/types'
-import { matchItem, normalizeSearchText } from './search'
+import { matchItem, matchesExactItemId, normalizeExactSearchText, normalizeSearchText } from './search'
 
 const item: SearchItem = {
   id: 'minecraft:diamond_sword',
@@ -105,6 +105,18 @@ describe('matchItem', () => {
       line: 'Wä æð',
       matchedSpan: { start: 4, end: 5, text: 'ð' },
     }])
+  })
+
+  test('retains literal spelling for recipe-book simulator matching', () => {
+    const localizedItem: SearchItem = {
+      ...item,
+      id: 'minecraft:iron_sword',
+      searchLines: [{ source: 'name', text: 'Bâton' }],
+    }
+
+    expect(normalizeExactSearchText('Bâton')).toBe('bâton')
+    expect(normalizeExactSearchText('Bâton').includes(normalizeExactSearchText('ba'))).toBe(false)
+    expect(matchesExactItemId(localizedItem, ':on_sw')).toBe(true)
   })
 
   test('matches Unicode localized text without an English-only normalization assumption', () => {

@@ -115,6 +115,11 @@ export function normalizeSearchText(text: string): string {
   return keyboardFold(text).toLowerCase()
 }
 
+/** Minecraft's recipe-book simulator keeps the game's literal text matching. */
+export function normalizeExactSearchText(text: string): string {
+  return text.toLowerCase()
+}
+
 export function normalizeSearchLine(line: string): NormalizedSearchLine {
   const originalStarts: number[] = []
   const originalEnds: number[] = []
@@ -169,6 +174,11 @@ function resourcePath(itemId: string): string {
 export function matchesItemId(item: SearchItem, query: string): boolean {
   if (!query.startsWith(':') || query.length === 1) return false
   return normalizeSearchText(resourcePath(item.id)).includes(normalizeSearchText(query.slice(1)))
+}
+
+export function matchesExactItemId(item: SearchItem, query: string): boolean {
+  if (!query.startsWith(':') || query.length === 1) return false
+  return normalizeExactSearchText(resourcePath(item.id)).includes(normalizeExactSearchText(query.slice(1)))
 }
 
 export function matchItem(item: SearchItem, query: string, options: SearchOptions = {}): MatchExplanation[] {

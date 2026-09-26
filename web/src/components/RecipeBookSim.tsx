@@ -8,9 +8,8 @@ import recipeFilterCraftableTexture from '../assets/ui/recipe_filter_craftable.p
 import recipeResultSlotTexture from '../assets/ui/recipe_result_slot.png'
 import type { IconManifest } from '../data/iconManifest'
 import type { CraftingRecipe, CustomInventoryPreset, GeneratedData, IngredientSlot, InventoryItem, InventoryPreset, LanguageMetadata, LanguageScoreState, SearchItem } from '../domain/types'
-import { matchEligibleCollectionOutputs } from '../engine/collectionSearch'
 import { eligibleRecipes } from '../engine/craftability'
-import { matchesItemId, normalizeSearchText } from '../engine/search'
+import { matchesExactItemId, normalizeExactSearchText } from '../engine/search'
 import { loadRecipeBookInventory, saveRecipeBookInventory } from '../persistence/storage'
 import { GridSizeSwitch } from './GridSizeSwitch'
 import { ItemIcon } from './ItemIcon'
@@ -58,12 +57,12 @@ function scorePositions(scores: ReadonlyMap<string, LanguageScoreState>): Readon
 }
 
 function matchesTooltip(item: SearchItem, query: string): boolean {
-  return item.searchLines.some((line) => normalizeSearchText(line.text).includes(query))
+  return item.searchLines.some((line) => normalizeExactSearchText(line.text).includes(query))
 }
 
 function matchesRecipeBookSearch(item: SearchItem, query: string): boolean {
   return query.startsWith(':')
-    ? matchesItemId(item, query) || matchesTooltip(item, query.slice(1))
+    ? matchesExactItemId(item, query) || matchesTooltip(item, query.slice(1))
     : matchesTooltip(item, query)
 }
 
@@ -155,7 +154,7 @@ export function RecipeBookSim({
   }
   // Match Minecraft's localized tooltip text literally. In particular, a
   // space is a searchable character rather than formatting to discard.
-  const normalizedQuery = normalizeSearchText(query)
+  const normalizedQuery = normalizeExactSearchText(query)
   const inventory = useMemo(() => new Set(inventoryItemIds), [inventoryItemIds])
   const selectableLanguages = useMemo(() => languages.filter((language) => (
     !isBannedLocale(language.locale) || enabledBannedLocales.has(language.locale)
@@ -229,16 +228,9 @@ export function RecipeBookSim({
         })
         return collectionMatches ? [recipe.outputItemId] : []
       }))
-    } else if (Array.from(normalizedQuery).length <= 5) {
-      matchingOutputIds = new Set(matchEligibleCollectionOutputs(
-        normalizedQuery,
-        eligible,
-        data.collections,
-        data.items,
-      ).keys())
     } else {
-      // The craft-search engine intentionally caps shortcut queries at five
-      // characters. The simulator also accepts ordinary longer text searches.
+      // The simulator follows Minecraft's literal search behavior for every
+      // query length instead of using the site's keyboard-friendly aliases.
       matchingOutputIds = new Set(eligible.flatMap((recipe) => {
         const collection = data.collections.get(recipe.resultCollectionId)
         const collectionMatches = collection?.outputItemIds.some((itemId) => {

@@ -45,6 +45,17 @@ describe('ItemPicker', () => {
     expect(screen.getByRole('img', { name: 'Oak Leaves' })).toBeTruthy()
   })
 
+  test('accepts English-keyboard approximations for localized item names', async () => {
+    const user = userEvent.setup()
+    const localizedItems = new Map<string, SearchItem>([
+      ['minecraft:stick', { id: 'minecraft:stick', name: 'Bâton', confidence: 'exact', searchLines: [] }],
+    ])
+    render(<ItemPicker items={localizedItems} selectedIds={[]} onChange={vi.fn()} label="Goals" />)
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search Goals' }), 'ba')
+    expect(screen.getByRole('button', { name: 'Bâton' })).toBeTruthy()
+  })
+
   test('closes after an item is selected and the user clicks outside the dropdown', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()

@@ -58,6 +58,26 @@ describe('RecipeBookSim', () => {
     expect(writeText).toHaveBeenCalledWith('ê')
     await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Copied ê'))
   })
+
+  test('keeps recipe-book searches literal instead of accepting English-keyboard approximations', () => {
+    const localizedData: GeneratedData = {
+      ...data,
+      items: new Map([...data.items, ['minecraft:stick', {
+        ...data.items.get('minecraft:stick')!,
+        name: 'Bâton',
+        searchLines: [{ source: 'name', text: 'Bâton' }],
+      }]]),
+    }
+    render(<RecipeBookSim data={localizedData} icons={icons} customSlots={[]} languages={languages} selectedLocale="fr_fr" enabledBannedLocales={new Set()} onLocaleChange={vi.fn()} />)
+
+    const search = screen.getByRole('searchbox', { name: 'recipe book search' })
+    fireEvent.change(search, { target: { value: 'ba' } })
+    expect(within(screen.getByRole('region', { name: 'Recipe book results' })).queryByRole('img', { name: 'Bâton' })).toBeNull()
+
+    fireEvent.change(search, { target: { value: 'bâ' } })
+    expect(within(screen.getByRole('region', { name: 'Recipe book results' })).getByRole('img', { name: 'Bâton' })).toBeTruthy()
+  })
+
   test('filters selected-inventory craftable outputs and honors the crafting grid size', () => {
     render(<RecipeBookSim
       data={data}
