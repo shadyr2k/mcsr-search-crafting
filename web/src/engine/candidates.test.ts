@@ -33,12 +33,16 @@ describe('candidateQueries', () => {
     expect(candidateQueries([target('minecraft:long', ['abcdef'])], 0)).toEqual([])
   })
 
-  test('does not begin candidates inside an expanded lowercase character', () => {
+  test('uses keyboard-friendly ASCII text for accented Latin characters', () => {
     const candidates = candidateQueries([target('minecraft:expanded', ['İx'])])
 
-    expect(candidates).toEqual(['i', 'i̇', 'i̇x', 'x'])
-    expect(candidates).not.toContain('̇')
-    expect(candidates).not.toContain('̇x')
+    expect(candidates).toEqual(['i', 'ix', 'x'])
+  })
+
+  test('offers both halves of a ligature and the keyboard aliases for eth', () => {
+    const candidates = candidateQueries([target('minecraft:localized', ['æð'])])
+
+    expect(candidates).toEqual(expect.arrayContaining(['a', 'e', 'ae', 'd', 't', 'h', 'th']))
   })
 
   test('adds colon-prefixed item ID candidates only when enabled', () => {

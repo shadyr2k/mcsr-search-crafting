@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import type { SearchItem } from '../domain/types'
-import { matchItem } from './search'
+import { matchItem, normalizeSearchText } from './search'
 
 const item: SearchItem = {
   id: 'minecraft:diamond_sword',
@@ -66,7 +66,7 @@ describe('matchItem', () => {
     expect(matchItem(item, 'Sword!')).toEqual([])
   })
 
-  test('maps a match after an expanded lowercase character to the original span', () => {
+  test('maps a match after a keyboard-normalized character to the original span', () => {
     const expandedItem: SearchItem = {
       ...item,
       searchLines: [{ source: 'name', text: 'İx' }],
@@ -77,6 +77,33 @@ describe('matchItem', () => {
       source: 'name',
       line: 'İx',
       matchedSpan: { start: 1, end: 2, text: 'x' },
+    }])
+    expect(normalizeSearchText('İx')).toBe('ix')
+  })
+
+  test('matches Latin keyboard approximations for accents, ligatures, and eth', () => {
+    const localizedItem: SearchItem = {
+      ...item,
+      searchLines: [{ source: 'name', text: 'Wä æð' }],
+    }
+
+    expect(matchItem(localizedItem, 'wa')).toEqual([{
+      itemId: item.id,
+      source: 'name',
+      line: 'Wä æð',
+      matchedSpan: { start: 0, end: 2, text: 'Wä' },
+    }])
+    expect(matchItem(localizedItem, 'e')).toEqual([{
+      itemId: item.id,
+      source: 'name',
+      line: 'Wä æð',
+      matchedSpan: { start: 3, end: 4, text: 'æ' },
+    }])
+    expect(matchItem(localizedItem, 'th')).toEqual([{
+      itemId: item.id,
+      source: 'name',
+      line: 'Wä æð',
+      matchedSpan: { start: 4, end: 5, text: 'ð' },
     }])
   })
 

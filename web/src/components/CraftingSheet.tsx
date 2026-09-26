@@ -217,7 +217,7 @@ export function CraftQueryInput({ label, value, suggestions, onSubmit, compact =
 
   return <div ref={inputRef} className="crafting-sheet__query-input">
     <form onSubmit={(event) => { event.preventDefault(); submit(draft) }}>
-      <input type="search" value={draft} aria-label={`Craft query for ${label}`} placeholder="type a craft…"
+      <input type="search" value={draft} aria-label={`Craft query for ${label}`} placeholder="type a craft…" title="Latin accents and special letters accept English keyboard equivalents."
         onFocus={() => setIsOpen(true)}
         onChange={(event) => { setDraft(displayQuery(event.target.value)); setMessage(undefined); setIsOpen(true) }}
         onKeyDown={(event) => { if (event.key === 'Escape') setIsOpen(false) }} />

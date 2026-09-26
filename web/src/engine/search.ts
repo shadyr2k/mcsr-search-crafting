@@ -33,6 +33,8 @@ export interface NormalizedSearchLine {
   originalStarts: number[]
   originalEnds: number[]
   originalCharacterStarts: number[]
+  /** Every typeable ASCII alternative, including aliases inside ligatures. */
+  candidateStarts: number[]
 }
 
 const MAX_QUERY_LENGTH = 5
@@ -42,25 +44,101 @@ export interface SearchOptions {
   itemIdSearch?: boolean
 }
 
+/**
+ * Minecraft accepts the localized spelling, but runners with a US keyboard
+ * often cannot enter its Latin letters directly. Keep those inputs practical
+ * by using a deterministic ASCII spelling for matching and candidate search.
+ *
+ * Expanding a letter preserves every useful single-key alternative. For
+ * example, æ becomes ae so a, e, and ae all match; ð becomes dth so d, t, h,
+ * and their consecutive combinations all remain usable estimates.
+ */
+const LATIN_KEYBOARD_ALIASES: Readonly<Record<string, string>> = {
+  'æ': 'ae',
+  'ǽ': 'ae',
+  'œ': 'oe',
+  'ß': 'ss',
+  'ẞ': 'ss',
+  'ð': 'dth',
+  'þ': 'th',
+  'đ': 'd',
+  'ħ': 'h',
+  'ı': 'i',
+  'ĸ': 'k',
+  'ł': 'l',
+  'ŋ': 'ng',
+  'ŉ': 'n',
+  'ø': 'o',
+  'ŧ': 't',
+  'ſ': 's',
+  'ƒ': 'f',
+  'ĳ': 'ij',
+}
+
+function isCombiningMark(character: string): boolean {
+  return /^\p{M}$/u.test(character)
+}
+
+function isAsciiLetter(character: string): boolean {
+  return /^[a-z]$/i.test(character)
+}
+
+function keyboardFold(text: string): string {
+  let folded = ''
+  for (let start = 0; start < text.length;) {
+    const codePoint = text.codePointAt(start)
+    let end = start + (codePoint !== undefined && codePoint > 0xffff ? 2 : 1)
+    while (end < text.length) {
+      const nextCodePoint = text.codePointAt(end)
+      const nextEnd = end + (nextCodePoint !== undefined && nextCodePoint > 0xffff ? 2 : 1)
+      if (!isCombiningMark(text.slice(end, nextEnd))) break
+      end = nextEnd
+    }
+    const character = text.slice(start, end)
+    const alias = LATIN_KEYBOARD_ALIASES[character] ?? LATIN_KEYBOARD_ALIASES[character.toLowerCase()]
+    if (alias !== undefined) folded += alias
+    else {
+      const decomposed = character.normalize('NFD')
+      const withoutMarks = decomposed.replace(/\p{M}/gu, '')
+      // Only strip marks from Latin letters. Other scripts retain their native
+      // matching behavior, including meaningful combining marks.
+      folded += Array.from(withoutMarks).length > 0 && Array.from(withoutMarks).every(isAsciiLetter)
+        ? withoutMarks
+        : decomposed
+    }
+    start = end
+  }
+  return folded
+}
+
 export function normalizeSearchText(text: string): string {
-  return text.toLowerCase()
+  return keyboardFold(text).toLowerCase()
 }
 
 export function normalizeSearchLine(line: string): NormalizedSearchLine {
   const originalStarts: number[] = []
   const originalEnds: number[] = []
   const originalCharacterStarts: number[] = []
+  const candidateStarts: number[] = []
   let normalizedOffset = 0
 
   for (let originalStart = 0; originalStart < line.length;) {
     const codePoint = line.codePointAt(originalStart)
-    const originalEnd = originalStart + (codePoint !== undefined && codePoint > 0xffff ? 2 : 1)
+    let originalEnd = originalStart + (codePoint !== undefined && codePoint > 0xffff ? 2 : 1)
+    while (originalEnd < line.length) {
+      const nextCodePoint = line.codePointAt(originalEnd)
+      const nextEnd = originalEnd + (nextCodePoint !== undefined && nextCodePoint > 0xffff ? 2 : 1)
+      if (!isCombiningMark(line.slice(originalEnd, nextEnd))) break
+      originalEnd = nextEnd
+    }
     const normalizedCharacter = normalizeSearchText(line.slice(originalStart, originalEnd))
 
     originalCharacterStarts.push(normalizedOffset)
+    if (normalizedCharacter.length > 0) candidateStarts.push(normalizedOffset)
     for (let offset = 0; offset < normalizedCharacter.length; offset += 1) {
       originalStarts.push(originalStart)
       originalEnds.push(originalEnd)
+      if (offset > 0 && isAsciiLetter(normalizedCharacter[offset])) candidateStarts.push(normalizedOffset + offset)
     }
     normalizedOffset += normalizedCharacter.length
     originalStart = originalEnd
@@ -71,6 +149,7 @@ export function normalizeSearchLine(line: string): NormalizedSearchLine {
     originalStarts,
     originalEnds,
     originalCharacterStarts,
+    candidateStarts,
   }
 }
 

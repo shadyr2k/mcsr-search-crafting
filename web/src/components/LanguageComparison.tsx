@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState, type CSSProperties } from 'react'
+import { Fragment, useEffect, useId, useMemo, useState, type CSSProperties } from 'react'
 
 import type { IconManifest } from '../data/iconManifest'
 import type { GeneratedData, LanguageMetadata, LanguageScoreState, RowOptimizationState, TargetWorkspaceEntry } from '../domain/types'
@@ -184,11 +184,21 @@ function OverallComparison({ leftScore, rightScore, leftName, rightName, range }
   </aside>
 }
 
-function ItemSetScoreCard({ entryNumber, left, right, leftName, rightName, range }: { entryNumber: number; left: CraftingSheetEntry | undefined; right: CraftingSheetEntry | undefined; leftName: string; rightName: string; range: ScoreRange }) {
+function ItemSetScoreCard({ entryNumber, left, right }: { entryNumber: number; left: CraftingSheetEntry | undefined; right: CraftingSheetEntry | undefined }) {
   if (left?.status !== 'ready' || right?.status !== 'ready') return <aside className="language-comparison__item-score-card"><strong>item set {entryNumber}</strong><span>scores will appear when both crafts are ready.</span></aside>
+  const metrics: Array<[string, number, number, boolean]> = [
+    ['chars', left.totalTypedCharacters, right.totalTypedCharacters, false],
+    ['junk', junkFor(left), junkFor(right), false],
+    ['score', left.totalScore, right.totalScore, true],
+  ]
   return <aside className="language-comparison__item-score-card" aria-label={`Item set ${entryNumber} scores`}>
     <strong>item set {entryNumber}</strong>
-    <div className="language-comparison__item-score-values"><ScoreBox label={leftName} score={left.totalScore} range={range} className={comparisonClass(left.totalScore, right.totalScore, 'left')} /><ScoreBox label={rightName} score={right.totalScore} range={range} className={comparisonClass(left.totalScore, right.totalScore, 'right')} /></div>
+    <div className="language-comparison__item-score-values">{metrics.map(([label, leftValue, rightValue, isScore]) => <div key={label}>
+      <strong>{label}</strong>
+      <span className={comparisonClass(leftValue, rightValue, 'left')}>{isScore ? scoreText(leftValue) : leftValue}</span>
+      <span aria-hidden="true">/</span>
+      <span className={comparisonClass(leftValue, rightValue, 'right')}>{isScore ? scoreText(rightValue) : rightValue}</span>
+    </div>)}</div>
   </aside>
 }
 
@@ -256,8 +266,14 @@ export function LanguageComparison({ baseData, entries, languages, selectedLocal
       {compactLayout && <nav className="language-comparison__navigator" aria-label="Item set navigation"><button type="button" aria-label="Previous item set" disabled={selectedEntryIndex === 0} onClick={() => setSelectedEntryId(activeEntries[selectedEntryIndex - 1]?.id)}><ArrowSprite direction="left" compact /></button><label>item set<select aria-label="Compared item set" value={selectedEntry.id} onChange={(event) => setSelectedEntryId(event.target.value)}>{activeEntries.map((entry, index) => <option key={entry.id} value={entry.id}>{entryLabel(entry, index, baseData)}</option>)}</select></label><button type="button" aria-label="Next item set" disabled={selectedEntryIndex === activeEntries.length - 1} onClick={() => setSelectedEntryId(activeEntries[selectedEntryIndex + 1]?.id)}><ArrowSprite direction="right" compact /></button></nav>}
       <div className="language-comparison__comparison-grid">
         <OverallComparison leftScore={leftSheet.totalScore} rightScore={rightSheet.totalScore} leftName={leftName} rightName={rightName} range={range} />
-        <section className="language-comparison__item-sets" aria-label="Compared item sets"><header><strong>{compactLayout ? 'selected item set' : 'item sets'}</strong></header>{displayedComparisons.map((comparison) => <ItemSetComparison key={comparison.entry.id} entry={comparison.entry} entryNumber={comparison.index + 1} baseData={baseData} left={comparison.left} right={comparison.right} leftName={leftName} rightName={rightName} icons={icons} leftData={leftData} rightData={rightData} compactLayout={compactLayout} onSetItemQuery={(side, entryId, itemId, query) => (side === 'left' ? leftSheet : rightSheet).setItemQuery(entryId, itemId, query)} onMoveItemCraft={(side, entryId, itemId, direction) => (side === 'left' ? leftSheet : rightSheet).moveItemCraft(entryId, itemId, direction)} />)}</section>
-        <section className="language-comparison__item-scores" aria-label="Item set scores"><header><strong>item set scores</strong></header>{comparisonEntries.map((comparison) => <ItemSetScoreCard key={comparison.entry.id} entryNumber={comparison.index + 1} left={comparison.left} right={comparison.right} leftName={leftName} rightName={rightName} range={range} />)}</section>
+        <section className="language-comparison__comparison-rows" aria-label="Compared item sets">
+          <header className="language-comparison__item-sets-heading"><strong>{compactLayout ? 'selected item set' : 'item sets'}</strong></header>
+          <header className="language-comparison__item-scores-heading"><strong>item set scores</strong></header>
+          {displayedComparisons.map((comparison) => <Fragment key={comparison.entry.id}>
+            <ItemSetComparison entry={comparison.entry} entryNumber={comparison.index + 1} baseData={baseData} left={comparison.left} right={comparison.right} leftName={leftName} rightName={rightName} icons={icons} leftData={leftData} rightData={rightData} compactLayout={compactLayout} onSetItemQuery={(side, entryId, itemId, query) => (side === 'left' ? leftSheet : rightSheet).setItemQuery(entryId, itemId, query)} onMoveItemCraft={(side, entryId, itemId, direction) => (side === 'left' ? leftSheet : rightSheet).moveItemCraft(entryId, itemId, direction)} />
+            <ItemSetScoreCard entryNumber={comparison.index + 1} left={comparison.left} right={comparison.right} />
+          </Fragment>)}
+        </section>
       </div>
     </>}
   </div>

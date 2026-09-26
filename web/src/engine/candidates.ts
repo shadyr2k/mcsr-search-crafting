@@ -20,7 +20,7 @@ export function candidateQueries(
   for (const target of targets) {
     for (const { text } of target.searchLines) {
       const line = normalizeSearchLine(text)
-      for (const start of line.originalCharacterStarts) {
+      for (const start of line.candidateStarts) {
         for (let length = 1; length <= effectiveMaxLength && start + length <= line.text.length; length += 1) {
           candidates.add(line.text.slice(start, start + length))
         }
@@ -29,14 +29,14 @@ export function candidateQueries(
     if (options.itemIdSearch) {
       const path = normalizeSearchLine(resourcePath(target.id))
       const idMaxLength = Math.min(MAX_ITEM_ID_QUERY_LENGTH - 1, path.text.length)
-      for (const start of path.originalCharacterStarts) {
+      for (const start of path.candidateStarts) {
         for (let length = 1; length <= idMaxLength && start + length <= path.text.length; length += 1) {
           candidates.add(`:${path.text.slice(start, start + length)}`)
         }
       }
       for (const { text } of target.searchLines) {
         const line = normalizeSearchLine(text)
-        for (const start of line.originalCharacterStarts) {
+        for (const start of line.candidateStarts) {
           for (let length = 1; length <= effectiveMaxLength && start + length <= line.text.length; length += 1) {
             candidates.add(`:${line.text.slice(start, start + length)}`)
           }

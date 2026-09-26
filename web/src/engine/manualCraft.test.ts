@@ -42,4 +42,17 @@ describe('validateManualItemCraft', () => {
   test('does not rewrite underscores inside an item-ID query', () => {
     expect(normalizeManualCraftQuery(':oak_pl')).toBe(':oak_pl')
   })
+
+  test('accepts an English-keyboard approximation of an accented craft name', () => {
+    const localizedData: GeneratedData = {
+      ...data,
+      items: new Map(data.items).set(targetId, {
+        ...data.items.get(targetId)!,
+        name: 'Wäl',
+        searchLines: [{ source: 'name', text: 'Wäl' }],
+      }),
+    }
+
+    expect(validateManualItemCraft(localizedData, entry, targetId, 'wa', DEFAULT_SCORING_SETTINGS, false)?.queries).toEqual(['wa'])
+  })
 })
