@@ -6,6 +6,8 @@ import { validateManualItemCraft } from '../engine/manualCraft'
 import { DEFAULT_SCORING_SETTINGS, type ScoringSettings } from '../engine/scoring'
 import { loadCraftingSheetPreferences, saveCraftingSheetPreferences } from '../persistence/storage'
 
+export const CRAFTING_SHEET_PREFERENCES_UPDATED_EVENT = 'mcsr-crafting-sheet-preferences-updated'
+
 export type {
   CraftingSheetCharacterOccurrence,
   CraftingSheetCharacterUsage,
@@ -135,11 +137,13 @@ export function useCraftingSheet(
   scoringSettings: ScoringSettings = DEFAULT_SCORING_SETTINGS,
   data?: GeneratedData,
   itemIdSearch = false,
+  synchronize = false,
 ): CraftingSheetState {
   const [initial] = useState(() => loadCraftingSheetPreferences(undefined, minecraftVersion))
   const [preferences, setPreferences] = useState<CraftingSheetPreferences>(initial.value)
   const [loadedMinecraftVersion, setLoadedMinecraftVersion] = useState(minecraftVersion)
   const preferencesRef = useRef(preferences)
+  const isPersistingRef = useRef(false)
   const [warning, setWarning] = useState<string | undefined>(initial.warning)
 
   const persist = useCallback((next: CraftingSheetPreferences) => {
@@ -147,15 +151,27 @@ export function useCraftingSheet(
     setPreferences(next)
     const result = saveCraftingSheetPreferences(next, undefined, minecraftVersion)
     setWarning((current) => combineWarnings(current, result.warning))
-  }, [minecraftVersion])
+    if (synchronize && typeof window !== 'undefined') {
+      isPersistingRef.current = true
+      window.dispatchEvent(new Event(CRAFTING_SHEET_PREFERENCES_UPDATED_EVENT))
+      isPersistingRef.current = false
+    }
+  }, [minecraftVersion, synchronize])
 
   useEffect(() => {
-    const loaded = loadCraftingSheetPreferences(undefined, minecraftVersion)
-    preferencesRef.current = loaded.value
-    setPreferences(loaded.value)
-    setWarning(loaded.warning)
-    setLoadedMinecraftVersion(minecraftVersion)
-  }, [minecraftVersion])
+    const refresh = () => {
+      if (isPersistingRef.current) return
+      const loaded = loadCraftingSheetPreferences(undefined, minecraftVersion)
+      preferencesRef.current = loaded.value
+      setPreferences(loaded.value)
+      setWarning(loaded.warning)
+      setLoadedMinecraftVersion(minecraftVersion)
+    }
+    refresh()
+    if (!synchronize) return
+    window.addEventListener(CRAFTING_SHEET_PREFERENCES_UPDATED_EVENT, refresh)
+    return () => window.removeEventListener(CRAFTING_SHEET_PREFERENCES_UPDATED_EVENT, refresh)
+  }, [minecraftVersion, synchronize])
 
   useEffect(() => {
     if (!entriesReady || loadedMinecraftVersion !== minecraftVersion) return

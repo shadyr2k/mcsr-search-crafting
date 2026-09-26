@@ -56,6 +56,23 @@ function statesFor(entryId: string, searches: RankedSearch[]): ReadonlyMap<strin
 afterEach(() => localStorage.clear())
 
 describe('useCraftingSheet', () => {
+  test('shares saved choices between language sheets mounted at the same time', () => {
+    const itemSet = entry('tools')
+    const searches = [search('a'), search('z', 1)]
+    const states = statesFor(itemSet.id, searches)
+    const hook = renderHook(() => ({
+      english: useCraftingSheet('en_us', [itemSet], states, '1.16.1', true, undefined, undefined, false, true),
+      german: useCraftingSheet('de_de', [itemSet], states, '1.16.1', true, undefined, undefined, false, true),
+    }))
+
+    act(() => hook.result.current.english.selectItemCraft(itemSet.id, itemSet.targetIds[0], craftingSheetCraftKey(searches[1])))
+    act(() => hook.result.current.german.setEntryDisabled(itemSet.id, true))
+
+    const saved = JSON.parse(localStorage.getItem('mcsr.crafting-sheet.v1') ?? '{}')
+    expect(saved.selectionsByLocale.en_us.tools.itemCraftKeys[itemSet.targetIds[0]]).toBe(craftingSheetCraftKey(searches[1]))
+    expect(saved.selectionsByLocale.de_de.tools.disabled).toBe(true)
+  })
+
   test('keeps other queries fixed on edit, restores choices after reload, and resets to the suggested sequence', () => {
     const itemSet = { ...entry('bed-anchor'), targetIds: ['bed', 'anchor'] }
     const searches = [search('a')]

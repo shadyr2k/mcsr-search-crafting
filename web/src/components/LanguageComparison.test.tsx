@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { parseIconManifest } from '../data/iconManifest'
@@ -63,17 +63,27 @@ describe('LanguageComparison', () => {
       dataBaseUrl="/"
       scoringSettings={DEFAULT_SCORING_SETTINGS}
       itemIdSearch={false}
+      languageScores={new Map([
+        ['en_us', { status: 'ready' as const, score: 5 }],
+        ['de_de', { status: 'ready' as const, score: 4 }],
+        ['da_dk', { status: 'ready' as const, score: 1 }],
+        ['fr_fr', { status: 'ready' as const, score: 10 }],
+      ])}
     />)
 
     fireEvent.click(screen.getByRole('button', { name: /compare languages/i }))
     expect(screen.getByRole('combobox', { name: 'Left comparison language' })).toBeTruthy()
     expect(screen.getByText(/press compare to calculate/i)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /^compare$/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Expand item set 1 comparison' }))
     expect(screen.getByText('3 chars').className).toContain('language-comparison__value--better')
     expect(screen.getByText('1 junk').className).toContain('language-comparison__value--worse')
     expect(screen.getByText('4 chars').className).toContain('language-comparison__value--worse')
     expect(screen.getByText('0 junk').className).toContain('language-comparison__value--better')
-    expect(within(screen.getByLabelText('Craft differences')).getByText('german has the lower calculated score.')).toBeTruthy()
+    expect(screen.getByRole('complementary', { name: 'Item set 1 scores' })).toBeTruthy()
+    const scoreBoxes = screen.getByRole('complementary', { name: 'Overall language comparison' }).querySelectorAll('.language-comparison__score-box')
+    expect(scoreBoxes[0].getAttribute('style')).toContain('67')
+    expect(scoreBoxes[1].getAttribute('style')).toContain('80')
   })
 
   test('shows all paired item sets in the normal layout and one navigable set in compact layout', () => {
@@ -100,7 +110,7 @@ describe('LanguageComparison', () => {
     fireEvent.click(screen.getByRole('button', { name: /^compare$/i }))
     expect(screen.getAllByRole('region', { name: /item set \d comparison/i })).toHaveLength(2)
     expect(screen.getByRole('complementary', { name: 'Overall language comparison' })).toBeTruthy()
-    expect(screen.getByRole('region', { name: 'Craft differences by item set' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Item set scores' })).toBeTruthy()
     expect(screen.queryByRole('combobox', { name: 'Compared item set' })).toBeNull()
     unmount()
 
@@ -108,6 +118,6 @@ describe('LanguageComparison', () => {
     fireEvent.click(screen.getByRole('button', { name: /^compare$/i }))
     expect(screen.getAllByRole('region', { name: /item set \d comparison/i })).toHaveLength(1)
     expect(screen.getByRole('combobox', { name: 'Compared item set' })).toBeTruthy()
-    expect(screen.getByRole('complementary', { name: 'Craft differences' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Item set scores' })).toBeTruthy()
   })
 })

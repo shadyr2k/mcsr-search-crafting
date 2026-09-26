@@ -298,7 +298,7 @@ export function RecipeBookSim({
               return score?.status === 'ready'
                 ? <strong className="recipe-book-sim__language-score" style={{ '--language-score-position': scorePositionByLocale.get(language.locale) } as CSSProperties}>{scoreText(score.score)}</strong>
                 : score?.status === 'pending' ? <span className="recipe-book-sim__language-score">…</span>
-                  : score?.status === 'not-calculated' ? <span className="recipe-book-sim__language-score" title="Calculate this language from Compare languages.">—</span> : undefined
+                  : score?.status === 'not-calculated' ? <span className="recipe-book-sim__language-score" title="Open or compare this language to calculate its score.">—</span> : undefined
             }}
           />
         </div>

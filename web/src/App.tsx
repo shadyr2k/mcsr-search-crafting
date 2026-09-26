@@ -16,12 +16,13 @@ import { englishLocaleName, isBannedLocale, isRtlLocale, LanguageSelector } from
 import { assertIconCoverage, loadIconManifest, loadIconOverrides, type IconManifest, withIconOverrides } from './data/iconManifest'
 import { gameVersionForId, supportedGameVersions } from './data/gameVersions'
 import { loadGeneratedData, loadLanguageMetadata, loadLocalizedGeneratedData } from './data/schema'
-import type { CustomInventoryPreset, GeneratedData, ItemSetDraft, LanguageMetadata, TargetWorkspace, TargetWorkspaceEntry } from './domain/types'
-import { useRowOptimizations } from './hooks/useRowOptimizations'
+import type { CustomInventoryPreset, EntryOptimizationOutcome, GeneratedData, ItemSetDraft, LanguageMetadata, TargetWorkspace, TargetWorkspaceEntry } from './domain/types'
+import { entryOptimizationFingerprint, useRowOptimizations } from './hooks/useRowOptimizations'
 import { useCraftingSheet } from './hooks/useCraftingSheet'
 import { useLanguageScores } from './hooks/useLanguageScores'
 import { clearCustomInventorySlot, clearLanguageScoreCache, loadAppSettings, loadCustomInventorySlots, loadGameVersionPreference, loadLanguagePreferences, loadTargetWorkspace, loadThemePreference, saveAppSettings, saveCustomInventorySlot, saveGameVersionPreference, saveLanguagePreferences, saveTargetWorkspace, saveThemePreference, type AppSettings, type ThemeColor, type ThemePreference } from './persistence/storage'
 import { clearLanguageCraftCache } from './persistence/languageCraftCache'
+import { cacheLanguageOutcomeScores } from './persistence/languageScoreCache'
 import { normalizeScoringSettings, scoringSettingsFingerprint } from './engine/scoring'
 import { ThemePicker } from './components/ThemePicker'
 import { VersionPicker } from './components/VersionPicker'
@@ -143,8 +144,20 @@ function App() {
     ? withIconOverrides(icons, catifiedIconOverrides)
     : icons, [appSettings.catifyItems, catifiedIconOverrides, gameVersion.id, icons])
   const { states, retry } = useRowOptimizations(data, workspace.entries, appSettings.scoring, appSettings.itemIdSearch)
-  const craftingSheet = useCraftingSheet(selectedLocale, entries, states, gameVersion.id, workspaceLoaded, appSettings.scoring, data, appSettings.itemIdSearch)
+  const craftingSheet = useCraftingSheet(selectedLocale, entries, states, gameVersion.id, workspaceLoaded, appSettings.scoring, data, appSettings.itemIdSearch, true)
   const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.id, appSettings.scoring, appSettings.itemIdSearch, scoringSettingsRevision)
+
+  useEffect(() => {
+    const activeEntries = entries.filter((entry) => entry.enabled && entry.targetIds.length > 0)
+    if (!workspaceLoaded || !data || activeEntries.length === 0) return
+    const outcomes = new Map<string, EntryOptimizationOutcome>()
+    for (const entry of activeEntries) {
+      const state = states.get(entry.id)
+      if (state?.status !== 'ready' || state.fingerprint !== entryOptimizationFingerprint(entry, appSettings.scoring, appSettings.itemIdSearch)) return
+      outcomes.set(entry.id, state.outcome)
+    }
+    cacheLanguageOutcomeScores(gameVersion.id, activeEntries, selectedLocale, outcomes)
+  }, [appSettings.itemIdSearch, appSettings.scoring, data, entries, gameVersion.id, selectedLocale, states, workspaceLoaded])
 
   useLayoutEffect(() => {
     if (tutorialIndex === null) return
@@ -528,6 +541,7 @@ function App() {
       dataBaseUrl={gameVersion.packageBaseUrl}
       scoringSettings={appSettings.scoring}
       itemIdSearch={appSettings.itemIdSearch}
+      languageScores={languageScores}
       minecraftVersion={gameVersion.id}
       loadedLocale={selectedLocale}
       loadedStates={states}
