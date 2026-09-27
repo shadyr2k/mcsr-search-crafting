@@ -117,7 +117,7 @@ function ItemSetCard({ entry, items, icons, onSetItemQuery, onMoveItemCraft, onS
         onOpenChange?.(nextOpen)
       }}>
         <span className="crafting-sheet__entry-summary">
-          <span id={headingId} className="crafting-sheet__entry-label">{entry.label}</span>
+          <span id={headingId} className="crafting-sheet__entry-label">{entry.label}{!isOpen && entry.status !== 'ready' && <span className="crafting-sheet__entry-status">{entry.status === 'pending' ? 'Calculating crafts…' : 'No available craft.'}</span>}</span>
           <span className="crafting-sheet__summary-items">{summaryGroups.map(({ itemIds, step }) => {
             const itemNames = itemIds.map((itemId) => itemName(itemId, items))
             const itemLabel = itemNames.length < 3 ? itemNames.join(' and ') : `${itemNames.slice(0, -1).join(', ')}, and ${itemNames.at(-1)}`
@@ -126,7 +126,6 @@ function ItemSetCard({ entry, items, icons, onSetItemQuery, onMoveItemCraft, onS
               {step && <span className="craft-query crafting-sheet__query-preview" aria-label={`Selected query for ${itemLabel}`} dir="ltr"><span className="crafting-sheet__query-text">{step.query.replaceAll(' ', '_')}</span></span>}
             </span>
           })}</span>
-          {!isOpen && entry.status !== 'ready' && <span className="crafting-sheet__empty">{entry.status === 'pending' ? 'Calculating crafts…' : 'No available craft.'}</span>}
         </span>
         <span aria-hidden="true"><ArrowSprite direction={isOpen ? 'up' : 'down'} compact /></span>
       </button>

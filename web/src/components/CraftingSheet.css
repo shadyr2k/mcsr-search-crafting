@@ -118,6 +118,7 @@
 .crafting-sheet__entry-toggle { display: flex; flex: 1; min-width: 0; align-items: center; justify-content: space-between; gap: .5rem; padding: .2rem; border: 0; background: transparent; text-align: start; }
 .crafting-sheet__entry-summary { display: grid; gap: .3rem; min-width: 0; }
 .crafting-sheet__entry-label { color: var(--accent-strong); font-size: .78rem; }
+.crafting-sheet__entry-status { margin-inline-start: .35rem; color: var(--muted); font-family: 'Geom', system-ui, sans-serif; font-size: .68rem; font-weight: 800; white-space: nowrap; }
 .crafting-sheet__summary-items { display: flex; flex-wrap: wrap; gap: .35rem .75rem; min-width: 0; }
 .crafting-sheet__summary-item { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .3rem; min-width: 0; }
 .crafting-sheet__summary-item .crafting-sheet__items { gap: .25rem; }

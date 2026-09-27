@@ -50,10 +50,16 @@ export function useWarmLanguageScores(
     const scoreCacheGeneration = languageScoreCacheGeneration(minecraftVersion)
 
     void (async () => {
-      const cachedOutcomes = new Map(await Promise.all(activeEntries.map(async (entry) => [
-        entry.id,
-        await loadLanguageCraftOutcomes(minecraftVersion, languageCraftEntryKey(entry, scoringSettings, itemIdSearch)),
-      ] as const)))
+      const cachedOutcomes = new Map(await Promise.all(activeEntries.map(async (entry) => {
+        try {
+          return [
+            entry.id,
+            await loadLanguageCraftOutcomes(minecraftVersion, languageCraftEntryKey(entry, scoringSettings, itemIdSearch)),
+          ] as const
+        } catch {
+          return [entry.id, new Map<string, EntryOptimizationOutcome>()] as const
+        }
+      })))
       let payload: unknown | undefined
 
       for (const language of eligibleLocales) {
@@ -111,5 +117,8 @@ export function useWarmLanguageScores(
     })()
 
     return () => controller.abort()
-  }, [activeEntries, baseData, dataBaseUrl, enabledBannedLocales, fingerprint, itemIdSearch, languages, minecraftVersion, scoringSettings])
+  // The fingerprint covers every input that changes calculated outcomes. Do
+  // not restart this long-running background pass for unrelated app renders
+  // such as a page change or a cosmetic settings update.
+  }, [baseData, dataBaseUrl, fingerprint])
 }

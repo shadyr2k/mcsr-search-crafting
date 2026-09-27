@@ -72,4 +72,33 @@ describe('useWarmLanguageScores', () => {
       languageCraftEntryKey(entry, DEFAULT_SCORING_SETTINGS, false),
     )).toEqual(new Map([['en_us', outcome], ['de_de', outcome]]))
   })
+
+  test('does not restart an in-progress warm-up for equivalent rerenders', async () => {
+    mocks.loadLocalizedSearchPayload.mockResolvedValue({})
+    mocks.parseLocalizedGeneratedData.mockReturnValue(localizedData)
+    let resolveEnglish: ((result: EntryOptimizationOutcome) => void) | undefined
+    mocks.optimizeWorkspaceEntry
+      .mockImplementationOnce(() => new Promise<EntryOptimizationOutcome>((resolve) => { resolveEnglish = resolve }))
+      .mockResolvedValue(outcome)
+
+    const hook = renderHook(({ currentEntries, currentLanguages }: { currentEntries: TargetWorkspaceEntry[]; currentLanguages: LanguageMetadata[] }) => useWarmLanguageScores(
+      baseData,
+      currentLanguages,
+      currentEntries,
+      new Set(),
+      minecraftVersion,
+      DEFAULT_SCORING_SETTINGS,
+      false,
+      '/',
+    ), { initialProps: { currentEntries: [entry], currentLanguages: languages } })
+
+    await waitFor(() => expect(mocks.optimizeWorkspaceEntry).toHaveBeenCalledTimes(1))
+    hook.rerender({ currentEntries: [{ ...entry }], currentLanguages: languages.map((language) => ({ ...language })) })
+    expect(mocks.optimizeWorkspaceEntry).toHaveBeenCalledTimes(1)
+
+    resolveEnglish?.(outcome)
+    await waitFor(() => expect(loadLanguageScoreCache(undefined, minecraftVersion).value.entryScores[languageScoreEntryKey(entry)])
+      .toEqual({ en_us: { score: 0 }, de_de: { score: 0 } }))
+    expect(mocks.optimizeWorkspaceEntry).toHaveBeenCalledTimes(2)
+  })
 })
