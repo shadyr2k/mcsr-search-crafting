@@ -2,6 +2,7 @@ import { cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, test } from 'vitest'
 
 import type { GeneratedData, LanguageMetadata, TargetWorkspaceEntry } from '../domain/types'
+import { DEFAULT_SCORING_SETTINGS } from '../engine/scoring'
 import { LANGUAGE_SCORE_CACHE_UPDATED_EVENT, languageScoreEntryKey } from '../persistence/languageScoreCache'
 import { saveLanguageScoreCache } from '../persistence/storage'
 import { useLanguageScores } from './useLanguageScores'
@@ -78,5 +79,22 @@ describe('useLanguageScores', () => {
 
     await waitFor(() => expect(hook.result.current.get('en_us')).toEqual({ status: 'ready', score: 3, optimalCharacterCount: 4, leastJunk: 0 }))
     expect(hook.result.current.get('de_de')).toEqual({ status: 'not-calculated' })
+  })
+
+  test('shows the locale currently being warmed as pending', () => {
+    const { result } = renderHook(() => useLanguageScores(
+      data,
+      languages,
+      [entry('tools', 'minecraft:stick')],
+      new Set(),
+      minecraftVersion,
+      DEFAULT_SCORING_SETTINGS,
+      false,
+      0,
+      'de_de',
+    ))
+
+    expect(result.current.get('de_de')).toEqual({ status: 'pending' })
+    expect(result.current.get('en_us')).toEqual({ status: 'not-calculated' })
   })
 })

@@ -48,6 +48,7 @@ export function useLanguageScores(
   scoringSettings: ScoringSettings = DEFAULT_SCORING_SETTINGS,
   itemIdSearch = false,
   cacheInvalidationKey = 0,
+  pendingLocale?: string,
 ): ReadonlyMap<string, LanguageScoreState> {
   const [cache, setCache] = useState<LanguageScoreCache>()
   const scoringEntries = useMemo(() => entries
@@ -78,9 +79,11 @@ export function useLanguageScores(
       if (isBannedLocale(language.locale) && !enabledBannedLocales.has(language.locale)) scores.set(language.locale, { status: 'disabled' })
       else {
         const score = cachedAggregateScore(cache, language.locale, scoringEntries)
-        scores.set(language.locale, score === undefined ? { status: 'not-calculated' } : { status: 'ready', ...score })
+        scores.set(language.locale, score === undefined
+          ? language.locale === pendingLocale ? { status: 'pending' } : { status: 'not-calculated' }
+          : { status: 'ready', ...score })
       }
     }
     return scores
-  }, [baseData, cache, enabledBannedLocales, languages, scoringEntries])
+  }, [baseData, cache, enabledBannedLocales, languages, pendingLocale, scoringEntries])
 }

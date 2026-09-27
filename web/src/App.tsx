@@ -146,8 +146,8 @@ function App() {
     : icons, [appSettings.catifyItems, catifiedIconOverrides, gameVersion.id, icons])
   const { states, retry } = useRowOptimizations(data, workspace.entries, appSettings.scoring, appSettings.itemIdSearch)
   const craftingSheet = useCraftingSheet(selectedLocale, entries, states, gameVersion.id, workspaceLoaded, appSettings.scoring, data, appSettings.itemIdSearch, true)
-  const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.id, appSettings.scoring, appSettings.itemIdSearch, scoringSettingsRevision)
-  useWarmLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.id, appSettings.scoring, appSettings.itemIdSearch, gameVersion.packageBaseUrl)
+  const warmingLocale = useWarmLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.id, appSettings.scoring, appSettings.itemIdSearch, gameVersion.packageBaseUrl)
+  const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.id, appSettings.scoring, appSettings.itemIdSearch, scoringSettingsRevision, warmingLocale)
 
   useEffect(() => {
     const activeEntries = entries.filter((entry) => entry.enabled && entry.targetIds.length > 0)

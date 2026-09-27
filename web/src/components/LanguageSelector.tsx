@@ -243,7 +243,7 @@ function LanguageOption({
         aria-hidden="true"
       >{scoreText(score.score)}</strong>}
       {score?.status === 'pending' && <span className="language-selector__score" aria-hidden="true">…</span>}
-      {score?.status === 'not-calculated' && <span className="language-selector__score" title="Open or compare this language to calculate its score." aria-hidden="true">—</span>}
+      {score?.status === 'not-calculated' && <span className="language-selector__score" title="Waiting for its background score calculation." aria-hidden="true">—</span>}
     </button>
     {banned && (compactLayout
       ? <div className="language-selector__enable-options" role="group" aria-label={`Enable ${displayName} for calculation`}>
