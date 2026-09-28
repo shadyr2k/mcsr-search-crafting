@@ -8,6 +8,9 @@ interface SettingsPageProps {
   settings: AppSettings
   catifyAvailable?: boolean
   onSave(settings: AppSettings): void
+  onResetCalculationCache(): void
+  calculationCacheResetting?: boolean
+  calculationCacheWasReset?: boolean
 }
 
 interface NumberSetting {
@@ -54,7 +57,14 @@ const junkSettings: readonly NumberSetting[] = [
   },
 ]
 
-export function SettingsPage({ settings, catifyAvailable, onSave }: SettingsPageProps) {
+export function SettingsPage({
+  settings,
+  catifyAvailable,
+  onSave,
+  onResetCalculationCache,
+  calculationCacheResetting = false,
+  calculationCacheWasReset = false,
+}: SettingsPageProps) {
   const [draft, setDraft] = useState(settings)
   const [saved, setSaved] = useState(false)
 
@@ -193,6 +203,17 @@ export function SettingsPage({ settings, catifyAvailable, onSave }: SettingsPage
           />
           <span>compact layout</span>
           <small>Uses smaller type, rows, icons, and controls in the main craft workspace. It also shows Shift+Home and Backspace as text keycaps there.</small>
+        </div>
+        <div className="settings-page__cache">
+          <div>
+            <span>calculation cache</span>
+            <small>Clears saved optimal language scores and craft results, then rebuilds them from the current item sets and scoring rules. Your item sets, craft-sheet choices, and site settings stay saved.</small>
+          </div>
+          <button type="button" onClick={onResetCalculationCache} disabled={calculationCacheResetting}>
+            {calculationCacheResetting ? 'resetting cache…' : 'reset calculation cache'}
+          </button>
+          {calculationCacheResetting && <p role="status">clearing saved results…</p>}
+          {!calculationCacheResetting && calculationCacheWasReset && <p role="status">calculation cache reset; fresh crafts are calculating</p>}
         </div>
       </fieldset>
       {catifyAvailable !== undefined && <fieldset className="settings-page__catify">

@@ -2,12 +2,12 @@ import { useEffect, useId, useMemo, useState, type CSSProperties } from 'react'
 
 import type { IconManifest } from '../data/iconManifest'
 import type { GeneratedData, LanguageMetadata, LanguageScoreState, RowOptimizationState, TargetWorkspaceEntry } from '../domain/types'
-import type { CraftingSheetEntry } from '../engine/craftingSheet'
+import type { CraftingSheetEntry, CraftingSheetOption } from '../engine/craftingSheet'
 import type { ScoringSettings } from '../engine/scoring'
 import { useLanguageComparison, type LanguageComparisonState } from '../hooks/useLanguageComparison'
 import { useCraftingSheet } from '../hooks/useCraftingSheet'
 import { ArrowSprite } from './ArrowSprite'
-import { CraftQueryInput, type CraftQueryResult, QuerySequence } from './CraftingSheet'
+import { CraftQueryInput, type CraftQueryResult, QuerySequence, SheetDisclosure } from './CraftingSheet'
 import { ItemIcon } from './ItemIcon'
 import { englishLocaleName, languageDisplayName, LanguageDropdown } from './LanguageSelector'
 
@@ -33,7 +33,12 @@ interface LanguageComparisonProps {
 }
 
 type ComparisonRequest = { leftLocale: string; rightLocale: string }
-interface ScoreRange { minimum: number; maximum: number }
+interface ScoreRange {
+  minimum: number
+  maximum: number
+  bestLocale?: string
+  worstLocale?: string
+}
 
 function scoreText(score: number): string {
   return Number.isInteger(score) ? String(score) : score.toFixed(1)
@@ -53,8 +58,8 @@ function itemName(itemId: string, data: GeneratedData): string {
   return data.items.get(itemId)?.name ?? itemId.replace(/^minecraft:/, '').replaceAll('_', ' ')
 }
 
-function entryLabel(entry: TargetWorkspaceEntry, index: number, data: GeneratedData): string {
-  return `item set ${index + 1} · ${entry.targetIds.map((itemId) => itemName(itemId, data)).join(', ')}`
+function entryLabel(_entry: TargetWorkspaceEntry, index: number, _data: GeneratedData): string {
+  return `item set ${index + 1}`
 }
 
 function comparisonClass(left: number, right: number, side: 'left' | 'right'): string | undefined {
@@ -79,13 +84,15 @@ function rowStatesFor(state: LanguageComparisonState | undefined, entries: reado
 }
 
 function scoreRange(languageScores: ReadonlyMap<string, LanguageScoreState>, extraScores: readonly number[]): ScoreRange {
-  const cachedScores = [...languageScores.values()]
-    .filter((score): score is Extract<LanguageScoreState, { status: 'ready' }> => score.status === 'ready')
-    .map((score) => score.score)
-  const scores = cachedScores.length > 0 ? cachedScores : extraScores.filter(Number.isFinite)
+  const cachedScores = [...languageScores.entries()]
+    .flatMap(([locale, score]) => score.status === 'ready' ? [{ locale, score: score.score }] : [])
+  const scores = [...cachedScores.map(({ score }) => score), ...extraScores.filter(Number.isFinite)]
   const minimum = Math.min(...scores)
   const maximum = Math.max(...scores)
-  return Number.isFinite(minimum) && Number.isFinite(maximum) ? { minimum, maximum } : { minimum: 0, maximum: 0 }
+  if (!Number.isFinite(minimum) || !Number.isFinite(maximum)) return { minimum: 0, maximum: 0 }
+  const bestLocale = cachedScores.find(({ score }) => score === minimum)?.locale
+  const worstLocale = cachedScores.find(({ score }) => score === maximum)?.locale
+  return { minimum, maximum, bestLocale, worstLocale }
 }
 
 function scoreStyle(score: number, range: ScoreRange): CSSProperties {
@@ -93,7 +100,7 @@ function scoreStyle(score: number, range: ScoreRange): CSSProperties {
   return { '--language-comparison-score-hue': String(Math.round(120 * (1 - position))) } as CSSProperties
 }
 
-function LanguageCraftRow({ entry, entryNumber, locale, icons, data, metricClasses, compactLayout = false, onSetItemQuery, onMoveItemCraft }: {
+function LanguageCraftRow({ entry, entryNumber, locale, icons, data, metricClasses, compactLayout = false, onPreviewItemQuery, onSetItemQuery, onMoveItemCraft }: {
   entry: CraftingSheetEntry | undefined
   entryNumber: number
   locale: string
@@ -101,6 +108,7 @@ function LanguageCraftRow({ entry, entryNumber, locale, icons, data, metricClass
   data: GeneratedData | undefined
   metricClasses: { characters?: string; junk?: string; score?: string }
   compactLayout?: boolean
+  onPreviewItemQuery: (entryId: string, itemId: string, query: string) => CraftingSheetOption | undefined
   onSetItemQuery: (entryId: string, itemId: string, query: string) => CraftQueryResult
   onMoveItemCraft: (entryId: string, itemId: string, direction: -1 | 1) => void
 }) {
@@ -122,7 +130,7 @@ function LanguageCraftRow({ entry, entryNumber, locale, icons, data, metricClass
             </span>
             <ItemIcon itemId={choice.itemId} name={name} manifest={icons} />
             {selected && <QuerySequence search={selected.search} />}
-            <CraftQueryInput compact={compactLayout} label={`${name} in ${locale}`} value={selected?.search.queries[0] ?? ''} suggestions={choice.suggestions} onSubmit={(query) => onSetItemQuery(entry.id, choice.itemId, query)} />
+            <CraftQueryInput label={`${name} in ${locale}`} value={selected?.search.queries[0] ?? ''} suggestions={choice.suggestions} calculatedSearches={choice.calculatedSearches} calculatedBestScore={choice.calculatedBestScore} onPreview={(query) => onPreviewItemQuery(entry.id, choice.itemId, query)} onChoose={(query) => onSetItemQuery(entry.id, choice.itemId, query)} />
           </div>
         })}
       </div></>
@@ -136,7 +144,7 @@ function CraftPreview({ entry, language }: { entry: CraftingSheetEntry | undefin
     : <span className="language-comparison__preview-empty">{entry?.status === 'pending' ? 'calculating…' : 'no craft'}</span>}</span>
 }
 
-function ItemSetComparison({ entry, entryNumber, baseData, left, right, leftName, rightName, icons, leftData, rightData, compactLayout, onSetItemQuery, onMoveItemCraft }: {
+function ItemSetComparison({ entry, entryNumber, baseData, left, right, leftName, rightName, icons, leftData, rightData, compactLayout, onPreviewItemQuery, onSetItemQuery, onMoveItemCraft }: {
   entry: TargetWorkspaceEntry
   entryNumber: number
   baseData: GeneratedData
@@ -148,6 +156,7 @@ function ItemSetComparison({ entry, entryNumber, baseData, left, right, leftName
   leftData: GeneratedData | undefined
   rightData: GeneratedData | undefined
   compactLayout: boolean
+  onPreviewItemQuery: (side: 'left' | 'right', entryId: string, itemId: string, query: string) => CraftingSheetOption | undefined
   onSetItemQuery: (side: 'left' | 'right', entryId: string, itemId: string, query: string) => CraftQueryResult
   onMoveItemCraft: (side: 'left' | 'right', entryId: string, itemId: string, direction: -1 | 1) => void
 }) {
@@ -160,14 +169,16 @@ function ItemSetComparison({ entry, entryNumber, baseData, left, right, leftName
       <span className="language-comparison__craft-previews"><CraftPreview entry={left} language={leftName} /><CraftPreview entry={right} language={rightName} /></span>
       <span aria-hidden="true"><ArrowSprite direction={isOpen ? 'up' : 'down'} compact /></span>
     </button>
-    {isOpen && <div id={detailsId} className="language-comparison__item-set-details">
+    <SheetDisclosure id={detailsId} open={isOpen}>
+      <div className="language-comparison__item-set-details">
       <LanguageCraftRow entry={left} entryNumber={entryNumber} locale={leftName} icons={icons} data={leftData} compactLayout={compactLayout}
         metricClasses={{ characters: ready ? comparisonClass(left.totalTypedCharacters, right.totalTypedCharacters, 'left') : undefined, junk: ready ? comparisonClass(junkFor(left), junkFor(right), 'left') : undefined, score: ready ? comparisonClass(left.totalScore, right.totalScore, 'left') : undefined }}
-        onSetItemQuery={(entryId, itemId, query) => onSetItemQuery('left', entryId, itemId, query)} onMoveItemCraft={(entryId, itemId, direction) => onMoveItemCraft('left', entryId, itemId, direction)} />
+        onPreviewItemQuery={(entryId, itemId, query) => onPreviewItemQuery('left', entryId, itemId, query)} onSetItemQuery={(entryId, itemId, query) => onSetItemQuery('left', entryId, itemId, query)} onMoveItemCraft={(entryId, itemId, direction) => onMoveItemCraft('left', entryId, itemId, direction)} />
       <LanguageCraftRow entry={right} entryNumber={entryNumber} locale={rightName} icons={icons} data={rightData} compactLayout={compactLayout}
         metricClasses={{ characters: ready ? comparisonClass(left.totalTypedCharacters, right.totalTypedCharacters, 'right') : undefined, junk: ready ? comparisonClass(junkFor(left), junkFor(right), 'right') : undefined, score: ready ? comparisonClass(left.totalScore, right.totalScore, 'right') : undefined }}
-        onSetItemQuery={(entryId, itemId, query) => onSetItemQuery('right', entryId, itemId, query)} onMoveItemCraft={(entryId, itemId, direction) => onMoveItemCraft('right', entryId, itemId, direction)} />
-    </div>}
+        onPreviewItemQuery={(entryId, itemId, query) => onPreviewItemQuery('right', entryId, itemId, query)} onSetItemQuery={(entryId, itemId, query) => onSetItemQuery('right', entryId, itemId, query)} onMoveItemCraft={(entryId, itemId, direction) => onMoveItemCraft('right', entryId, itemId, direction)} />
+      </div>
+    </SheetDisclosure>
   </section>
 }
 
@@ -175,26 +186,49 @@ function ScoreBox({ label, score, range, className }: { label: string; score: nu
   return <div className={`language-comparison__score-box${className ? ` ${className}` : ''}`} style={scoreStyle(score, range)}><span>{label}</span><strong>{scoreText(score)}</strong></div>
 }
 
-function OverallComparison({ leftScore, rightScore, leftName, rightName, range }: { leftScore: number; rightScore: number; leftName: string; rightName: string; range: ScoreRange }) {
+function OverallComparison({ leftScore, rightScore, leftCharacters, rightCharacters, leftJunk, rightJunk, leftName, rightName, range, languages }: {
+  leftScore: number
+  rightScore: number
+  leftCharacters: number
+  rightCharacters: number
+  leftJunk: number
+  rightJunk: number
+  leftName: string
+  rightName: string
+  range: ScoreRange
+  languages: readonly LanguageMetadata[]
+}) {
   const winner = leftScore === rightScore ? 'Both languages have the same calculated total score.' : `${leftScore < rightScore ? leftName : rightName} is better suited for the current item sets.`
   return <aside className="language-comparison__overall" aria-label="Overall language comparison">
     <strong>overall comparison</strong>
-    <div className="language-comparison__overall-scores"><ScoreBox label={leftName} score={leftScore} range={range} /><ScoreBox label={rightName} score={rightScore} range={range} /></div>
+    <div className="language-comparison__overall-metrics" aria-label="Total character and junk comparison">
+      <div><strong>chars</strong><span className="language-comparison__score-pair"><span className={comparisonClass(leftCharacters, rightCharacters, 'left')}>{leftCharacters}</span><span aria-hidden="true"> / </span><span className={comparisonClass(leftCharacters, rightCharacters, 'right')}>{rightCharacters}</span></span></div>
+      <div><strong>junk</strong><span className="language-comparison__score-pair"><span className={comparisonClass(leftJunk, rightJunk, 'left')}>{leftJunk}</span><span aria-hidden="true"> / </span><span className={comparisonClass(leftJunk, rightJunk, 'right')}>{rightJunk}</span></span></div>
+    </div>
+    <div className="language-comparison__overall-score-scale">
+      {range.bestLocale && <ScoreBox label={`best calculated · ${languageName(range.bestLocale, languages)}`} score={range.minimum} range={range} className="language-comparison__score-box--bound" />}
+      <div className="language-comparison__overall-scores">{[
+        { label: leftName, score: leftScore },
+        { label: rightName, score: rightScore },
+      ].sort((left, right) => left.score - right.score || left.label.localeCompare(right.label)).map(({ label, score }) => <ScoreBox key={label} label={label} score={score} range={range} />)}</div>
+      {range.worstLocale && <ScoreBox label={`worst calculated · ${languageName(range.worstLocale, languages)}`} score={range.maximum} range={range} className="language-comparison__score-box--bound" />}
+    </div>
     <p>{winner}</p>
   </aside>
 }
 
 function ItemSetScoreCard({ entryNumber, left, right }: { entryNumber: number; left: CraftingSheetEntry | undefined; right: CraftingSheetEntry | undefined }) {
   if (left?.status !== 'ready' || right?.status !== 'ready') return <aside className="language-comparison__item-score-card" aria-label={`Item set ${entryNumber} scores`}><span>scores will appear when both crafts are ready.</span></aside>
-  const metrics: Array<[string, number, number, boolean]> = [
-    ['chars', left.totalTypedCharacters, right.totalTypedCharacters, false],
-    ['junk', junkFor(left), junkFor(right), false],
-    ['score', left.totalScore, right.totalScore, true],
+  const metrics: Array<{ label: string; leftValue: number | string; rightValue: number | string; isScore?: boolean }> = [
+    { label: 'overlap', leftValue: left.selectedSearch?.kind === 'overlap' ? '✅' : '❌', rightValue: right.selectedSearch?.kind === 'overlap' ? '✅' : '❌' },
+    { label: 'chars', leftValue: left.totalTypedCharacters, rightValue: right.totalTypedCharacters },
+    { label: 'junk', leftValue: junkFor(left), rightValue: junkFor(right) },
+    { label: 'score', leftValue: left.totalScore, rightValue: right.totalScore, isScore: true },
   ]
   return <aside className="language-comparison__item-score-card" aria-label={`Item set ${entryNumber} scores`}>
-    <div className="language-comparison__item-score-values">{metrics.map(([label, leftValue, rightValue, isScore]) => <div key={label}>
+    <div className="language-comparison__item-score-values">{metrics.map(({ label, leftValue, rightValue, isScore }) => <div key={label}>
       <strong>{label}</strong>
-      <span className="language-comparison__score-pair"><span className={comparisonClass(leftValue, rightValue, 'left')}>{isScore ? scoreText(leftValue) : leftValue}</span><span aria-hidden="true"> / </span><span className={comparisonClass(leftValue, rightValue, 'right')}>{isScore ? scoreText(rightValue) : rightValue}</span></span>
+      <span className="language-comparison__score-pair"><span className={typeof leftValue === 'number' && typeof rightValue === 'number' ? comparisonClass(leftValue, rightValue, 'left') : undefined}>{isScore && typeof leftValue === 'number' ? scoreText(leftValue) : leftValue}</span><span aria-hidden="true"> / </span><span className={typeof leftValue === 'number' && typeof rightValue === 'number' ? comparisonClass(leftValue, rightValue, 'right') : undefined}>{isScore && typeof rightValue === 'number' ? scoreText(rightValue) : rightValue}</span></span>
     </div>)}</div>
   </aside>
 }
@@ -246,6 +280,7 @@ export function LanguageComparison({ baseData, entries, languages, selectedLocal
   const comparisonEntries = activeEntries.map((entry, index) => ({ entry, index, left: leftEntries.get(entry.id), right: rightEntries.get(entry.id) }))
   const selectedComparison = selectedEntry === undefined ? undefined : comparisonEntries.find((comparison) => comparison.entry.id === selectedEntry.id)
   const displayedComparisons = compactLayout && selectedComparison ? [selectedComparison] : comparisonEntries
+  const languagePositionReference = <span className="language-comparison__side-reference" aria-label={`Language positions: left ${leftName}, right ${rightName}`}><span><small>left</small><strong>{leftName}</strong></span><span className="language-comparison__side-reference-divider" aria-hidden="true">↔</span><span><small>right</small><strong>{rightName}</strong></span></span>
   const panel = <div className="language-comparison__panel">
     <header className="language-comparison__selection-header">
       <p>Select two languages, then compare their calculated crafts. Changes to either craft are saved to that language’s crafting sheet.</p>
@@ -253,7 +288,7 @@ export function LanguageComparison({ baseData, entries, languages, selectedLocal
         <label><span className="language-comparison__selected-language"><small>left language</small><strong>{leftSelectedLanguage}</strong></span><LanguageDropdown label="Left comparison language" languages={languages} selectedLocale={leftLocale} onSelect={chooseLeftLocale} /></label>
         <label><span className="language-comparison__selected-language"><small>right language</small><strong>{rightSelectedLanguage}</strong></span><LanguageDropdown label="Right comparison language" languages={languages} selectedLocale={rightLocale} onSelect={chooseRightLocale} /></label>
       </div>
-      <button type="button" className="language-comparison__start" disabled={activeEntries.length === 0} onClick={() => setComparisonRequest({ leftLocale, rightLocale })}>compare</button>
+      <div className="language-comparison__selection-actions"><button type="button" className="language-comparison__start" disabled={activeEntries.length === 0} onClick={() => setComparisonRequest({ leftLocale, rightLocale })}>compare</button>{languagePositionReference}</div>
     </header>
     {activeEntries.length === 0 && <p className="language-comparison__empty">Add an item set with a search goal to compare languages.</p>}
     {!isComparisonRequested && activeEntries.length > 0 && <p className="language-comparison__status">Choose two languages, then press compare to calculate and save their default crafts.</p>}
@@ -262,12 +297,12 @@ export function LanguageComparison({ baseData, entries, languages, selectedLocal
     {isComparisonRequested && selectedComparison && <>
       {compactLayout && <nav className="language-comparison__navigator" aria-label="Item set navigation"><button type="button" aria-label="Previous item set" disabled={selectedEntryIndex === 0} onClick={() => setSelectedEntryId(activeEntries[selectedEntryIndex - 1]?.id)}><ArrowSprite direction="left" compact /></button><label>item set<select aria-label="Compared item set" value={selectedEntry.id} onChange={(event) => setSelectedEntryId(event.target.value)}>{activeEntries.map((entry, index) => <option key={entry.id} value={entry.id}>{entryLabel(entry, index, baseData)}</option>)}</select></label><button type="button" aria-label="Next item set" disabled={selectedEntryIndex === activeEntries.length - 1} onClick={() => setSelectedEntryId(activeEntries[selectedEntryIndex + 1]?.id)}><ArrowSprite direction="right" compact /></button></nav>}
       <div className="language-comparison__comparison-grid">
-        <OverallComparison leftScore={leftSheet.totalScore} rightScore={rightSheet.totalScore} leftName={leftName} rightName={rightName} range={range} />
+        <OverallComparison leftScore={leftSheet.totalScore} rightScore={rightSheet.totalScore} leftCharacters={leftSheet.totalTypedCharacters} rightCharacters={rightSheet.totalTypedCharacters} leftJunk={leftSheet.entries.reduce((total, entry) => total + junkFor(entry), 0)} rightJunk={rightSheet.entries.reduce((total, entry) => total + junkFor(entry), 0)} leftName={leftName} rightName={rightName} range={range} languages={languages} />
         <section className="language-comparison__comparison-rows" aria-label="Compared item sets">
           <header className="language-comparison__item-sets-heading"><strong>{compactLayout ? 'selected item set' : 'item sets'}</strong></header>
           <header className="language-comparison__item-scores-heading"><strong>item set scores</strong></header>
           {displayedComparisons.map((comparison) => <div key={comparison.entry.id} className="language-comparison__item-set-row">
-            <ItemSetComparison entry={comparison.entry} entryNumber={comparison.index + 1} baseData={baseData} left={comparison.left} right={comparison.right} leftName={leftName} rightName={rightName} icons={icons} leftData={leftData} rightData={rightData} compactLayout={compactLayout} onSetItemQuery={(side, entryId, itemId, query) => (side === 'left' ? leftSheet : rightSheet).setItemQuery(entryId, itemId, query)} onMoveItemCraft={(side, entryId, itemId, direction) => (side === 'left' ? leftSheet : rightSheet).moveItemCraft(entryId, itemId, direction)} />
+            <ItemSetComparison entry={comparison.entry} entryNumber={comparison.index + 1} baseData={baseData} left={comparison.left} right={comparison.right} leftName={leftName} rightName={rightName} icons={icons} leftData={leftData} rightData={rightData} compactLayout={compactLayout} onPreviewItemQuery={(side, entryId, itemId, query) => (side === 'left' ? leftSheet : rightSheet).previewItemQuery(entryId, itemId, query)} onSetItemQuery={(side, entryId, itemId, query) => (side === 'left' ? leftSheet : rightSheet).setItemQuery(entryId, itemId, query)} onMoveItemCraft={(side, entryId, itemId, direction) => (side === 'left' ? leftSheet : rightSheet).moveItemCraft(entryId, itemId, direction)} />
             <ItemSetScoreCard entryNumber={comparison.index + 1} left={comparison.left} right={comparison.right} />
           </div>)}
         </section>
@@ -275,6 +310,6 @@ export function LanguageComparison({ baseData, entries, languages, selectedLocal
     </>}
   </div>
 
-  if (isPage) return <section className={`language-comparison language-comparison--page${compactLayout ? ' language-comparison--compact' : ''}`} aria-label="Language craft comparison"><header className="language-comparison__header language-comparison__header--page"><button type="button" aria-label="Back to crafts" onClick={onBack}><span>compare languages</span><span>back to crafts <ArrowSprite direction="left" compact /></span></button></header>{panel}</section>
+  if (isPage) return <section className={`language-comparison language-comparison--page${compactLayout ? ' language-comparison--compact' : ''}`} aria-label="Language craft comparison"><header className="language-comparison__header language-comparison__header--page"><button type="button" className="language-comparison__back-button" aria-label="Back to crafts" onClick={onBack}><span className="language-comparison__back-title">compare languages</span><span className="language-comparison__back-label" aria-hidden="true">back to crafts</span><span className="language-comparison__back-arrow" aria-hidden="true"><ArrowSprite direction="left" compact /></span></button></header>{panel}</section>
   return <section className={`language-comparison${isOpen ? ' language-comparison--open' : ''}`} aria-label="Language craft comparison"><header className="language-comparison__header"><button type="button" aria-expanded={isOpen} onClick={() => setOpen((current) => !current)}><span>compare languages</span><span>{isOpen ? 'hide' : 'show'}</span></button></header>{isOpen && panel}</section>
 }

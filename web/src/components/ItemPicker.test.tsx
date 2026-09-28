@@ -45,14 +45,18 @@ describe('ItemPicker', () => {
     expect(screen.getByRole('img', { name: 'Oak Leaves' })).toBeTruthy()
   })
 
-  test('accepts English-keyboard approximations for localized item names', async () => {
+  test('keeps localized item matching literal outside craft query fields', async () => {
     const user = userEvent.setup()
     const localizedItems = new Map<string, SearchItem>([
       ['minecraft:stick', { id: 'minecraft:stick', name: 'Bâton', confidence: 'exact', searchLines: [] }],
     ])
     render(<ItemPicker items={localizedItems} selectedIds={[]} onChange={vi.fn()} label="Goals" />)
 
-    await user.type(screen.getByRole('searchbox', { name: 'Search Goals' }), 'ba')
+    const search = screen.getByRole('searchbox', { name: 'Search Goals' })
+    await user.type(search, 'ba')
+    expect(screen.queryByRole('button', { name: 'Bâton' })).toBeNull()
+    await user.clear(search)
+    await user.type(search, 'bâ')
     expect(screen.getByRole('button', { name: 'Bâton' })).toBeTruthy()
   })
 

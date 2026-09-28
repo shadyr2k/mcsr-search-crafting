@@ -151,6 +151,26 @@ describe('optimizeWorkspace', () => {
     })
   })
 
+  test('retains only score-optimal crafts when warming a language cache', async () => {
+    const bed = item('minecraft:bed', 'abcdef bed')
+    const anchor = item('minecraft:anchor', 'abcdef anchor')
+    const fixture = generatedData([bed, anchor], [recipe(bed.id, true), recipe(anchor.id, true)])
+    const complete = await optimizeWorkspaceEntry(fixture, entry('bed-anchor', [bed.id, anchor.id], {
+      inventoryItemIds: ['ingredient:shared'],
+    }))
+    const optimal = await optimizeWorkspaceEntry(fixture, entry('bed-anchor', [bed.id, anchor.id], {
+      inventoryItemIds: ['ingredient:shared'],
+    }), { resultDetail: 'optimal' })
+
+    expect(complete.kind).toBe('ranked')
+    expect(optimal.kind).toBe('ranked')
+    if (complete.kind !== 'ranked' || optimal.kind !== 'ranked') throw new Error('Expected complete craft choices')
+    expect(optimal.bestScore).toBe(complete.bestScore)
+    expect(optimal.rankedSearches).not.toHaveLength(0)
+    expect(optimal.rankedSearches.every((search) => search.totalScore === optimal.bestScore)).toBe(true)
+    expect(optimal.itemSearches).toBeUndefined()
+  })
+
   test('adds colon-prefixed item-ID alternatives only when the setting is enabled', async () => {
     const ironSword = item('minecraft:iron_sword', 'Sword')
     const stoneSword = item('minecraft:stone_sword', 'Sword')
@@ -162,6 +182,19 @@ describe('optimizeWorkspace', () => {
     expect(result.kind).toBe('ranked')
     if (result.kind !== 'ranked') throw new Error('Expected complete craft choices')
     expect(result.itemSearches?.[ironSword.id].some((search) => search.queries[0] === ':on_sw')).toBe(true)
+  })
+
+  test('keeps calculated localized crafts literal instead of adding English-keyboard alias junk', async () => {
+    const target = item('minecraft:localized_target', 'Wäl')
+    const junk = item('minecraft:ascii_junk', 'Walnut')
+    const fixture = generatedData([target, junk], [recipe(target.id, true), recipe(junk.id, true)])
+    const result = await optimizeWorkspaceEntry(fixture, entry('localized', [target.id], {
+      inventoryItemIds: ['ingredient:shared'],
+    }))
+
+    expect(result.kind).toBe('ranked')
+    if (result.kind !== 'ranked') throw new Error('Expected complete craft choices')
+    expect(result.rankedSearches.find((search) => search.queries[0] === 'wä')).toMatchObject({ totalJunkAppearances: 0 })
   })
 
   test('hides an item-ID craft when its ordinary query has the same result and junk', async () => {

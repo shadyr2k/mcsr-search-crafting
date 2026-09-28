@@ -33,6 +33,20 @@ test('keeps the theme menu inside small viewports', async ({ page }) => {
   }
 })
 
+test('opens the narrow language list only from its search field and keeps the selected language visible', async ({ page }) => {
+  await page.goto('/')
+  const choices = page.getByRole('region', { name: 'Language choices' })
+  const search = page.getByRole('searchbox', { name: 'Search languages' })
+
+  await expect(page.getByRole('region', { name: 'Selected language' })).toContainText('english - english (united states)')
+  await expect(choices).toHaveCount(0)
+  await search.tap()
+  await expect(choices).toBeVisible()
+  await choices.getByRole('button', { name: 'german - deutsch (deutschland)' }).tap()
+  await expect(choices).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Selected language' })).toContainText('german - deutsch (deutschland)')
+})
+
 test('switches to other crafts without widening the mobile page', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Show all crafts for item set 1' }).tap()

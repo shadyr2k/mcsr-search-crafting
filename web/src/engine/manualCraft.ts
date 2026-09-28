@@ -4,6 +4,7 @@ import { eligibleRecipes } from './craftability'
 import { matchEligibleCollectionOutputs } from './collectionSearch'
 import { rankedFromSingle } from './rankedSearch'
 import { scoreStep, type ScoringSettings } from './scoring'
+import type { CollectionMatchExplanation } from './search'
 
 /**
  * The sheet displays spaces as underscores. Keep that convenient text form
@@ -12,6 +13,12 @@ import { scoreStep, type ScoringSettings } from './scoring'
 export function normalizeManualCraftQuery(value: string): string {
   const query = value.trim()
   return query.startsWith(':') ? query : query.replaceAll('_', ' ')
+}
+
+function displayedQuery(query: string, explanations: readonly CollectionMatchExplanation[] | undefined): string {
+  if (query.startsWith(':')) return query
+  const match = explanations?.[0]
+  return match === undefined ? query : match.matchedSpan.text.toLowerCase()
 }
 
 /**
@@ -31,14 +38,14 @@ export function validateManualItemCraft(
   if (query.length === 0 || !entry.targetIds.includes(itemId)) return undefined
 
   const eligible = eligibleRecipes(data.recipes, new Set(entry.inventoryItemIds), entry.gridSize)
-  const matches = matchEligibleCollectionOutputs(query, eligible, data.collections, data.items, { itemIdSearch })
+  const matches = matchEligibleCollectionOutputs(query, eligible, data.collections, data.items, { itemIdSearch, keyboardAliases: true })
   const explanations = matches.get(itemId)
   if (explanations === undefined) return undefined
 
   const targets = new Set(entry.targetIds)
   const junkItemIds = [...matches.keys()].filter((candidate) => !targets.has(candidate)).sort()
   return rankedFromSingle({
-    query,
+    query: displayedQuery(query, explanations),
     coveredTargetIds: [itemId],
     junkItemIds,
     explanations,

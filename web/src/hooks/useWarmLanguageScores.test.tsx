@@ -65,8 +65,8 @@ describe('useWarmLanguageScores', () => {
     await waitFor(() => expect(loadLanguageScoreCache(undefined, minecraftVersion).value.entryScores[languageScoreEntryKey(entry)])
       .toEqual({ en_us: { score: 0 }, de_de: { score: 0 } }))
     expect(mocks.optimizeWorkspaceEntry).toHaveBeenCalledTimes(2)
-    expect(mocks.optimizeWorkspaceEntry).toHaveBeenCalledWith(baseData, entry, expect.objectContaining({ itemIdSearch: false }))
-    expect(mocks.optimizeWorkspaceEntry).toHaveBeenCalledWith(localizedData, entry, expect.objectContaining({ itemIdSearch: false }))
+    expect(mocks.optimizeWorkspaceEntry).toHaveBeenCalledWith(baseData, entry, expect.objectContaining({ itemIdSearch: false, resultDetail: 'optimal' }))
+    expect(mocks.optimizeWorkspaceEntry).toHaveBeenCalledWith(localizedData, entry, expect.objectContaining({ itemIdSearch: false, resultDetail: 'optimal' }))
     expect(await (await import('../persistence/languageCraftCache')).loadLanguageCraftOutcomes(
       minecraftVersion,
       languageCraftEntryKey(entry, DEFAULT_SCORING_SETTINGS, false),

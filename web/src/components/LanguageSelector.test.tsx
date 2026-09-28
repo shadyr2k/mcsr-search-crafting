@@ -14,7 +14,10 @@ const languages = [
   { locale: 'ar_sa', name: 'العربية', region: 'العالم العربي', script: 'non_latin' as const },
 ]
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 describe('LanguageSelector', () => {
   test('groups the normal language list into Latin, non-Latin, and banned categories', () => {
@@ -37,6 +40,35 @@ describe('LanguageSelector', () => {
     expect(document.querySelector('.language-selector')?.classList.contains('language-selector--compact')).toBe(true)
     expect(screen.queryByRole('region', { name: 'latin text' })).toBeNull()
     expect(screen.getByRole('region', { name: 'Language choices' }).className).toContain('language-selector__dropdown')
+  })
+
+  test('shows the selected language and opens the searchable list only while its narrow-screen search is focused', () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+    const onSelect = vi.fn()
+
+    render(<LanguageSelector languages={languages} selectedLocale="en_us" enabledBannedLocales={new Set()} scores={new Map()} onSelect={onSelect} onBannedLocaleEnabledChange={vi.fn()} />)
+
+    expect(document.querySelector('.language-selector')?.classList.contains('language-selector--compact')).toBe(true)
+    expect(screen.queryByRole('heading', { name: 'language list' })).toBeNull()
+    expect(screen.queryByRole('region', { name: 'latin text' })).toBeNull()
+    expect(screen.getByRole('region', { name: 'Selected language' }).textContent).toContain('english - english (united states)')
+    const search = screen.getByRole('searchbox', { name: 'Search languages' })
+    expect(screen.queryByRole('region', { name: 'Language choices' })).toBeNull()
+    fireEvent.focus(search)
+    const choices = screen.getByRole('region', { name: 'Language choices' })
+    fireEvent.click(within(choices).getByRole('button', { name: 'german - deutsch (deutschland)' }))
+    expect(onSelect).toHaveBeenCalledWith('de_de')
+    expect(screen.queryByRole('region', { name: 'Language choices' })).toBeNull()
+  })
+
+  test('keeps the selected language visible above the filtered normal list', () => {
+    render(<LanguageSelector languages={languages} selectedLocale="en_us" enabledBannedLocales={new Set()} scores={new Map([['en_us', { status: 'ready', score: 3 }]])} onSelect={vi.fn()} onBannedLocaleEnabledChange={vi.fn()} />)
+
+    const selected = screen.getByRole('region', { name: 'Selected language' })
+    expect(selected.textContent).toContain('english - english (united states)')
+    expect(selected.textContent).toContain('3')
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search languages' }), { target: { value: 'arabic' } })
+    expect(selected.textContent).toContain('english - english (united states)')
   })
 
   test('uses English dialect names for the results title only when variants exist', () => {

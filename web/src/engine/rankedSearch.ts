@@ -5,7 +5,7 @@ import { DEFAULT_SCORING_SETTINGS, type ScoringSettings, scoreControlKeys, score
 import type { SingleResult } from './singleOptimizer'
 
 /** Bump when saved craft outcomes or score-cache ranking semantics change. */
-export const SEARCH_ALGORITHM_REVISION = 3
+export const SEARCH_ALGORITHM_REVISION = 4
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0

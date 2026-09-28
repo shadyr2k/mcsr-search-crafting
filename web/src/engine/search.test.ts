@@ -81,25 +81,32 @@ describe('matchItem', () => {
     expect(normalizeSearchText('İx')).toBe('ix')
   })
 
-  test('matches Latin keyboard approximations for accents, ligatures, and eth', () => {
+  test('keeps calculated matching literal until a typed craft opts into keyboard aliases', () => {
     const localizedItem: SearchItem = {
       ...item,
       searchLines: [{ source: 'name', text: 'Wä æð' }],
     }
 
-    expect(matchItem(localizedItem, 'wa')).toEqual([{
+    expect(matchItem(localizedItem, 'wa')).toEqual([])
+    expect(matchItem(localizedItem, 'wä')).toEqual([{
       itemId: item.id,
       source: 'name',
       line: 'Wä æð',
       matchedSpan: { start: 0, end: 2, text: 'Wä' },
     }])
-    expect(matchItem(localizedItem, 'e')).toEqual([{
+    expect(matchItem(localizedItem, 'wa', { keyboardAliases: true })).toEqual([{
+      itemId: item.id,
+      source: 'name',
+      line: 'Wä æð',
+      matchedSpan: { start: 0, end: 2, text: 'Wä' },
+    }])
+    expect(matchItem(localizedItem, 'e', { keyboardAliases: true })).toEqual([{
       itemId: item.id,
       source: 'name',
       line: 'Wä æð',
       matchedSpan: { start: 3, end: 4, text: 'æ' },
     }])
-    expect(matchItem(localizedItem, 'th')).toEqual([{
+    expect(matchItem(localizedItem, 'th', { keyboardAliases: true })).toEqual([{
       itemId: item.id,
       source: 'name',
       line: 'Wä æð',

@@ -73,6 +73,22 @@ describe('useCraftingSheet', () => {
     expect(saved.selectionsByLocale.de_de.tools.disabled).toBe(true)
   })
 
+  test('synchronizes an edited language sheet between the crafts and comparison surfaces', () => {
+    const itemSet = entry('tools')
+    const searches = [search('a'), search('z', 1)]
+    const states = statesFor(itemSet.id, searches)
+    const hook = renderHook(() => ({
+      crafts: useCraftingSheet('en_us', [itemSet], states, '1.16.1', true, undefined, undefined, false, true),
+      comparison: useCraftingSheet('en_us', [itemSet], states, '1.16.1', true, undefined, undefined, false, true),
+    }))
+
+    act(() => hook.result.current.crafts.selectItemCraft(itemSet.id, itemSet.targetIds[0], craftingSheetCraftKey(searches[1])))
+    expect(hook.result.current.comparison.entries[0].queryLabel).toBe('z')
+
+    act(() => hook.result.current.comparison.selectItemCraft(itemSet.id, itemSet.targetIds[0], craftingSheetCraftKey(searches[0])))
+    expect(hook.result.current.crafts.entries[0].queryLabel).toBe('a')
+  })
+
   test('keeps other queries fixed on edit, restores choices after reload, and resets to the suggested sequence', () => {
     const itemSet = { ...entry('bed-anchor'), targetIds: ['bed', 'anchor'] }
     const searches = [search('a')]
@@ -211,6 +227,12 @@ describe('useCraftingSheet', () => {
       presets: new Map(),
     }
     const hook = renderHook(() => useCraftingSheet('en_us', [itemSet], states, '1.16.1', true, undefined, data))
+
+    let preview: ReturnType<typeof hook.result.current.previewItemQuery>
+    act(() => { preview = hook.result.current.previewItemQuery(itemSet.id, itemId, 'oak_p') })
+    expect(preview?.search.queries).toEqual(['oak p'])
+    expect(hook.result.current.entries[0].itemChoices[0].options.find((option) => option.id === hook.result.current.entries[0].itemChoices[0].selectedOptionId)?.search.queries).toEqual(['oak'])
+    expect(localStorage.getItem('mcsr.crafting-sheet.v1')).toBeNull()
 
     let result: ReturnType<typeof hook.result.current.setItemQuery>
     act(() => { result = hook.result.current.setItemQuery(itemSet.id, itemId, 'oak_p') })

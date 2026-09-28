@@ -42,6 +42,8 @@ export const MAX_ITEM_ID_QUERY_LENGTH = 6
 
 export interface SearchOptions {
   itemIdSearch?: boolean
+  /** Allow a typed ASCII approximation to match localized Latin characters. */
+  keyboardAliases?: boolean
 }
 
 /**
@@ -120,7 +122,7 @@ export function normalizeExactSearchText(text: string): string {
   return text.toLowerCase()
 }
 
-export function normalizeSearchLine(line: string): NormalizedSearchLine {
+export function normalizeSearchLine(line: string, keyboardAliases = false): NormalizedSearchLine {
   const originalStarts: number[] = []
   const originalEnds: number[] = []
   const originalCharacterStarts: number[] = []
@@ -136,7 +138,7 @@ export function normalizeSearchLine(line: string): NormalizedSearchLine {
       if (!isCombiningMark(line.slice(originalEnd, nextEnd))) break
       originalEnd = nextEnd
     }
-    const normalizedCharacter = normalizeSearchText(line.slice(originalStart, originalEnd))
+    const normalizedCharacter = (keyboardAliases ? normalizeSearchText : normalizeExactSearchText)(line.slice(originalStart, originalEnd))
 
     originalCharacterStarts.push(normalizedOffset)
     if (normalizedCharacter.length > 0) candidateStarts.push(normalizedOffset)
@@ -150,7 +152,7 @@ export function normalizeSearchLine(line: string): NormalizedSearchLine {
   }
 
   return {
-    text: normalizeSearchText(line),
+    text: (keyboardAliases ? normalizeSearchText : normalizeExactSearchText)(line),
     originalStarts,
     originalEnds,
     originalCharacterStarts,
@@ -173,7 +175,7 @@ function resourcePath(itemId: string): string {
 
 export function matchesItemId(item: SearchItem, query: string): boolean {
   if (!query.startsWith(':') || query.length === 1) return false
-  return normalizeSearchText(resourcePath(item.id)).includes(normalizeSearchText(query.slice(1)))
+  return normalizeExactSearchText(resourcePath(item.id)).includes(normalizeExactSearchText(query.slice(1)))
 }
 
 export function matchesExactItemId(item: SearchItem, query: string): boolean {
@@ -185,9 +187,10 @@ export function matchItem(item: SearchItem, query: string, options: SearchOption
   if (!isSupportedQuery(query, options)) return []
 
   if (options.itemIdSearch && query.startsWith(':')) {
-    const normalizedQuery = normalizeSearchText(query.slice(1))
+    const normalize = options.keyboardAliases ? normalizeSearchText : normalizeExactSearchText
+    const normalizedQuery = normalize(query.slice(1))
     const line = resourcePath(item.id)
-    const start = normalizeSearchText(line).indexOf(normalizedQuery)
+    const start = normalize(line).indexOf(normalizedQuery)
     const matches: MatchExplanation[] = start === -1 ? [] : [{
       itemId: item.id,
       source: 'item_id',
@@ -198,15 +201,15 @@ export function matchItem(item: SearchItem, query: string, options: SearchOption
         text: line.slice(start, start + normalizedQuery.length),
       },
     }]
-    for (const match of matchItem(item, query.slice(1))) matches.push(match)
+    for (const match of matchItem(item, query.slice(1), options)) matches.push(match)
     return matches
   }
 
-  const normalizedQuery = normalizeSearchText(query)
+  const normalizedQuery = (options.keyboardAliases ? normalizeSearchText : normalizeExactSearchText)(query)
   const matches: MatchExplanation[] = []
 
   for (const { source, text: line } of item.searchLines) {
-    const normalizedLine = normalizeSearchLine(line)
+    const normalizedLine = normalizeSearchLine(line, options.keyboardAliases === true)
     let searchStart = 0
 
     while (searchStart < normalizedLine.text.length) {

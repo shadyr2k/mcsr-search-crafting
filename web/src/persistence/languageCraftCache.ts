@@ -7,12 +7,18 @@ const DATABASE_NAME = 'mcsr-language-craft-cache'
 const DATABASE_VERSION = 1
 const STORE_NAME = 'outcomes'
 
-interface StoredLanguageCraftOutcome {
+export type LanguageCraftResultDetail = 'all' | 'optimal'
+
+export interface CachedLanguageCraftOutcome {
+  outcome: EntryOptimizationOutcome
+  resultDetail: LanguageCraftResultDetail
+}
+
+interface StoredLanguageCraftOutcome extends CachedLanguageCraftOutcome {
   id: string
   gameVersion: string
   entryKey: string
   locale: string
-  outcome: EntryOptimizationOutcome
 }
 
 const memoryRecords = new Map<string, StoredLanguageCraftOutcome>()
@@ -80,6 +86,18 @@ export function snapshotLanguageCraftOutcome(outcome: EntryOptimizationOutcome):
   }
 }
 
+function resultDetailFor(record: Pick<StoredLanguageCraftOutcome, 'resultDetail'> | { resultDetail?: unknown }): LanguageCraftResultDetail {
+  // Records written before compact score warming kept every craft.
+  return record.resultDetail === 'optimal' ? 'optimal' : 'all'
+}
+
+function snapshotCachedOutcome(record: StoredLanguageCraftOutcome): CachedLanguageCraftOutcome {
+  return {
+    outcome: snapshotLanguageCraftOutcome(record.outcome),
+    resultDetail: resultDetailFor(record),
+  }
+}
+
 function openDatabase(): Promise<IDBDatabase | undefined> {
   if (typeof indexedDB === 'undefined') return Promise.resolve(undefined)
   return new Promise((resolve) => {
@@ -109,30 +127,54 @@ function requestValue<T>(request: IDBRequest<T>): Promise<T | undefined> {
   })
 }
 
-export async function loadLanguageCraftOutcomes(gameVersion: string, entryKey: string): Promise<ReadonlyMap<string, EntryOptimizationOutcome>> {
+export async function loadLanguageCraftOutcomeRecords(gameVersion: string, entryKey: string): Promise<ReadonlyMap<string, CachedLanguageCraftOutcome>> {
   const database = await openDatabase()
   if (!database) return new Map([...memoryRecords.values()]
     .filter((record) => record.gameVersion === gameVersion && record.entryKey === entryKey)
-    .map((record) => [record.locale, snapshotLanguageCraftOutcome(record.outcome)]))
+    .map((record) => [record.locale, snapshotCachedOutcome(record)]))
   try {
     const transaction = database.transaction(STORE_NAME, 'readonly')
-    const records = await requestValue(transaction.objectStore(STORE_NAME).index('entry').getAll([gameVersion, entryKey])) ?? []
+    const records = await requestValue<StoredLanguageCraftOutcome[]>(transaction.objectStore(STORE_NAME).index('entry').getAll([gameVersion, entryKey])) ?? []
     database.close()
-    return new Map(records.map((record) => [record.locale, snapshotLanguageCraftOutcome(record.outcome)]))
+    return new Map(records.map((record) => [record.locale, snapshotCachedOutcome(record)]))
   } catch {
     database.close()
     return new Map()
   }
 }
 
-export async function saveLanguageCraftOutcome(gameVersion: string, entryKey: string, locale: string, outcome: EntryOptimizationOutcome): Promise<void> {
-  const record: StoredLanguageCraftOutcome = { id: recordId(gameVersion, entryKey, locale), gameVersion, entryKey, locale, outcome: snapshotLanguageCraftOutcome(outcome) }
+export async function loadLanguageCraftOutcomes(gameVersion: string, entryKey: string): Promise<ReadonlyMap<string, EntryOptimizationOutcome>> {
+  const records = await loadLanguageCraftOutcomeRecords(gameVersion, entryKey)
+  return new Map([...records].map(([locale, record]) => [locale, record.outcome]))
+}
+
+export async function saveLanguageCraftOutcome(
+  gameVersion: string,
+  entryKey: string,
+  locale: string,
+  outcome: EntryOptimizationOutcome,
+  resultDetail: LanguageCraftResultDetail = 'all',
+): Promise<void> {
+  const id = recordId(gameVersion, entryKey, locale)
+  const previous = memoryRecords.get(id)
+  if (previous !== undefined && resultDetailFor(previous) === 'all' && resultDetail === 'optimal') return
+  const record: StoredLanguageCraftOutcome = { id, gameVersion, entryKey, locale, outcome: snapshotLanguageCraftOutcome(outcome), resultDetail }
   memoryRecords.set(record.id, record)
   const database = await openDatabase()
   if (!database) return
   try {
     const transaction = database.transaction(STORE_NAME, 'readwrite')
-    transaction.objectStore(STORE_NAME).put(record)
+    const store = transaction.objectStore(STORE_NAME)
+    const storedRequest = store.get(record.id)
+    storedRequest.onsuccess = () => {
+      const stored = storedRequest.result as StoredLanguageCraftOutcome | undefined
+      if (stored !== undefined && resultDetailFor(stored) === 'all' && resultDetail === 'optimal') {
+        memoryRecords.set(record.id, stored)
+        return
+      }
+      store.put(record)
+    }
+    storedRequest.onerror = () => store.put(record)
     await new Promise<void>((resolve) => { transaction.oncomplete = () => resolve(); transaction.onerror = () => resolve(); transaction.onabort = () => resolve() })
   } catch {
     // The in-memory copy remains usable for this session if IndexedDB is unavailable.

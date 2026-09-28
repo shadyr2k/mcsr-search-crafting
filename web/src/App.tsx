@@ -120,7 +120,9 @@ function App() {
   const [theme, setTheme] = useState<ThemePreference>({ mode: 'light', color: 'pink' })
   const [initialAppSettings] = useState(() => loadAppSettings())
   const [appSettings, setAppSettings] = useState<AppSettings>(initialAppSettings.value)
-  const [scoringSettingsRevision, setScoringSettingsRevision] = useState(0)
+  const [calculationCacheRevision, setCalculationCacheRevision] = useState(0)
+  const [calculationCacheResetting, setCalculationCacheResetting] = useState(false)
+  const [calculationCacheWasReset, setCalculationCacheWasReset] = useState(false)
   const [page, setPage] = useState<AppPage>('home')
   const [pageContentTransition, setPageContentTransition] = useState<PageContentTransition>({ key: 0, animated: false, direction: undefined })
   const [usesSharedLanguageTransition, setUsesSharedLanguageTransition] = useState(false)
@@ -144,14 +146,24 @@ function App() {
   const activeIcons = useMemo(() => icons && catifySupportedLocally && appSettings.catifyItems && catifiedIconOverrides
     ? withIconOverrides(icons, catifiedIconOverrides)
     : icons, [appSettings.catifyItems, catifiedIconOverrides, gameVersion.id, icons])
-  const { states, retry } = useRowOptimizations(data, workspace.entries, appSettings.scoring, appSettings.itemIdSearch)
+  const { states, retry } = useRowOptimizations(
+    data,
+    workspace.entries,
+    appSettings.scoring,
+    appSettings.itemIdSearch,
+    undefined,
+    { minecraftVersion: gameVersion.id, locale: selectedLocale },
+    'all',
+    calculationCacheRevision,
+    calculationCacheResetting,
+  )
   const craftingSheet = useCraftingSheet(selectedLocale, entries, states, gameVersion.id, workspaceLoaded, appSettings.scoring, data, appSettings.itemIdSearch, true)
-  const warmingLocale = useWarmLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.id, appSettings.scoring, appSettings.itemIdSearch, gameVersion.packageBaseUrl)
-  const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.id, appSettings.scoring, appSettings.itemIdSearch, scoringSettingsRevision, warmingLocale)
+  const warmingLocale = useWarmLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.id, appSettings.scoring, appSettings.itemIdSearch, gameVersion.packageBaseUrl, selectedLocale, calculationCacheRevision, calculationCacheResetting)
+  const languageScores = useLanguageScores(baseData, languages, workspace.entries, enabledBannedLocales, gameVersion.id, appSettings.scoring, appSettings.itemIdSearch, calculationCacheRevision, warmingLocale)
 
   useEffect(() => {
     const activeEntries = entries.filter((entry) => entry.enabled && entry.targetIds.length > 0)
-    if (!workspaceLoaded || !data || activeEntries.length === 0) return
+    if (calculationCacheResetting || !workspaceLoaded || !data || activeEntries.length === 0) return
     const outcomes = new Map<string, EntryOptimizationOutcome>()
     for (const entry of activeEntries) {
       const state = states.get(entry.id)
@@ -159,7 +171,29 @@ function App() {
       outcomes.set(entry.id, state.outcome)
     }
     cacheLanguageOutcomeScores(gameVersion.id, activeEntries, selectedLocale, outcomes)
-  }, [appSettings.itemIdSearch, appSettings.scoring, data, entries, gameVersion.id, selectedLocale, states, workspaceLoaded])
+  }, [appSettings.itemIdSearch, appSettings.scoring, calculationCacheResetting, data, entries, gameVersion.id, selectedLocale, states, workspaceLoaded])
+
+  useEffect(() => {
+    if (!calculationCacheResetting) return
+    let active = true
+    void Promise.all(supportedGameVersions.map(async (version) => {
+      const scoreResult = clearLanguageScoreCache(undefined, version.id)
+      await clearLanguageCraftCache(version.id)
+      return scoreResult.warning
+    })).then((warnings) => {
+      if (!active) return
+      setCalculationCacheRevision((revision) => revision + 1)
+      setCalculationCacheResetting(false)
+      setCalculationCacheWasReset(true)
+      setWarning((current) => combineWarnings(current, warnings.filter(Boolean).join(' ') || undefined))
+    }).catch(() => {
+      if (!active) return
+      setCalculationCacheRevision((revision) => revision + 1)
+      setCalculationCacheResetting(false)
+      setWarning((current) => combineWarnings(current, 'Some saved craft results could not be cleared. Fresh calculations will still replace them.'))
+    })
+    return () => { active = false }
+  }, [calculationCacheResetting])
 
   useLayoutEffect(() => {
     if (tutorialIndex === null) return
@@ -403,8 +437,14 @@ function App() {
       : []
     if (calculationSettingsChanged) supportedGameVersions.forEach((version) => { void clearLanguageCraftCache(version.id) })
     setAppSettings(nextSettings)
-    if (calculationSettingsChanged) setScoringSettingsRevision((revision) => revision + 1)
+    if (calculationSettingsChanged) setCalculationCacheRevision((revision) => revision + 1)
     setWarning((current) => combineWarnings(current, [saved.warning, ...cacheWarnings].filter(Boolean).join(' ') || undefined))
+  }
+
+  function resetCalculationCache() {
+    if (calculationCacheResetting) return
+    setCalculationCacheWasReset(false)
+    setCalculationCacheResetting(true)
   }
 
   function selectPage(nextPage: AppPage) {
@@ -477,6 +517,9 @@ function App() {
         ? catifiedIconOverrides !== undefined
         : undefined}
       onSave={saveSettings}
+      onResetCalculationCache={resetCalculationCache}
+      calculationCacheResetting={calculationCacheResetting}
+      calculationCacheWasReset={calculationCacheWasReset}
     />}
     {data && activeIcons && page === 'recipe-book-sim' && <RecipeBookSim
       key={gameVersion.id}
@@ -526,6 +569,7 @@ function App() {
       icons={activeIcons}
       isCalculating={craftingSheet.isCalculating}
       warning={craftingSheet.warning}
+      onPreviewItemQuery={craftingSheet.previewItemQuery}
       onSetItemQuery={craftingSheet.setItemQuery}
       onMoveItemCraft={craftingSheet.moveItemCraft}
       onSetEntryDisabled={craftingSheet.setEntryDisabled}
@@ -579,6 +623,7 @@ function App() {
           icons={activeIcons}
           isCalculating={craftingSheet.isCalculating}
           warning={craftingSheet.warning}
+          onPreviewItemQuery={craftingSheet.previewItemQuery}
           onSetItemQuery={craftingSheet.setItemQuery}
           onMoveItemCraft={craftingSheet.moveItemCraft}
           onSetEntryDisabled={craftingSheet.setEntryDisabled}

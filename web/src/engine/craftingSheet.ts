@@ -23,8 +23,11 @@ export interface CraftingSheetOption {
 
 export interface CraftingSheetItemChoice {
   itemId: string
-  /** The capped calculated results offered from the input's suggestion list. */
+  /** The initial ten calculated choices shown before the runner types a prefix. */
   suggestions: readonly CraftingSheetOption[]
+  /** Raw calculated crafts kept for the input's deferred prefix lookup. */
+  calculatedSearches: readonly RankedSearch[]
+  calculatedBestScore: number
   /** Suggestions plus a persisted, runner-supplied query when one is valid. */
   options: readonly CraftingSheetOption[]
   selectedOptionId: string
@@ -284,9 +287,8 @@ function candidateEntries(
     const optimalOptions = options.filter((option) => option.isOptimal)
     const itemChoices = entry.targetIds.map((itemId) => {
       const searches = state.outcome.kind === 'ranked' ? state.outcome.itemSearches?.[itemId] ?? [] : []
-      // The picker offers a short list of calculated suggestions. Anything
-      // outside it is still available by validating a runner-supplied query.
-      const suggestions = optionsForSearches(searches.slice(0, 10), searches[0]?.totalScore ?? 0)
+      const calculatedBestScore = searches[0]?.totalScore ?? 0
+      const suggestions = optionsForSearches(searches.slice(0, 10), calculatedBestScore)
       const defaultOption = suggestions[0]
       const manualSearch = manualSearches.get(entry.id)?.get(itemId)
       const manualOption = manualSearch === undefined
@@ -296,7 +298,15 @@ function candidateEntries(
         .filter((option): option is SearchOption => option !== undefined)
         .filter((option, index, values) => values.findIndex((candidate) => candidate.id === option.id) === index)
       const selected = itemOptions[0]
-      return { itemId, suggestions, options: itemOptions, selectedOptionId: selected?.id ?? '', scoreDelta: selected?.scoreDelta ?? 0 }
+      return {
+        itemId,
+        suggestions,
+        calculatedSearches: searches,
+        calculatedBestScore,
+        options: itemOptions,
+        selectedOptionId: selected?.id ?? '',
+        scoreDelta: selected?.scoreDelta ?? 0,
+      }
     })
     if (options.length > 0 && optimalOptions.length > 0) result.push({ entry, entryNumber: index + 1, options, optimalOptions, itemChoices })
   })
@@ -383,11 +393,26 @@ function editableCandidate(candidate: CandidateEntry, seed: SearchOption, saved?
     const choice = candidate.itemChoices.find((current) => current.itemId === itemId)!
     const seedStep = seed.search.steps.find((step) => step.newTargetIds.includes(itemId))
       ?? seed.search.steps.find((step) => step.coveredTargetIds.includes(itemId))
+    // The picker starts with ten suggestions, but an optimal combined result
+    // can legitimately use an item craft ranked lower for that item on its
+    // own. Keep that seed craft available while rebuilding the editable rows;
+    // otherwise a reset could silently substitute the first picker result and
+    // no longer restore the main-page optimal score.
+    const seededOption = seedStep === undefined
+      ? undefined
+      : choice.options.find((option) => option.search.queries[0] === seedStep.query)
+        ?? optionsForSearches(
+          choice.calculatedSearches.filter((search) => search.queries[0] === seedStep.query),
+          choice.calculatedBestScore,
+        )[0]
+    const options = seededOption !== undefined && !choice.options.some((option) => option.id === seededOption.id)
+      ? [...choice.options, seededOption]
+      : choice.options
     const selected = choice.options.find((option) => option.id === overrides?.itemCraftKeys?.[itemId])
       ?? choice.options.find((option) => option.search.queries[0] === overrides?.itemQueries?.[itemId])
-      ?? (saved?.mode !== 'individual' ? choice.options.find((option) => option.search.queries[0] === seedStep?.query) : undefined)
-      ?? choice.options[0]
-    return { ...choice, selectedOptionId: selected?.id ?? '', scoreDelta: selected?.scoreDelta ?? 0 }
+      ?? (saved?.mode !== 'individual' ? seededOption : undefined)
+      ?? options[0]
+    return { ...choice, options, selectedOptionId: selected?.id ?? '', scoreDelta: selected?.scoreDelta ?? 0 }
   })
   return { ...candidate, itemChoices }
 }

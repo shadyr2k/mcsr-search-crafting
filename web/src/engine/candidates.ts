@@ -9,6 +9,39 @@ function resourcePath(itemId: string): string {
   return separator === -1 ? itemId : itemId.slice(separator + 1)
 }
 
+/**
+ * Keep generated crafts in the language's own spelling. Keyboard aliases are
+ * only for matching a runner's input; they must not replace æ, ð, accents,
+ * or other localized letters in the craft that we display.
+ */
+function searchCharacters(text: string): string[] {
+  const characters: string[] = []
+  for (let start = 0; start < text.length;) {
+    const codePoint = text.codePointAt(start)
+    let end = start + (codePoint !== undefined && codePoint > 0xffff ? 2 : 1)
+    while (end < text.length) {
+      const nextCodePoint = text.codePointAt(end)
+      const nextEnd = end + (nextCodePoint !== undefined && nextCodePoint > 0xffff ? 2 : 1)
+      if (!/^\p{M}$/u.test(text.slice(end, nextEnd))) break
+      end = nextEnd
+    }
+    characters.push(text.slice(start, end).toLowerCase())
+    start = end
+  }
+  return characters
+}
+
+function addLocalizedCandidates(candidates: Set<string>, text: string, maxLength: number): void {
+  const characters = searchCharacters(text)
+  for (let start = 0; start < characters.length; start += 1) {
+    let query = ''
+    for (let length = 1; length <= maxLength && start + length <= characters.length; length += 1) {
+      query += characters[start + length - 1]
+      candidates.add(query)
+    }
+  }
+}
+
 export function candidateQueries(
   targets: Iterable<SearchItem>,
   maxLength = MAX_QUERY_LENGTH,
@@ -19,12 +52,7 @@ export function candidateQueries(
 
   for (const target of targets) {
     for (const { text } of target.searchLines) {
-      const line = normalizeSearchLine(text)
-      for (const start of line.candidateStarts) {
-        for (let length = 1; length <= effectiveMaxLength && start + length <= line.text.length; length += 1) {
-          candidates.add(line.text.slice(start, start + length))
-        }
-      }
+      addLocalizedCandidates(candidates, text, effectiveMaxLength)
     }
     if (options.itemIdSearch) {
       const path = normalizeSearchLine(resourcePath(target.id))
@@ -35,12 +63,9 @@ export function candidateQueries(
         }
       }
       for (const { text } of target.searchLines) {
-        const line = normalizeSearchLine(text)
-        for (const start of line.candidateStarts) {
-          for (let length = 1; length <= effectiveMaxLength && start + length <= line.text.length; length += 1) {
-            candidates.add(`:${line.text.slice(start, start + length)}`)
-          }
-        }
+        const localizedCandidates = new Set<string>()
+        addLocalizedCandidates(localizedCandidates, text, effectiveMaxLength)
+        localizedCandidates.forEach((query) => candidates.add(`:${query}`))
       }
     }
   }

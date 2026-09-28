@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode, type Ref } from 'react'
 
 import type { LanguageMetadata, LanguageScoreState } from '../domain/types'
-import { normalizeSearchText } from '../engine/search'
+import { normalizeExactSearchText } from '../engine/search'
 
 import './LanguageDropdown.css'
 
@@ -145,7 +145,7 @@ function scorePositions(scores: ReadonlyMap<string, LanguageScoreState>): Readon
 function languageMatches(language: LanguageMetadata, query: string): boolean {
   if (!query) return true
   return [englishLanguageName(language), languageDisplayName(language), language.locale]
-    .some((value) => normalizeSearchText(value).includes(query))
+    .some((value) => normalizeExactSearchText(value).includes(query))
 }
 
 export function isRtlLocale(locale: string): boolean {
@@ -161,6 +161,26 @@ const sortLabels: Readonly<Record<LanguageSortMode, string>> = {
   'score-descending': 'score: greatest to least',
   'optimal-characters': 'fewest characters in optimal score search',
   'least-junk': 'least overall junk',
+}
+
+function useNarrowLanguageSelector(): boolean {
+  const [isNarrow, setIsNarrow] = useState(() => (
+    typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(max-width: 72rem)').matches
+  ))
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+
+    const media = window.matchMedia('(max-width: 72rem)')
+    const update = () => setIsNarrow(media.matches)
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+
+  return isNarrow
 }
 
 function comparisonForScore(left: LanguageScoreState | undefined, right: LanguageScoreState | undefined, descending = false): number {
@@ -274,10 +294,13 @@ export function LanguageSelector({
   containerRef,
   compactLayout = false,
 }: LanguageSelectorProps) {
+  const narrowViewport = useNarrowLanguageSelector()
+  const useCompactLayout = compactLayout || narrowViewport
   const [query, setQuery] = useState('')
+  const [narrowChoicesOpen, setNarrowChoicesOpen] = useState(false)
   const [sortMode, setSortMode] = useState<LanguageSortMode>('score-ascending')
   const [sortOpen, setSortOpen] = useState(false)
-  const normalizedQuery = normalizeSearchText(query.trim())
+  const normalizedQuery = normalizeExactSearchText(query.trim())
   const scorePositionByLocale = useMemo(() => scorePositions(scores), [scores])
   const visibleLanguages = useMemo(() => languages
     .filter((language) => languageMatches(language, normalizedQuery))
@@ -295,11 +318,22 @@ export function LanguageSelector({
     loadingLocale,
     onSelect: (locale: string) => {
       setQuery('')
+      if (narrowViewport) setNarrowChoicesOpen(false)
       onSelect(locale)
     },
     onBannedLocaleEnabledChange,
-    compactLayout,
+    compactLayout: useCompactLayout,
   }
+  const selectedLanguage = languages.find((language) => language.locale === selectedLocale)
+  const selectedScore = selectedLanguage === undefined ? undefined : scores.get(selectedLanguage.locale)
+  const selectedScorePosition = selectedLanguage === undefined ? undefined : scorePositionByLocale.get(selectedLanguage.locale)
+  const selectedSummary = selectedLanguage === undefined ? undefined : <section className="language-selector__selected-language" aria-label="Selected language">
+    <span>selected language</span>
+    <strong dir="ltr">{englishLanguageName(selectedLanguage)} - <span dir={isRtlLocale(selectedLanguage.locale) ? 'rtl' : 'ltr'}>{languageDisplayName(selectedLanguage)}</span></strong>
+    {selectedScore?.status === 'ready' && <b className="language-selector__score" style={{ '--language-score-position': selectedScorePosition } as CSSProperties}>{scoreText(selectedScore.score)}</b>}
+    {selectedScore?.status === 'pending' && <b className="language-selector__score">…</b>}
+    {selectedScore?.status === 'not-calculated' && <b className="language-selector__score">—</b>}
+  </section>
 
   const toolbar = <div className="language-selector__toolbar">
     <h2 className="language-selector__title">language list</h2>
@@ -322,21 +356,26 @@ export function LanguageSelector({
     aria-label="Search languages"
     placeholder="search languages"
     value={query}
+    onFocus={() => { if (narrowViewport) setNarrowChoicesOpen(true) }}
     onChange={(event) => setQuery(event.target.value)}
   />
 
-  if (compactLayout) return <section ref={containerRef} className="language-selector language-selector--compact" aria-label="Languages">
-    {toolbar}
+  if (useCompactLayout) return <section ref={containerRef} className={`language-selector language-selector--compact${narrowViewport ? ' language-selector--narrow' : ''}`} aria-label="Languages" onBlur={(event) => {
+    if (narrowViewport && !event.currentTarget.contains(event.relatedTarget as Node | null)) setNarrowChoicesOpen(false)
+  }}>
+    {!narrowViewport && toolbar}
+    {selectedSummary}
     {search}
-    <section className="language-selector__dropdown" aria-label="Language choices">
+    {(!narrowViewport || narrowChoicesOpen) && <section className="language-selector__dropdown" aria-label="Language choices">
       {visibleLanguages.length > 0
         ? <ul>{visibleLanguages.map((language) => <LanguageOption key={language.locale} language={language} {...languageOptionProps} />)}</ul>
         : <p className="language-selector__empty">no matching languages</p>}
-    </section>
+    </section>}
   </section>
 
   return <section ref={containerRef} className="language-selector" aria-label="Languages">
     {toolbar}
+    {selectedSummary}
     {search}
     <div className="language-selector__categories" role="region" aria-label="Language choices">
       {categories.length > 0
@@ -367,7 +406,7 @@ export function LanguageDropdown({
   const [query, setQuery] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
   const listId = useId()
-  const normalizedQuery = normalizeSearchText(query.trim())
+  const normalizedQuery = normalizeExactSearchText(query.trim())
   const visibleLanguages = useMemo(() => languages.filter((language) => languageMatches(language, normalizedQuery)), [languages, normalizedQuery])
   const selectedLanguage = languages.find((language) => language.locale === selectedLocale)
   const selectedLabel = selectedLanguage ? `${englishLocaleName(selectedLanguage, languages)} - ${languageDisplayName(selectedLanguage)}` : selectedLocale

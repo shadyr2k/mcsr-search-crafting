@@ -1,10 +1,10 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 
 import type { RankedSearch, RowOptimizationState, TargetWorkspaceEntry } from '../domain/types'
 import { createCraftingSheetModel } from '../engine/craftingSheet'
-import { CraftingSheet, type CraftingSheetProps } from './CraftingSheet'
+import { CraftingSheet, CraftQueryInput, type CraftingSheetProps } from './CraftingSheet'
 
 afterEach(cleanup)
 
@@ -170,30 +170,80 @@ describe('CraftingSheet', () => {
     expect(screen.getByRole('button', { name: 'Expand item set 1' })).toBeVisible()
   })
 
-  test('offers ten calculated suggestions and validates a submitted query', () => {
+  test('calculates ten matching choices after one second without changing the selected craft', () => {
+    vi.useFakeTimers()
+    try {
+      const input = props()
+      render(<CraftingSheet {...input} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Expand item set 1' }))
+      const query = screen.getByRole('searchbox', { name: 'Craft query for bed' })
+      fireEvent.focus(query)
+      expect(within(screen.getByRole('list', { name: 'Calculated craft suggestions for bed' })).getAllByRole('button')).toHaveLength(10)
+      fireEvent.change(query, { target: { value: 'q' } })
+
+      act(() => { vi.advanceTimersByTime(999) })
+      expect(input.onSetItemQuery).not.toHaveBeenCalled()
+      expect(screen.queryByRole('list', { name: 'Calculated craft suggestions for bed' })).toBeNull()
+      act(() => { vi.advanceTimersByTime(1) })
+      const choices = within(screen.getByRole('list', { name: 'Calculated craft suggestions for bed' }))
+      expect(choices.getAllByRole('button')).toHaveLength(10)
+      expect(input.onSetItemQuery).not.toHaveBeenCalled()
+      fireEvent.click(choices.getByRole('button', { name: /q0/ }))
+      expect(input.onSetItemQuery).toHaveBeenCalledWith('bed-anchor', 'bed', 'q0')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('keeps first-character keyboard aliases in the filtered suggestion menu', () => {
+    vi.useFakeTimers()
+    try {
+      render(<CraftQueryInput label="ligature" value="" suggestions={[{
+        id: 'ligature', label: 'æst', isOptimal: true, search: search('æst'), totalTypedCharacters: 3, totalScore: 1, scoreDelta: 0, junkCount: 0,
+      }]} onChoose={vi.fn(() => ({ valid: true, query: 'æst' }))} />)
+
+      const query = screen.getByRole('searchbox', { name: 'Craft query for ligature' })
+      fireEvent.focus(query)
+      fireEvent.change(query, { target: { value: 'e' } })
+      act(() => { vi.advanceTimersByTime(1000) })
+      const suggestions = within(screen.getByRole('list', { name: 'Calculated craft suggestions for ligature' }))
+      expect(suggestions.getAllByRole('button')).toHaveLength(1)
+      expect(suggestions.getByText('æst')).toBeVisible()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('offers a valid typed craft that was not among the calculated suggestions', () => {
+    vi.useFakeTimers()
+    try {
+      const typedCraft = {
+        id: 'typed-ak', label: 'äk', isOptimal: false, search: search('äk'), totalTypedCharacters: 2, totalScore: 1, scoreDelta: 1, junkCount: 0,
+      }
+      const onPreview = vi.fn(() => typedCraft)
+      const onChoose = vi.fn(() => ({ valid: true, query: 'äk' }))
+      render(<CraftQueryInput label="accented craft" value="" suggestions={[]} onPreview={onPreview} onChoose={onChoose} />)
+
+      const query = screen.getByRole('searchbox', { name: 'Craft query for accented craft' })
+      fireEvent.focus(query)
+      fireEvent.change(query, { target: { value: 'ak' } })
+      act(() => { vi.advanceTimersByTime(1000) })
+
+      const choices = within(screen.getByRole('list', { name: 'Calculated craft suggestions for accented craft' }))
+      expect(onPreview).toHaveBeenCalledWith('ak')
+      expect(choices.getByText('äk')).toBeVisible()
+      fireEvent.click(choices.getByRole('button', { name: /äk/ }))
+      expect(onChoose).toHaveBeenCalledWith('äk')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('has no separate submit control for a craft query', () => {
     const input = props()
     render(<CraftingSheet {...input} />)
     fireEvent.click(screen.getByRole('button', { name: 'Expand item set 1' }))
-    const query = screen.getByRole('searchbox', { name: 'Craft query for bed' })
-    fireEvent.focus(query)
-    expect(within(screen.getByRole('list', { name: 'Calculated craft suggestions for bed' })).getAllByRole('button')).toHaveLength(10)
-    fireEvent.change(query, { target: { value: 'runner craft' } })
-    expect(query).toHaveValue('runner_craft')
-    fireEvent.submit(query.closest('form')!)
-    expect(input.onSetItemQuery).toHaveBeenCalledWith('bed-anchor', 'bed', 'runner_craft')
-  })
-
-  test('uses a compact site arrow sprite to submit a query in both layouts', () => {
-    const input = props()
-    const { unmount } = render(<CraftingSheet {...input} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Expand item set 1' }))
-    expect(within(screen.getByRole('button', { name: 'Use query for bed' })).getByRole('img', { name: 'Fast forward' })).toBeVisible()
-    unmount()
-
-    const { container: compactContainer } = render(<CraftingSheet {...input} compactLayout />)
-    fireEvent.click(screen.getByRole('button', { name: 'Expand item set 1' }))
-    expect(within(screen.getByRole('button', { name: 'Use query for bed' })).getByRole('img', { name: 'Fast forward' })).toBeVisible()
-    expect(compactContainer.querySelector('.crafting-sheet__query-submit .arrow-sprite')).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'Use query for bed' })).toBeNull()
   })
 
   test('offers one editor for query choices and reordering without mode tabs', () => {

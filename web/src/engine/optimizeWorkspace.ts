@@ -61,6 +61,8 @@ export interface OptimizeWorkspaceOptions {
   onProgress?: (progress: WorkspaceOptimizationProgress) => void
   scoringSettings?: ScoringSettings
   itemIdSearch?: boolean
+  /** Avoid retaining non-optimal crafts when a score cache is being warmed. */
+  resultDetail?: 'all' | 'optimal'
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
@@ -109,7 +111,7 @@ async function optimizeEntry(
   })
   throwIfAborted(options.signal)
   const single = optimizeSinglePrepared(prepared, scoringSettings)
-  const itemSearches = Object.fromEntries(entry.targetIds.map((itemId) => [itemId,
+  const itemSearches = options.resultDetail === 'optimal' ? undefined : Object.fromEntries(entry.targetIds.map((itemId) => [itemId,
     removeRedundantItemIdSearches(prepared.candidates.filter((candidate) => candidate.coveredTargetIds.includes(itemId)
       && (candidate.query.length <= 5 || (options.itemIdSearch === true && candidate.query.startsWith(':')))
       && candidate.junkItemIds.length <= maximumJunkItems(candidate.coveredTargetIds.length))
@@ -135,6 +137,7 @@ async function optimizeEntry(
         }),
         retainTargetOrder: entry.retainCraftOrder === true,
         scoringSettings,
+        optimalOnly: options.resultDetail === 'optimal',
       })).filter(({ steps }) => steps.length > 1)
     : []
   throwIfAborted(options.signal)
@@ -190,7 +193,13 @@ export async function optimizeWorkspaceEntry(
     { ...options, yieldControl: options.yieldControl ?? yieldToBrowser },
   )
   const scoringSettings = options.scoringSettings ?? DEFAULT_SCORING_SETTINGS
-  const rankedSearches = rankSearches(legacy.single, legacy.overlap, scoringSettings)
+  const rankedSearches = options.resultDetail === 'optimal'
+    ? rankSearches(
+        legacy.single.filter((result) => result.score.total === legacy.bestScore),
+        legacy.overlap.filter((result) => result.score.total === legacy.bestScore),
+        scoringSettings,
+      )
+    : rankSearches(legacy.single, legacy.overlap, scoringSettings)
   if (rankedSearches.length > 0) {
     return {
       kind: 'ranked',

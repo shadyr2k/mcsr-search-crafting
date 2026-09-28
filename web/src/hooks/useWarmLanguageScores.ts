@@ -32,6 +32,9 @@ export function useWarmLanguageScores(
   scoringSettings: ScoringSettings,
   itemIdSearch = false,
   dataBaseUrl = import.meta.env.BASE_URL,
+  selectedLocale?: string,
+  cacheInvalidationKey = 0,
+  paused = false,
 ): string | undefined {
   const activeEntries = useMemo(() => entries.filter((entry) => entry.enabled && entry.targetIds.length > 0), [entries])
   const [pendingLocale, setPendingLocale] = useState<string>()
@@ -42,12 +45,13 @@ export function useWarmLanguageScores(
       .filter((language) => !isBannedLocale(language.locale) || enabledBannedLocales.has(language.locale))
       .map((language) => language.locale),
     minecraftVersion,
-  }), [activeEntries, enabledBannedLocales, itemIdSearch, languages, minecraftVersion, scoringSettings])
+    cacheInvalidationKey,
+  }), [activeEntries, cacheInvalidationKey, enabledBannedLocales, itemIdSearch, languages, minecraftVersion, scoringSettings])
 
   useEffect(() => {
     runRef.current.controller?.abort()
     const runId = runRef.current.id + 1
-    if (!baseData || activeEntries.length === 0 || languages.length === 0) {
+    if (paused || !baseData || activeEntries.length === 0 || languages.length === 0) {
       runRef.current = { id: runId }
       setPendingLocale(undefined)
       return
@@ -55,7 +59,12 @@ export function useWarmLanguageScores(
 
     const controller = new AbortController()
     runRef.current = { id: runId, controller }
-    const eligibleLocales = languages.filter((language) => !isBannedLocale(language.locale) || enabledBannedLocales.has(language.locale))
+    const eligibleLocales = languages
+      .filter((language) => !isBannedLocale(language.locale) || enabledBannedLocales.has(language.locale))
+      // The selected language is calculated in full for the visible results.
+      // Warming it last gives that calculation time to populate the cache and
+      // avoids doing the same entry twice on a cold start.
+      .sort((left, right) => Number(left.locale === selectedLocale) - Number(right.locale === selectedLocale))
     const scoreCacheGeneration = languageScoreCacheGeneration(minecraftVersion)
 
     void (async () => {
@@ -106,6 +115,7 @@ export function useWarmLanguageScores(
                 signal: controller.signal,
                 scoringSettings,
                 itemIdSearch,
+                resultDetail: 'optimal',
               })
               outcomes.set(entry.id, outcome)
               savedOutcomes.push(saveLanguageCraftOutcome(
@@ -113,6 +123,7 @@ export function useWarmLanguageScores(
                 languageCraftEntryKey(entry, scoringSettings, itemIdSearch),
                 language.locale,
                 outcome,
+                'optimal',
               ))
             }
 
@@ -134,7 +145,7 @@ export function useWarmLanguageScores(
   // The fingerprint covers every input that changes calculated outcomes. Do
   // not restart this long-running background pass for unrelated app renders
   // such as a page change or a cosmetic settings update.
-  }, [baseData, dataBaseUrl, fingerprint])
+  }, [baseData, dataBaseUrl, fingerprint, paused])
 
   useEffect(() => () => { runRef.current.controller?.abort() }, [])
 

@@ -83,6 +83,25 @@ describe('crafting sheet model', () => {
     expect(legacyIndividual.entries[0].queryLabel).toBe('lea ←← ab')
   })
 
+  test('keeps the reset default score-optimal when its item craft is below the picker suggestion limit', () => {
+    const itemSet = { ...entry('tools', 0), targetIds: ['helmet', 'pickaxe'] }
+    const shared = search('gem', 1)
+    shared.coveredTargetIds = [...itemSet.targetIds]
+    shared.steps[0] = { ...shared.steps[0], coveredTargetIds: [...itemSet.targetIds], newTargetIds: [...itemSet.targetIds] }
+    const lowerRankedForEachItem = Array.from({ length: 10 }, (_, index) => search(`other${index}`))
+    const state = ready(itemSet.id, [shared])
+    const states = new Map([[itemSet.id, { ...state, outcome: { ...state.outcome, itemSearches: {
+      helmet: [...lowerRankedForEachItem, shared],
+      pickaxe: [...lowerRankedForEachItem, shared],
+    } } }]])
+
+    const model = createCraftingSheetModel([itemSet], states)
+
+    expect(model.entries[0].itemChoices.map((choice) => choice.options.find((option) => option.id === choice.selectedOptionId)?.label)).toEqual(['gem', 'gem'])
+    expect(model.totalScore).toBe(1)
+    expect(model.scoreDelta).toBe(0)
+  })
+
   test('counts the characters in the displayed execution including full replacements', () => {
     const itemSet = entry('first', 0)
     const replacement = search('abcd')

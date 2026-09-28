@@ -24,6 +24,8 @@
   inset: calc(100% + .2rem) 0 auto;
   display: grid;
   min-width: min(100%, 22rem);
+  max-height: min(22rem, calc(100dvh - 7rem));
+  overflow: hidden;
   padding: .45rem;
   border: 1px solid var(--border);
   border-radius: .5rem;
@@ -33,10 +35,12 @@
 
 .language-dropdown__menu ul {
   display: grid;
-  max-height: calc(10 * 1.9rem + 9 * .25rem);
+  max-height: min(calc(10 * 1.9rem + 9 * .25rem), calc(100dvh - 7.6rem));
   margin: 0;
   padding: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   list-style: none;
 }
 

@@ -1,8 +1,10 @@
-import { Fragment, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
 import type { IconManifest } from '../data/iconManifest'
 import type { RankedSearch, SearchItem } from '../domain/types'
-import type { CraftingSheetCharacterUsage, CraftingSheetEntry, CraftingSheetOption } from '../engine/craftingSheet'
+import { craftingSheetOptionsForSearches, type CraftingSheetCharacterUsage, type CraftingSheetEntry, type CraftingSheetOption } from '../engine/craftingSheet'
+import { normalizeManualCraftQuery } from '../engine/manualCraft'
+import { normalizeSearchLine, normalizeSearchText } from '../engine/search'
 import { ArrowSprite } from './ArrowSprite'
 import { ItemIcon } from './ItemIcon'
 import { isScrollbarPointer } from './outsidePointer'
@@ -33,6 +35,7 @@ export interface CraftingSheetProps {
   compactLayout?: boolean
   onBack?: () => void
   onCompare?: () => void
+  onPreviewItemQuery?: (entryId: string, itemId: string, query: string) => CraftingSheetOption | undefined
   onSetItemQuery: (entryId: string, itemId: string, query: string) => CraftQueryResult
   onMoveItemCraft: (entryId: string, itemId: string, direction: -1 | 1) => void
   onSetEntryDisabled: (entryId: string, disabled: boolean) => void
@@ -58,12 +61,36 @@ function totalScoreHue(entries: readonly CraftingSheetEntry[], scoreDelta: numbe
   return Math.round(132 * (1 - severity))
 }
 
-function SheetDisclosure({ id, open, children, sizeWhileCollapsed = false }: { id: string; open: boolean; children: ReactNode; sizeWhileCollapsed?: boolean }) {
+export function SheetDisclosure({ id, open, children, sizeWhileCollapsed = false }: { id: string; open: boolean; children: ReactNode; sizeWhileCollapsed?: boolean }) {
   const [hasOpened, setHasOpened] = useState(open)
-  useEffect(() => { if (open) setHasOpened(true) }, [open])
+  const [isClosing, setIsClosing] = useState(false)
+  const detailsRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    if (open) {
+      setHasOpened(true)
+      setIsClosing(false)
+      return
+    }
+    if (!hasOpened) return
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+      || detailsRef.current?.closest('.app-shell--remove-animations') !== null
+    if (reducedMotion) {
+      setIsClosing(false)
+      if (!sizeWhileCollapsed) setHasOpened(false)
+      return
+    }
+    setIsClosing(true)
+  }, [hasOpened, open, sizeWhileCollapsed])
+
   if (!open && !hasOpened && !sizeWhileCollapsed) return null
 
-  return <div id={id} className={`crafting-sheet__details${open ? ' crafting-sheet__details--open' : ''}`} aria-hidden={!open} inert={!open}>
+  return <div ref={detailsRef} id={id} className={`crafting-sheet__details${open ? ' crafting-sheet__details--open' : ''}${isClosing ? ' crafting-sheet__details--closing' : ''}`} aria-hidden={!open} inert={!open}
+    onAnimationEnd={(event) => {
+      if (event.target !== event.currentTarget || event.animationName !== 'crafting-sheet-details-conceal') return
+      setIsClosing(false)
+      if (!sizeWhileCollapsed) setHasOpened(false)
+    }}>
     <div className="crafting-sheet__details-clip">{children}</div>
   </div>
 }
@@ -91,7 +118,7 @@ function ItemLabels({ itemIds, items, icons }: { itemIds: readonly string[]; ite
   </span>)}</span>
 }
 
-function ItemSetCard({ entry, items, icons, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, compactLayout = false, onOpenChange }: Pick<CraftingSheetProps, 'items' | 'icons' | 'onSetItemQuery' | 'onMoveItemCraft' | 'onSetEntryDisabled' | 'compactLayout'> & { entry: CraftingSheetEntry; onOpenChange?: (open: boolean) => void }) {
+function ItemSetCard({ entry, items, icons, onPreviewItemQuery, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, compactLayout = false, onOpenChange }: Pick<CraftingSheetProps, 'items' | 'icons' | 'onPreviewItemQuery' | 'onSetItemQuery' | 'onMoveItemCraft' | 'onSetEntryDisabled' | 'compactLayout'> & { entry: CraftingSheetEntry; onOpenChange?: (open: boolean) => void }) {
   const [isOpen, setIsOpen] = useState(false)
   const headingId = useId()
   const detailsId = useId()
@@ -159,7 +186,7 @@ function ItemSetCard({ entry, items, icons, onSetItemQuery, onMoveItemCraft, onS
                   <ItemLabels itemIds={[choice.itemId]} items={items} icons={icons} />
                   {selected && <><QuerySequence search={selected.search} /><span className="crafting-sheet__item-cost">{selected.totalTypedCharacters} chars · {selected.junkCount} junk · {deltaLabel(choice.scoreDelta)}</span></>}
                 </div>
-                <CraftQueryInput compact={compactLayout} label={itemName(choice.itemId, items)} value={selected?.search.queries[0] ?? ''} suggestions={choice.suggestions} onSubmit={(query) => onSetItemQuery(entry.id, choice.itemId, query)} />
+                <CraftQueryInput label={itemName(choice.itemId, items)} value={selected?.search.queries[0] ?? ''} suggestions={choice.suggestions} calculatedSearches={choice.calculatedSearches} calculatedBestScore={choice.calculatedBestScore} onPreview={(query) => onPreviewItemQuery?.(entry.id, choice.itemId, query)} onChoose={(query) => onSetItemQuery(entry.id, choice.itemId, query)} />
               </div>
             })}
           </div>
@@ -181,21 +208,66 @@ export interface CraftQueryResult {
   message?: string
 }
 
-/** A typed query is validated only when the runner submits it. */
-export function CraftQueryInput({ label, value, suggestions, onSubmit, compact = false }: {
+const MAX_CALCULATED_PREFIX_MATCHES = 48
+const normalizedCalculatedCrafts = new WeakMap<RankedSearch, ReturnType<typeof normalizeSearchLine>>()
+
+function normalizedCalculatedCraft(search: RankedSearch): ReturnType<typeof normalizeSearchLine> {
+  const cached = normalizedCalculatedCrafts.get(search)
+  if (cached) return cached
+  const normalized = normalizeSearchLine(search.queries[0] ?? '', true)
+  normalizedCalculatedCrafts.set(search, normalized)
+  return normalized
+}
+
+/**
+ * The source list is ranked. Reuse each craft's normalized form and stop once
+ * there is enough of a ranked surplus to produce the visible top ten rows.
+ * This avoids turning every cached prefix match into a dropdown row.
+ */
+function matchingCalculatedSearches(searches: readonly RankedSearch[], query: string): RankedSearch[] {
+  const normalizedQuery = normalizeSearchText(normalizeManualCraftQuery(query))
+  if (normalizedQuery.length === 0) return []
+  const matches: RankedSearch[] = []
+  for (const search of searches) {
+    const normalizedCraft = normalizedCalculatedCraft(search)
+    const firstCharacterEnd = normalizedCraft.originalCharacterStarts[1] ?? normalizedCraft.text.length
+    if (!normalizedCraft.candidateStarts.some((start) => start < firstCharacterEnd && normalizedCraft.text.startsWith(normalizedQuery, start))) continue
+    matches.push(search)
+    // The source bucket is already rank ordered. Retaining a small surplus
+    // lets the display-layer de-duplication still return the best ten rows.
+    if (matches.length === MAX_CALCULATED_PREFIX_MATCHES) break
+  }
+  return matches
+}
+
+/** A typed prefix opens calculated choices without changing the selected craft. */
+export function CraftQueryInput({ label, value, suggestions, calculatedSearches, calculatedBestScore, onPreview, onChoose }: {
   label: string
   value: string
   suggestions: readonly CraftingSheetOption[]
-  onSubmit: (query: string) => CraftQueryResult
-  compact?: boolean
+  calculatedSearches?: readonly RankedSearch[]
+  calculatedBestScore?: number
+  onPreview?: (query: string) => CraftingSheetOption | undefined
+  onChoose: (query: string) => CraftQueryResult
 }) {
   const displayQuery = (query: string) => query.replaceAll(' ', '_')
   const [draft, setDraft] = useState(displayQuery(value))
   const [isOpen, setIsOpen] = useState(false)
+  const [filterByDraft, setFilterByDraft] = useState(false)
+  const [calculatedDraft, setCalculatedDraft] = useState<string>()
+  const [manualSuggestion, setManualSuggestion] = useState<CraftingSheetOption>()
   const [message, setMessage] = useState<string>()
   const inputRef = useRef<HTMLDivElement>(null)
+  const appliedDraftRef = useRef(displayQuery(value))
 
-  useEffect(() => { setDraft(displayQuery(value)) }, [value])
+  useEffect(() => {
+    const nextDraft = displayQuery(value)
+    appliedDraftRef.current = nextDraft
+    setDraft(nextDraft)
+    setCalculatedDraft(undefined)
+    setManualSuggestion(undefined)
+    setFilterByDraft(false)
+  }, [value])
   useEffect(() => {
     if (!isOpen) return
     function closeOnOutsidePointerDown(event: PointerEvent) {
@@ -207,25 +279,54 @@ export function CraftQueryInput({ label, value, suggestions, onSubmit, compact =
     return () => document.removeEventListener('pointerdown', closeOnOutsidePointerDown)
   }, [isOpen])
 
-  function submit(query: string) {
-    const result = onSubmit(query)
-    setDraft(displayQuery(result.query))
+  const choose = useCallback((query: string) => {
+    const result = onChoose(query)
+    const nextDraft = displayQuery(result.query)
+    appliedDraftRef.current = nextDraft
+    setDraft(nextDraft)
+    setCalculatedDraft(undefined)
+    setManualSuggestion(undefined)
+    setFilterByDraft(false)
     setMessage(result.message)
     setIsOpen(false)
-  }
+  }, [onChoose])
+
+  useEffect(() => {
+    if (!filterByDraft || draft.trim().length === 0) return
+    const timer = window.setTimeout(() => {
+      setManualSuggestion(onPreview?.(draft))
+      setCalculatedDraft(draft)
+      setIsOpen(true)
+    }, 1000)
+    return () => window.clearTimeout(timer)
+  }, [draft, filterByDraft, onPreview])
+
+  const matchingSuggestions = useMemo(() => {
+    const calculatedSuggestions = (filterByDraft
+    ? calculatedDraft === undefined
+      ? []
+      : craftingSheetOptionsForSearches(
+          matchingCalculatedSearches(calculatedSearches ?? suggestions.map((option) => option.search), calculatedDraft),
+          calculatedBestScore ?? suggestions[0]?.totalScore ?? 0,
+        )
+    : suggestions
+    )
+    const options = manualSuggestion === undefined ? calculatedSuggestions : [manualSuggestion, ...calculatedSuggestions]
+    return options.filter((option, index) => options.findIndex((candidate) => candidate.id === option.id) === index).slice(0, 10)
+  }, [calculatedBestScore, calculatedDraft, calculatedSearches, filterByDraft, manualSuggestion, suggestions])
 
   return <div ref={inputRef} className="crafting-sheet__query-input">
-    <form onSubmit={(event) => { event.preventDefault(); submit(draft) }}>
-      <input type="search" value={draft} aria-label={`Craft query for ${label}`} placeholder="type a craft…" title="Latin accents and special letters accept English keyboard equivalents."
-        onFocus={() => setIsOpen(true)}
-        onChange={(event) => { setDraft(displayQuery(event.target.value)); setMessage(undefined); setIsOpen(true) }}
-        onKeyDown={(event) => { if (event.key === 'Escape') setIsOpen(false) }} />
-      <button type="submit" className="crafting-sheet__query-submit" aria-label={`Use query for ${label}`}><ArrowSprite direction="right" compact={compact} /></button>
-    </form>
+    <input type="search" value={draft} aria-label={`Craft query for ${label}`} placeholder="type a craft…" title="Latin accents and special letters accept English keyboard equivalents."
+      onFocus={() => { setFilterByDraft(false); setCalculatedDraft(undefined); setManualSuggestion(undefined); setIsOpen(true) }}
+      onChange={(event) => { setDraft(displayQuery(event.target.value)); setFilterByDraft(true); setCalculatedDraft(undefined); setManualSuggestion(undefined); setMessage(undefined); setIsOpen(true) }}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') setIsOpen(false)
+        if (event.key === 'Enter') event.preventDefault()
+      }} />
     {message && <p className="crafting-sheet__query-status" role="status">{message}</p>}
-    {isOpen && suggestions.length > 0 && <ul className="crafting-sheet__query-suggestions" aria-label={`Calculated craft suggestions for ${label}`}>
-      {suggestions.slice(0, 10).map((option) => <li key={option.id}>
-        <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => submit(option.search.queries[0])}>
+    {isOpen && matchingSuggestions.length > 0 && <ul className="crafting-sheet__query-suggestions" aria-label={`Calculated craft suggestions for ${label}`}>
+      {matchingSuggestions.map((option) => <li key={option.id}>
+        <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => choose(option.search.queries[0])}>
           <QuerySequence search={option.search} />
           <span>{option.totalTypedCharacters} chars · {option.junkCount} junk · {deltaLabel(option.scoreDelta)}</span>
         </button>
@@ -297,7 +398,7 @@ function SheetSummary({
   </>
 }
 
-function ItemSetList({ entries, items, icons, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, compactLayout = false, columns = false }: Pick<CraftingSheetProps, 'entries' | 'items' | 'icons' | 'onSetItemQuery' | 'onMoveItemCraft' | 'onSetEntryDisabled' | 'compactLayout'> & { columns?: boolean }) {
+function ItemSetList({ entries, items, icons, onPreviewItemQuery, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, compactLayout = false, columns = false }: Pick<CraftingSheetProps, 'entries' | 'items' | 'icons' | 'onPreviewItemQuery' | 'onSetItemQuery' | 'onMoveItemCraft' | 'onSetEntryDisabled' | 'compactLayout'> & { columns?: boolean }) {
   const columnsRef = useRef<HTMLDivElement>(null)
   const [openEntryIds, setOpenEntryIds] = useState<readonly string[]>([])
   const [rowCount, setRowCount] = useState<number>()
@@ -345,7 +446,7 @@ function ItemSetList({ entries, items, icons, onSetItemQuery, onMoveItemCraft, o
   }, [columns])
 
   function setEntryOpen(entryId: string, open: boolean) {
-    if (open) measureRowCount()
+    if (open && rowCount === undefined) measureRowCount()
     setOpenEntryIds((current) => open
       ? current.includes(entryId) ? current : [...current, entryId]
       : current.filter((currentEntryId) => currentEntryId !== entryId))
@@ -357,7 +458,7 @@ function ItemSetList({ entries, items, icons, onSetItemQuery, onMoveItemCraft, o
   }
 
   function renderEntry(entry: CraftingSheetEntry) {
-    return <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={setEntryDisabled} compactLayout={compactLayout} onOpenChange={columns ? (open) => setEntryOpen(entry.id, open) : undefined} />
+    return <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onPreviewItemQuery={onPreviewItemQuery} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={setEntryDisabled} compactLayout={compactLayout} onOpenChange={columns ? (open) => setEntryOpen(entry.id, open) : undefined} />
   }
 
   return <section className={`crafting-sheet__sets${columns ? ' crafting-sheet__sets--columns' : ''}`} aria-label="Selected item sets"><h3>item sets</h3>
@@ -366,7 +467,7 @@ function ItemSetList({ entries, items, icons, onSetItemQuery, onMoveItemCraft, o
   </section>
 }
 
-export function CraftingSheet({ languageName, entries, characterSet, characterUsages, optimalCharacterCount, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, defaultOpen = false, open, onOpenChange, layout = 'inline', compactLayout = false, onBack, onCompare, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, onReset }: CraftingSheetProps) {
+export function CraftingSheet({ languageName, entries, characterSet, characterUsages, optimalCharacterCount, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, defaultOpen = false, open, onOpenChange, layout = 'inline', compactLayout = false, onBack, onCompare, onPreviewItemQuery, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, onReset }: CraftingSheetProps) {
   const [localOpen, setLocalOpen] = useState(defaultOpen)
   const [selectedCharacter, setSelectedCharacter] = useState<string>()
   const isOpen = open ?? localOpen
@@ -394,7 +495,7 @@ export function CraftingSheet({ languageName, entries, characterSet, characterUs
         <CharacterDetails selectedCharacter={selectedCharacter} usages={usages} />
       </aside>
       <UsageChart usages={usages} className="crafting-sheet__chart--page" />
-      <ItemSetList columns compactLayout={compactLayout} entries={entries} items={items} icons={icons} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />
+      <ItemSetList columns compactLayout={compactLayout} entries={entries} items={items} icons={icons} onPreviewItemQuery={onPreviewItemQuery} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />
     </div>
   </section>
 
@@ -411,7 +512,7 @@ export function CraftingSheet({ languageName, entries, characterSet, characterUs
     <SheetDisclosure id={panelId} open={isOpen}>
     <div className="crafting-sheet__panel">
       <SheetSummary entries={entries} characterSet={characterSet} totalTypedCharacters={totalTypedCharacters} totalScore={totalScore} scoreDelta={scoreDelta} optimalCharacterCount={optimalCharacterCount} selectedCharacter={selectedCharacter} onSelectCharacter={selectCharacter} isCalculating={isCalculating} warning={warning} readyCount={readyCount} onReset={onReset} />
-      <ItemSetList compactLayout={compactLayout} entries={entries} items={items} icons={icons} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />
+      <ItemSetList compactLayout={compactLayout} entries={entries} items={items} icons={icons} onPreviewItemQuery={onPreviewItemQuery} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />
       <CharacterDetails selectedCharacter={selectedCharacter} usages={usages} />
     </div>
     </SheetDisclosure>

@@ -34,9 +34,9 @@ const languages = [
   { locale: 'de_de', name: 'Deutsch', region: 'Deutschland', script: 'latin' as const },
 ]
 
-function search(query: string, junk: number, score: number): RankedSearch {
+function search(query: string, junk: number, score: number, kind: RankedSearch['kind'] = 'single'): RankedSearch {
   return {
-    kind: 'single', queries: [query], coveredTargetIds: ['minecraft:stick'], totalJunkAppearances: junk, totalTypedCharacters: query.length, totalScore: score,
+    kind, queries: [query], coveredTargetIds: ['minecraft:stick'], totalJunkAppearances: junk, totalTypedCharacters: query.length, totalScore: score,
     steps: [{
       query, retainedPrefix: '', freeBackspaceCount: 0, typedSuffix: query,
       coveredTargetIds: ['minecraft:stick'], newTargetIds: ['minecraft:stick'], junkItemIds: Array.from({ length: junk }, () => 'minecraft:stick'), explanations: [],
@@ -52,7 +52,7 @@ function ready(outcome: EntryOptimizationOutcome): LanguageComparisonState {
 describe('LanguageComparison', () => {
   test('compares selected crafts with independent character, junk, and score winners', () => {
     comparisonStates.set('en_us', ready({ kind: 'ranked', entryId: entry.id, rankedSearches: [search('cat', 1, 5)], bestScore: 5, visibleItemIds: [] }))
-    comparisonStates.set('de_de', ready({ kind: 'ranked', entryId: entry.id, rankedSearches: [search('dogs', 0, 4)], bestScore: 4, visibleItemIds: [] }))
+    comparisonStates.set('de_de', ready({ kind: 'ranked', entryId: entry.id, rankedSearches: [search('dogs', 0, 4, 'overlap')], bestScore: 4, visibleItemIds: [] }))
 
     render(<LanguageComparison
       baseData={data}
@@ -81,15 +81,29 @@ describe('LanguageComparison', () => {
     expect(screen.getByText('4 chars').className).toContain('language-comparison__value--worse')
     expect(screen.getByText('0 junk').className).toContain('language-comparison__value--better')
     expect(screen.getByRole('complementary', { name: 'Item set 1 scores' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Collapse item set 1 comparison' }).textContent).toContain('item set 1')
+    expect(screen.getByRole('button', { name: 'Collapse item set 1 comparison' }).textContent).not.toContain('Stick')
     const itemScores = screen.getByRole('complementary', { name: 'Item set 1 scores' })
-    expect(itemScores.textContent).toMatch(/chars.*junk.*score/)
-    const characterPair = itemScores.querySelector('.language-comparison__score-pair')!
+    expect(itemScores.textContent).toMatch(/overlap.*chars.*junk.*score/)
+    expect(itemScores.textContent).toContain('❌ / ✅')
+    const characterPair = itemScores.querySelectorAll('.language-comparison__score-pair')[1]!
     expect(characterPair.textContent).toBe('3 / 4')
     expect(characterPair.children[0].className).toContain('language-comparison__value--better')
     expect(characterPair.children[2].className).toContain('language-comparison__value--worse')
     const scoreBoxes = screen.getByRole('complementary', { name: 'Overall language comparison' }).querySelectorAll('.language-comparison__score-box')
-    expect(scoreBoxes[0].getAttribute('style')).toContain('67')
+    expect(screen.getByLabelText('Total character and junk comparison').textContent).toBe('chars3 / 4junk1 / 0')
+    expect(screen.getByText('best calculated · da_dk')).toBeTruthy()
+    expect(screen.getByText('worst calculated · fr_fr')).toBeTruthy()
+    expect(scoreBoxes).toHaveLength(4)
+    expect(scoreBoxes[0].className).toContain('language-comparison__score-box--bound')
+    expect(scoreBoxes[1].textContent).toContain('german')
     expect(scoreBoxes[1].getAttribute('style')).toContain('80')
+    expect(scoreBoxes[2].textContent).toContain('english')
+    expect(scoreBoxes[2].getAttribute('style')).toContain('67')
+    expect(scoreBoxes[3].className).toContain('language-comparison__score-box--bound')
+    const comparisonRow = screen.getByRole('region', { name: 'Item set 1 comparison' })
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse item set 1 comparison' }))
+    expect(comparisonRow.querySelector('.crafting-sheet__details--closing')).toBeTruthy()
   })
 
   test('shows all paired item sets in the normal layout and one navigable set in compact layout', () => {
@@ -120,10 +134,15 @@ describe('LanguageComparison', () => {
     expect(screen.queryByRole('combobox', { name: 'Compared item set' })).toBeNull()
     unmount()
 
-    render(<LanguageComparison {...props} layout="page" compactLayout />)
+    const onBack = vi.fn()
+    render(<LanguageComparison {...props} layout="page" compactLayout onBack={onBack} />)
+    expect(screen.getByRole('button', { name: 'Back to crafts' }).className).toContain('language-comparison__back-button')
     fireEvent.click(screen.getByRole('button', { name: /^compare$/i }))
     expect(screen.getAllByRole('region', { name: /item set \d comparison/i })).toHaveLength(1)
     expect(screen.getByRole('combobox', { name: 'Compared item set' })).toBeTruthy()
     expect(screen.getByText('item set scores')).toBeTruthy()
+    expect(screen.getByLabelText(/Language positions:/).textContent).toMatch(/left.*english.*right.*german/i)
+    fireEvent.click(screen.getByRole('button', { name: 'Back to crafts' }))
+    expect(onBack).toHaveBeenCalledTimes(1)
   })
 })

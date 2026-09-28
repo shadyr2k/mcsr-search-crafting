@@ -255,15 +255,30 @@ function createStateBuckets(targetCount: number): Array<Map<string, SearchState>
 function resultsFromBuckets(
   statesByCoverage: Array<Map<string, SearchState>>,
   targetIds: string[],
+  optimalOnly = false,
 ): OverlapResult[] {
-  return [...statesByCoverage[targetIds.length].values()]
+  const completedStates = statesByCoverage[targetIds.length].values()
+  if (!optimalOnly) return [...completedStates]
     .map((state) => toResult(state, targetIds))
     .sort(compareRankedPaths)
+
+  let bestScore = Number.POSITIVE_INFINITY
+  const optimal: OverlapResult[] = []
+  for (const state of completedStates) {
+    if (state.score.total < bestScore) {
+      bestScore = state.score.total
+      optimal.length = 0
+      optimal.push(toResult(state, targetIds))
+    } else if (state.score.total === bestScore) {
+      optimal.push(toResult(state, targetIds))
+    }
+  }
+  return optimal.sort(compareRankedPaths)
 }
 
 export function optimizeOverlapPrepared(
   prepared: PreparedOptimization,
-  options: Pick<CooperativeOverlapOptions, 'retainTargetOrder' | 'scoringSettings'> = {},
+  options: Pick<CooperativeOverlapOptions, 'retainTargetOrder' | 'scoringSettings' | 'optimalOnly'> = {},
 ): OverlapResult[] {
   const { targetIds, candidates } = prepared
   if (targetIds.length === 0) return []
@@ -293,7 +308,7 @@ export function optimizeOverlapPrepared(
     }
   }
 
-  return resultsFromBuckets(statesByCoverage, targetIds)
+  return resultsFromBuckets(statesByCoverage, targetIds, options.optimalOnly)
 }
 
 export interface CooperativeOverlapOptions {
@@ -303,6 +318,8 @@ export interface CooperativeOverlapOptions {
   onProgress?: (completed: number) => void
   retainTargetOrder?: boolean
   scoringSettings?: ScoringSettings
+  /** Keep only complete paths tied for the lowest score. */
+  optimalOnly?: boolean
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
@@ -372,7 +389,7 @@ export async function optimizeOverlapPreparedCooperatively(
 
   throwIfAborted(options.signal)
   options.onProgress?.(completed)
-  return resultsFromBuckets(statesByCoverage, targetIds)
+  return resultsFromBuckets(statesByCoverage, targetIds, options.optimalOnly)
 }
 
 export function optimizeOverlap(input: OptimizeInput, scoringSettings: ScoringSettings = DEFAULT_SCORING_SETTINGS): OverlapResult[] {

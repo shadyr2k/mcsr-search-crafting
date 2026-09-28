@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from 'vitest'
 
 import type { EntryOptimizationOutcome, GeneratedData, TargetWorkspaceEntry } from '../domain/types'
 import { DEFAULT_SCORING_SETTINGS } from '../engine/scoring'
+import { clearLanguageCraftCache, languageCraftEntryKey, saveLanguageCraftOutcome } from '../persistence/languageCraftCache'
 import { useRowOptimizations } from './useRowOptimizations'
 
 const data: GeneratedData = {
@@ -127,5 +128,83 @@ describe('useRowOptimizations', () => {
     hook.rerender({ entries: [] })
     await waitFor(() => expect(hook.result.current.states.has('a')).toBe(false))
     expect(receivedSignal?.aborted).toBe(true)
+  })
+
+  test('pauses active work during a cache reset and starts a fresh calculation afterward', async () => {
+    const optimize = vi.fn(async (_data: GeneratedData, current: TargetWorkspaceEntry) => outcome(current.id, optimize.mock.calls.length))
+    const saved = entry('a')
+    const hook = renderHook(({ cacheInvalidationKey, paused }) => useRowOptimizations(
+      data,
+      [saved],
+      DEFAULT_SCORING_SETTINGS,
+      false,
+      optimize,
+      undefined,
+      'all',
+      cacheInvalidationKey,
+      paused,
+    ), { initialProps: { cacheInvalidationKey: 0, paused: false } })
+
+    await waitFor(() => expect(optimize).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(hook.result.current.states.get(saved.id)).toMatchObject({ status: 'ready', outcome: { bestScore: 1 } }))
+    hook.rerender({ cacheInvalidationKey: 0, paused: true })
+    expect(hook.result.current.states.get(saved.id)).toMatchObject({ status: 'pending' })
+
+    hook.rerender({ cacheInvalidationKey: 1, paused: false })
+    await waitFor(() => expect(hook.result.current.states.get(saved.id)).toMatchObject({ status: 'ready', outcome: { bestScore: 2 } }))
+    expect(optimize).toHaveBeenCalledTimes(2)
+  })
+
+  test('reuses the selected language’s cached optimal craft without recalculating it', async () => {
+    const minecraftVersion = 'row-optimization-cache-test'
+    const locale = 'de_de'
+    const saved = entry('cached')
+    const cached = outcome(saved.id, 7)
+    const optimize = vi.fn(async (_data: GeneratedData, current: TargetWorkspaceEntry) => outcome(current.id))
+    await clearLanguageCraftCache(minecraftVersion)
+    await saveLanguageCraftOutcome(minecraftVersion, languageCraftEntryKey(saved, DEFAULT_SCORING_SETTINGS, false), locale, cached)
+
+    try {
+      const hook = renderHook(() => useRowOptimizations(
+        data,
+        [saved],
+        DEFAULT_SCORING_SETTINGS,
+        false,
+        optimize,
+        { minecraftVersion, locale },
+        'optimal',
+      ))
+      await waitFor(() => expect(hook.result.current.states.get(saved.id)).toMatchObject({ status: 'ready', outcome: { bestScore: 7 } }))
+      expect(optimize).not.toHaveBeenCalled()
+    } finally {
+      await clearLanguageCraftCache(minecraftVersion)
+    }
+  })
+
+  test('upgrades a compact cached result before rendering the full result list', async () => {
+    const minecraftVersion = 'row-optimization-full-cache-test'
+    const locale = 'de_de'
+    const saved = entry('cached')
+    const compact = outcome(saved.id, 7)
+    const expanded = outcome(saved.id, 7)
+    const optimize = vi.fn(async (_data: GeneratedData, current: TargetWorkspaceEntry) => expanded)
+    await clearLanguageCraftCache(minecraftVersion)
+    await saveLanguageCraftOutcome(minecraftVersion, languageCraftEntryKey(saved, DEFAULT_SCORING_SETTINGS, false), locale, compact, 'optimal')
+
+    try {
+      const hook = renderHook(() => useRowOptimizations(
+        data,
+        [saved],
+        DEFAULT_SCORING_SETTINGS,
+        false,
+        optimize,
+        { minecraftVersion, locale },
+        'all',
+      ))
+      await waitFor(() => expect(hook.result.current.states.get(saved.id)).toMatchObject({ status: 'ready', outcome: { bestScore: 7 } }))
+      expect(optimize).toHaveBeenCalledWith(data, saved, expect.objectContaining({ resultDetail: 'all' }))
+    } finally {
+      await clearLanguageCraftCache(minecraftVersion)
+    }
   })
 })

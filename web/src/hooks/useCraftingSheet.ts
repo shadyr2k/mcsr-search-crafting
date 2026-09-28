@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { CraftingSheetPreferences, CraftingSheetSelection, GeneratedData, RowOptimizationState, TargetWorkspaceEntry } from '../domain/types'
-import { createCraftingSheetModel, type CraftingSheetModel, type ManualCraftSearches } from '../engine/craftingSheet'
+import { createCraftingSheetModel, craftingSheetOptionsForSearches, type CraftingSheetModel, type CraftingSheetOption, type ManualCraftSearches } from '../engine/craftingSheet'
 import { validateManualItemCraft } from '../engine/manualCraft'
 import { DEFAULT_SCORING_SETTINGS, type ScoringSettings } from '../engine/scoring'
 import { loadCraftingSheetPreferences, saveCraftingSheetPreferences } from '../persistence/storage'
@@ -18,6 +18,8 @@ export type {
 export interface CraftingSheetState extends CraftingSheetModel {
   warning: string | undefined
   selectItemCraft(entryId: string, itemId: string, optionId: string): void
+  /** Validates one typed query without changing this language's saved sheet. */
+  previewItemQuery(entryId: string, itemId: string, query: string): CraftingSheetOption | undefined
   setItemQuery(entryId: string, itemId: string, query: string): CraftQueryResult
   moveItemCraft(entryId: string, itemId: string, direction: -1 | 1): void
   setEntryDisabled(entryId: string, disabled: boolean): void
@@ -204,6 +206,18 @@ export function useCraftingSheet(
     })))
   }, [data, entries, itemIdSearch, states, locale, persist, scoringSettings])
 
+  const previewItemQuery = useCallback((entryId: string, itemId: string, value: string): CraftingSheetOption | undefined => {
+    const entry = entries.find((candidate) => candidate.id === entryId)
+    if (!entry || data === undefined) return undefined
+    const validated = validateManualItemCraft(data, entry, itemId, value, scoringSettings, itemIdSearch)
+    if (validated === undefined) return undefined
+    const state = states.get(entryId)
+    const calculatedBestScore = state?.status === 'ready' && state.outcome.kind === 'ranked'
+      ? state.outcome.itemSearches?.[itemId]?.[0]?.totalScore
+      : undefined
+    return craftingSheetOptionsForSearches([validated], calculatedBestScore ?? validated.totalScore)[0]
+  }, [data, entries, itemIdSearch, scoringSettings, states])
+
   const setItemQuery = useCallback((entryId: string, itemId: string, value: string): CraftQueryResult => {
     const entry = entries.find((candidate) => candidate.id === entryId)
     if (!entry || data === undefined) return { valid: false, query: '', message: 'Craft data is still loading.' }
@@ -273,5 +287,5 @@ export function useCraftingSheet(
     () => createCraftingSheetModel(entries, states, selections, scoringSettings, manualSearches),
     [entries, manualSearches, selections, scoringSettings, states],
   )
-  return { ...model, warning, selectItemCraft, setItemQuery, moveItemCraft, setEntryDisabled, reset }
+  return { ...model, warning, selectItemCraft, previewItemQuery, setItemQuery, moveItemCraft, setEntryDisabled, reset }
 }

@@ -43,7 +43,7 @@ describe('validateManualItemCraft', () => {
     expect(normalizeManualCraftQuery(':oak_pl')).toBe(':oak_pl')
   })
 
-  test('accepts an English-keyboard approximation of an accented craft name', () => {
+  test('accepts an English-keyboard approximation while returning the localized craft text', () => {
     const localizedData: GeneratedData = {
       ...data,
       items: new Map(data.items).set(targetId, {
@@ -53,6 +53,19 @@ describe('validateManualItemCraft', () => {
       }),
     }
 
-    expect(validateManualItemCraft(localizedData, entry, targetId, 'wa', DEFAULT_SCORING_SETTINGS, false)?.queries).toEqual(['wa'])
+    expect(validateManualItemCraft(localizedData, entry, targetId, 'wa', DEFAULT_SCORING_SETTINGS, false)?.queries).toEqual(['wä'])
+  })
+
+  test('accepts an English-keyboard eth alias without replacing the displayed letter', () => {
+    const localizedData: GeneratedData = {
+      ...data,
+      items: new Map(data.items).set(targetId, {
+        ...data.items.get(targetId)!,
+        name: 'Ðor',
+        searchLines: [{ source: 'name', text: 'Ðor' }],
+      }),
+    }
+
+    expect(validateManualItemCraft(localizedData, entry, targetId, 'd', DEFAULT_SCORING_SETTINGS, false)?.queries).toEqual(['ð'])
   })
 })

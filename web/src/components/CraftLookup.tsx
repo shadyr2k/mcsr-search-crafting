@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import type { IconManifest } from '../data/iconManifest'
 import type { CustomInventoryPreset, EntryOptimizationOutcome, GeneratedData, ItemSetDraft, LanguageMetadata, RankedSearch, TargetWorkspaceEntry } from '../domain/types'
 import { useCraftLookupLanguages, type CraftLookupLanguageCategory, type CraftLookupLanguageState } from '../hooks/useCraftLookupLanguages'
-import { normalizeSearchText } from '../engine/search'
+import { normalizeExactSearchText } from '../engine/search'
 import { newItemSetDraft } from '../workspace/entryDraft'
 import { CalculatedSearchRow } from './CalculatedSearchRow'
 import { englishLocaleName, languageDisplayName } from './LanguageSelector'
@@ -65,7 +65,7 @@ function comparableCrafts(outcome: EntryOptimizationOutcome, category: CraftLook
 }
 
 function normalizeLanguageSearch(value: string): string {
-  return normalizeSearchText(value)
+  return normalizeExactSearchText(value)
 }
 
 function compareLanguages(
