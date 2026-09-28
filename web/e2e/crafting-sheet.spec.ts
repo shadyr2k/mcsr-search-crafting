@@ -243,7 +243,7 @@ test('keeps the full sheet and comparison pages fluid in normal and compact layo
     const comparisonGrid = comparison.locator('.language-comparison__comparison-grid')
     await expect(comparisonGrid).toBeVisible()
     await expect(comparison.locator('.language-comparison__navigator')).toHaveCount(compact ? 1 : 0)
-    for (const [width, normalColumns, compactColumns] of [[1280, 3, 2], [768, 2, 2], [375, 1, 1]] as const) {
+    for (const [width, normalColumns, compactColumns] of [[1280, 3, 2], [768, 1, 1], [375, 1, 1]] as const) {
       await page.setViewportSize({ width, height: 900 })
       await expectPageFits('.language-comparison--page')
       await expect.poll(() => comparisonGrid.evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).length)).toBe(compact ? compactColumns : normalColumns)

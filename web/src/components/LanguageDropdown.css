@@ -53,8 +53,9 @@
   gap: .35rem;
   width: 100%;
   padding: .42rem .48rem;
-  border-color: transparent;
+  border-color: var(--border);
   border-radius: .3rem;
+  background: var(--control);
   text-align: start;
 }
 

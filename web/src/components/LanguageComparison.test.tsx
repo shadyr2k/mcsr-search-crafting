@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { parseIconManifest } from '../data/iconManifest'
@@ -50,6 +50,27 @@ function ready(outcome: EntryOptimizationOutcome): LanguageComparisonState {
 }
 
 describe('LanguageComparison', () => {
+  test('uses the shared searchable language dropdown for comparison choices', () => {
+    render(<LanguageComparison
+      baseData={data}
+      entries={[entry]}
+      languages={languages}
+      selectedLocale="en_us"
+      icons={icons}
+      dataBaseUrl="/"
+      scoringSettings={DEFAULT_SCORING_SETTINGS}
+      itemIdSearch={false}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: /compare languages/i }))
+    const leftLanguage = screen.getByRole('combobox', { name: 'Left comparison language' })
+    fireEvent.focus(leftLanguage)
+    const choices = screen.getByRole('region', { name: 'Left comparison language choices' })
+    fireEvent.click(within(choices).getByRole('option', { name: 'german - deutsch (deutschland)' }))
+
+    expect((leftLanguage as HTMLInputElement).value).toBe('german - deutsch (deutschland)')
+  })
+
   test('compares selected crafts with independent character, junk, and score winners', () => {
     comparisonStates.set('en_us', ready({ kind: 'ranked', entryId: entry.id, rankedSearches: [search('cat', 1, 5)], bestScore: 5, visibleItemIds: [] }))
     comparisonStates.set('de_de', ready({ kind: 'ranked', entryId: entry.id, rankedSearches: [search('dogs', 0, 4, 'overlap')], bestScore: 4, visibleItemIds: [] }))

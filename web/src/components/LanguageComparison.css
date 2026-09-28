@@ -403,8 +403,15 @@
 @media (max-width: 70rem) {
   .language-comparison__language-selectors { grid-template-columns: minmax(0, 1fr); }
   .language-comparison__selection-actions { grid-template-columns: minmax(12rem, .55fr) minmax(0, 1.45fr); }
-  .language-comparison__comparison-grid { grid-template-columns: minmax(12rem, .55fr) minmax(0, 1.45fr); }
-  .language-comparison__comparison-rows { grid-column: 2; }
+  /* At tablet and phone widths, place the overview, each item set, and its
+     score card in one vertical flow so the right column cannot be clipped. */
+  .language-comparison__comparison-grid,
+  .language-comparison--page.language-comparison--compact .language-comparison__comparison-grid { grid-template-columns: minmax(0, 1fr); }
+  .language-comparison__comparison-rows,
+  .language-comparison--page.language-comparison--compact .language-comparison__comparison-rows { grid-column: auto; grid-template-columns: minmax(0, 1fr); }
+  .language-comparison__item-set-row,
+  .language-comparison--page.language-comparison--compact .language-comparison__item-set-row { grid-template-columns: minmax(0, 1fr); }
+  .language-comparison__item-scores-heading { display: none; }
 }
 
 @media (max-width: 47rem) {
