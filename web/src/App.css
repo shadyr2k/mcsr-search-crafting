@@ -3371,6 +3371,18 @@ h3 {
   border-radius: .3rem;
 }
 
+/* Narrow language choices remain individually tappable tiles instead of
+   blending into the dropdown background. */
+.language-selector--narrow .language-selector__language > button:first-child {
+  border-color: var(--border);
+  background: var(--control);
+}
+
+.language-selector--narrow .language-selector__language > button[aria-pressed='true'] {
+  border-color: var(--accent-strong);
+  background: var(--panel-selected);
+}
+
 .language-selector__categories {
   display: grid;
   gap: .7rem;

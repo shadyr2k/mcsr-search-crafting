@@ -227,6 +227,7 @@ function LanguageOption({
   onSelect,
   onBannedLocaleEnabledChange,
   compactLayout = false,
+  selectOnTouch = false,
 }: {
   language: LanguageMetadata
   selectedLocale: string
@@ -237,6 +238,8 @@ function LanguageOption({
   onSelect: (locale: string) => void
   onBannedLocaleEnabledChange: (locale: string, enabled: boolean) => void
   compactLayout?: boolean
+  /** Touch selection must happen before a narrow picker closes on search blur. */
+  selectOnTouch?: boolean
 }) {
   const displayName = languageDisplayName(language)
   const banned = isBannedLocale(language.locale)
@@ -244,6 +247,7 @@ function LanguageOption({
   const selected = language.locale === selectedLocale
   const score = scores.get(language.locale)
   const scorePosition = scorePositionByLocale.get(language.locale)
+  const handledTouchSelection = useRef(false)
 
   return <li className="language-selector__language">
     <button
@@ -252,7 +256,19 @@ function LanguageOption({
       aria-pressed={selected}
       aria-label={`${englishLanguageName(language)} - ${displayName}`}
       disabled={!enabled || loadingLocale !== undefined}
-      onClick={() => onSelect(language.locale)}
+      onPointerDown={(event) => {
+        if (!selectOnTouch || event.pointerType === 'mouse') return
+        handledTouchSelection.current = true
+        event.preventDefault()
+        onSelect(language.locale)
+      }}
+      onClick={() => {
+        if (handledTouchSelection.current) {
+          handledTouchSelection.current = false
+          return
+        }
+        onSelect(language.locale)
+      }}
     >
       <span>
         {englishLanguageName(language)} - <span dir={isRtlLocale(language.locale) ? 'rtl' : 'ltr'}>{displayName}</span>
@@ -323,6 +339,7 @@ export function LanguageSelector({
     },
     onBannedLocaleEnabledChange,
     compactLayout: useCompactLayout,
+    selectOnTouch: narrowViewport,
   }
   const selectedLanguage = languages.find((language) => language.locale === selectedLocale)
   const selectedScore = selectedLanguage === undefined ? undefined : scores.get(selectedLanguage.locale)
