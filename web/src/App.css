@@ -3383,6 +3383,10 @@ h3 {
   background: var(--panel-selected);
 }
 
+.language-selector--narrow .language-selector__dropdown ul {
+  touch-action: pan-y;
+}
+
 .language-selector__categories {
   display: grid;
   gap: .7rem;

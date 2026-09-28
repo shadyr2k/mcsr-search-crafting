@@ -58,8 +58,27 @@ describe('LanguageSelector', () => {
     const choices = screen.getByRole('region', { name: 'Language choices' })
     const german = within(choices).getByRole('button', { name: 'german - deutsch (deutschland)' })
     fireEvent.pointerDown(german, { pointerType: 'touch' })
+    fireEvent.pointerUp(german, { pointerType: 'touch' })
     expect(onSelect).toHaveBeenCalledWith('de_de')
     expect(screen.queryByRole('region', { name: 'Language choices' })).toBeNull()
+  })
+
+  test('keeps narrow language choices open when a touch turns into a scroll', () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+    const onSelect = vi.fn()
+
+    render(<LanguageSelector languages={languages} selectedLocale="en_us" enabledBannedLocales={new Set()} scores={new Map()} onSelect={onSelect} onBannedLocaleEnabledChange={vi.fn()} />)
+
+    fireEvent.focus(screen.getByRole('searchbox', { name: 'Search languages' }))
+    const choices = screen.getByRole('region', { name: 'Language choices' })
+    const german = within(choices).getByRole('button', { name: 'german - deutsch (deutschland)' })
+    fireEvent.pointerDown(german, { pointerType: 'touch', pointerId: 4 })
+    // Browsers cancel the option's pointer stream once a pan-y scroll takes
+    // ownership of the gesture.
+    fireEvent.pointerCancel(german, { pointerType: 'touch', pointerId: 4 })
+
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(screen.getByRole('region', { name: 'Language choices' })).toBeTruthy()
   })
 
   test('keeps the selected language visible above the filtered normal list', () => {

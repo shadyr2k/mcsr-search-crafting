@@ -247,7 +247,12 @@ function LanguageOption({
   const selected = language.locale === selectedLocale
   const score = scores.get(language.locale)
   const scorePosition = scorePositionByLocale.get(language.locale)
-  const handledTouchSelection = useRef(false)
+  const touchPointer = useRef<{ id: number; x: number; y: number; moved: boolean } | undefined>(undefined)
+  const suppressTouchClick = useRef(false)
+
+  const clearTouchClickSuppression = () => {
+    window.setTimeout(() => { suppressTouchClick.current = false }, 0)
+  }
 
   return <li className="language-selector__language">
     <button
@@ -258,13 +263,33 @@ function LanguageOption({
       disabled={!enabled || loadingLocale !== undefined}
       onPointerDown={(event) => {
         if (!selectOnTouch || event.pointerType === 'mouse') return
-        handledTouchSelection.current = true
+        touchPointer.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false }
+        suppressTouchClick.current = true
+        // Keep the search focused so its blur handler cannot close the menu
+        // before this touch resolves as a tap or a vertical scroll.
         event.preventDefault()
-        onSelect(language.locale)
+      }}
+      onPointerMove={(event) => {
+        const activeTouch = touchPointer.current
+        if (activeTouch === undefined || activeTouch.id !== event.pointerId) return
+        if (Math.hypot(event.clientX - activeTouch.x, event.clientY - activeTouch.y) >= 8) activeTouch.moved = true
+      }}
+      onPointerCancel={(event) => {
+        if (touchPointer.current?.id !== event.pointerId) return
+        touchPointer.current = undefined
+        clearTouchClickSuppression()
+      }}
+      onPointerUp={(event) => {
+        const activeTouch = touchPointer.current
+        if (activeTouch === undefined || activeTouch.id !== event.pointerId) return
+        touchPointer.current = undefined
+        const moved = activeTouch.moved || Math.hypot(event.clientX - activeTouch.x, event.clientY - activeTouch.y) >= 8
+        if (!moved) onSelect(language.locale)
+        clearTouchClickSuppression()
       }}
       onClick={() => {
-        if (handledTouchSelection.current) {
-          handledTouchSelection.current = false
+        if (suppressTouchClick.current) {
+          suppressTouchClick.current = false
           return
         }
         onSelect(language.locale)
