@@ -7,12 +7,10 @@
 .settings-page__numbers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }
 .settings-page__numbers label { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .25rem .65rem; align-items: center; min-width: 0; padding: .6rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--page); cursor: help; }
 .settings-page__numbers label > span { min-width: 0; color: var(--accent-strong); font-size: .88rem; }
-.settings-page__number-control { display: grid; grid-template-columns: 1.8rem minmax(2.25rem, auto) 1.8rem; align-items: center; min-height: 2.2rem; border: 1px solid var(--border); border-radius: 999px; background: var(--control); overflow: hidden; }
-.settings-page__number-control button { display: grid; place-items: center; width: 1.8rem; min-width: 1.8rem; min-height: 2.15rem; padding: 0; border: 0; border-radius: 0; color: var(--accent-strong); background: transparent; font-family: 'Coiny', sans-serif; font-size: .95rem; font-weight: 400; line-height: 1; }
+.settings-page__number-control { display: grid; grid-template-columns: 2.15rem auto 2.15rem; gap: .25rem; align-items: center; min-height: 2.2rem; }
+.settings-page__number-control button { display: grid; place-items: center; width: 2.15rem; min-width: 2.15rem; min-height: 2.15rem; padding: 0; border: 1px solid var(--border); border-radius: .4rem; color: var(--accent-strong); background: var(--control); font-family: 'Coiny', sans-serif; font-size: .95rem; font-weight: 400; line-height: 1; }
 .settings-page__number-control button:hover:not(:disabled) { background: var(--panel-selected); }
-.settings-page__number-control input { width: 100%; min-width: 0; min-height: 2.15rem; padding: .25rem .2rem; border: 0; border-inline: 1px solid var(--border); border-radius: 0; background: transparent; text-align: center; }
-.settings-page__number-control input::-webkit-inner-spin-button, .settings-page__number-control input::-webkit-outer-spin-button { margin: 0; appearance: none; }
-.settings-page__number-control input[type='number'] { appearance: textfield; }
+.settings-page__number-input { min-width: 2ch; max-width: 4ch; min-height: 2.15rem; padding: .25rem .3rem; border: 1px solid var(--border); border-radius: .4rem; background: var(--control); text-align: center; }
 .settings-page__numbers small { grid-column: 1 / -1; color: var(--muted); font-size: .72rem; line-height: 1.35; }
 .settings-page__numbers input:disabled { opacity: .55; cursor: not-allowed; }
 .settings-page__toggle { display: grid; grid-template-columns: auto 1fr; gap: .25rem .6rem; align-items: center; width: min(100%, 36rem); color: var(--accent-strong); }

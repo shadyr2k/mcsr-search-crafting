@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 
 import type { AppSettings } from '../persistence/storage'
 
@@ -17,7 +17,21 @@ interface NumberSetting {
   key: keyof AppSettings['scoring']
   label: string
   description: string
-  step?: number
+}
+
+type ScoringKey = keyof AppSettings['scoring']
+
+const scoringKeys: readonly ScoringKey[] = [
+  'freeInitialCharacters',
+  'additionalCharacterPenalty',
+  'backspacePenalty',
+  'shiftHomePenalty',
+  'junkExistingPenalty',
+  'junkItemPenalty',
+]
+
+function numberInputsFor(scoring: AppSettings['scoring']): Record<ScoringKey, string> {
+  return Object.fromEntries(scoringKeys.map((key) => [key, String(scoring[key])])) as Record<ScoringKey, string>
 }
 
 const searchSettings: readonly NumberSetting[] = [
@@ -25,7 +39,6 @@ const searchSettings: readonly NumberSetting[] = [
     key: 'freeInitialCharacters',
     label: 'free initial characters',
     description: 'How many characters in the first search add no score before the additional character penalty begins.',
-    step: 1,
   },
   {
     key: 'additionalCharacterPenalty',
@@ -63,10 +76,12 @@ export function SettingsPage({
   calculationCacheWasReset = false,
 }: SettingsPageProps) {
   const [draft, setDraft] = useState(settings)
+  const [numberInputs, setNumberInputs] = useState(() => numberInputsFor(settings.scoring))
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     setDraft((current) => current.scoring === settings.scoring ? current : { ...current, scoring: settings.scoring })
+    setNumberInputs(numberInputsFor(settings.scoring))
   }, [settings.scoring])
 
   useEffect(() => {
@@ -89,21 +104,43 @@ export function SettingsPage({
     setDraft((current) => current.compactLayout === settings.compactLayout ? current : { ...current, compactLayout: settings.compactLayout })
   }, [settings.compactLayout])
 
-  function setNumber(key: keyof AppSettings['scoring'], value: string) {
-    const numericValue = Number(value)
+  function maximumFor(setting: NumberSetting) {
+    return setting.key === 'freeInitialCharacters' ? 5 : 9999
+  }
+
+  function acceptsNumberInput(setting: NumberSetting, value: string) {
+    return setting.key === 'freeInitialCharacters'
+      ? /^\d{0,2}$/.test(value)
+      : /^\d{0,5}(?:\.\d{0,2})?$/.test(value)
+  }
+
+  function normalizedNumber(setting: NumberSetting, value: string) {
+    const parsed = Number(value)
+    const numericValue = Number.isFinite(parsed) ? parsed : 0
+    return Math.min(maximumFor(setting), Math.max(0, Number(numericValue.toFixed(2))))
+  }
+
+  function setNumber(setting: NumberSetting, value: string) {
+    if (!acceptsNumberInput(setting, value)) return
+    const numericValue = normalizedNumber(setting, value)
     setSaved(false)
+    const keepTypedValue = value === '' || value === '.' || value.endsWith('.') || numericValue === Number(value)
+    setNumberInputs((current) => ({ ...current, [setting.key]: keepTypedValue ? value : String(numericValue) }))
     setDraft((current) => ({
       ...current,
-      scoring: { ...current.scoring, [key]: Number.isFinite(numericValue) ? numericValue : 0 },
+      scoring: { ...current.scoring, [setting.key]: numericValue },
     }))
   }
 
   function nudgeNumber(setting: NumberSetting, direction: -1 | 1) {
-    const step = setting.step ?? .25
     const current = draft.scoring[setting.key]
-    const maximum = setting.key === 'freeInitialCharacters' ? 5 : Number.POSITIVE_INFINITY
-    const next = Math.min(maximum, Math.max(0, Number((current + step * direction).toFixed(4))))
-    setNumber(setting.key, String(next))
+    const next = Math.min(maximumFor(setting), Math.max(0, Number((current + direction).toFixed(2))))
+    setNumber(setting, String(next))
+  }
+
+  function finalizeNumberInput(setting: NumberSetting) {
+    const value = String(normalizedNumber(setting, numberInputs[setting.key]))
+    setNumberInputs((current) => ({ ...current, [setting.key]: value }))
   }
 
   function renderNumberSettings(numberSettings: readonly NumberSetting[]) {
@@ -120,19 +157,21 @@ export function SettingsPage({
               onClick={() => nudgeNumber(setting, -1)}
             >↓</button>
             <input
-              type="number"
-              min="0"
-              max={setting.key === 'freeInitialCharacters' ? '5' : undefined}
-              step={setting.step ?? .25}
-              value={draft.scoring[setting.key]}
+              className="settings-page__number-input"
+              type="text"
+              inputMode={setting.key === 'freeInitialCharacters' ? 'numeric' : 'decimal'}
+              value={numberInputs[setting.key]}
               disabled={disabled}
+              aria-label={setting.label}
               aria-describedby={`${setting.key}-description`}
-              onChange={(event) => setNumber(setting.key, event.target.value)}
+              onBlur={() => finalizeNumberInput(setting)}
+              onChange={(event) => setNumber(setting, event.target.value)}
+              style={{ width: `${Math.min(4, Math.max(2, numberInputs[setting.key].length))}ch` } as CSSProperties}
             />
             <button
               type="button"
               aria-label={`Increase ${setting.label}`}
-              disabled={disabled || draft.scoring[setting.key] >= (setting.key === 'freeInitialCharacters' ? 5 : Number.POSITIVE_INFINITY)}
+              disabled={disabled || draft.scoring[setting.key] >= maximumFor(setting)}
               onClick={() => nudgeNumber(setting, 1)}
             >↑</button>
           </span>

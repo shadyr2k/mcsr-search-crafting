@@ -9,7 +9,7 @@ test('clears cached language scores for every calculation setting', async ({ pag
   await page.getByRole('button', { name: 'settings' }).click()
   await expect(page.getByRole('heading', { name: 'site settings' })).toBeVisible()
 
-  const freeCharacters = page.getByRole('spinbutton', { name: /free initial characters/i })
+  const freeCharacters = page.getByRole('textbox', { name: /free initial characters/i })
   const characterPenalty = page.locator('input[aria-describedby="additionalCharacterPenalty-description"]')
   await freeCharacters.fill('5')
   await expect(characterPenalty).toBeDisabled()
@@ -28,7 +28,7 @@ test('clears cached language scores for every calculation setting', async ({ pag
     return cached.entryScores?.saved ?? null
   })).toBeNull()
 
-  await page.getByRole('spinbutton', { name: /junk item penalty/i }).fill('1.25')
+  await page.getByRole('textbox', { name: /junk item penalty/i }).fill('1.25')
   await page.getByRole('button', { name: 'save settings' }).click()
   await expect(page.getByRole('status')).toHaveText('settings saved')
   await expect.poll(() => page.evaluate(() => {

@@ -38,12 +38,25 @@ describe('SettingsPage', () => {
 
     expect(page.getByRole('heading', { name: 'site settings' })).toBeTruthy()
     expect(page.queryByText('junk settings')).toBeNull()
-    fireEvent.click(page.getByRole('button', { name: 'Decrease junk item penalty' }))
+    fireEvent.click(page.getByRole('button', { name: 'Increase junk item penalty' }))
     fireEvent.click(page.getByRole('button', { name: 'save settings' }))
 
     expect(page.getByRole('button', { name: 'Increase free initial characters' })).toBeTruthy()
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
-      scoring: expect.objectContaining({ junkItemPenalty: .25 }),
+      scoring: expect.objectContaining({ junkItemPenalty: 1.5 }),
     }))
+  })
+
+  test('limits typed penalties to two decimal places and the supported range', () => {
+    const view = render(<SettingsPage settings={settings} onSave={vi.fn()} onResetCalculationCache={vi.fn()} />)
+    const page = within(view.container)
+    const penalty = page.getByRole('textbox', { name: 'junk item penalty' })
+
+    fireEvent.change(penalty, { target: { value: '12.34' } })
+    expect((penalty as HTMLInputElement).value).toBe('12.34')
+    fireEvent.change(penalty, { target: { value: '12.345' } })
+    expect((penalty as HTMLInputElement).value).toBe('12.34')
+    fireEvent.change(penalty, { target: { value: '10000' } })
+    expect((penalty as HTMLInputElement).value).toBe('9999')
   })
 })
