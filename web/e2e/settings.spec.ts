@@ -7,7 +7,7 @@ test('clears cached language scores for every calculation setting', async ({ pag
   })))
   await page.goto('/')
   await page.getByRole('button', { name: 'settings' }).click()
-  await expect(page.getByRole('heading', { name: 'scoring settings' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'site settings' })).toBeVisible()
 
   const freeCharacters = page.getByRole('spinbutton', { name: /free initial characters/i })
   const characterPenalty = page.locator('input[aria-describedby="additionalCharacterPenalty-description"]')
@@ -68,8 +68,8 @@ test('clears cached language scores for every calculation setting', async ({ pag
   await hideCraftNumbers.click()
   await compactLayout.click()
   await removeAnimations.click()
-  const activeThumbRight = await removeAnimations.evaluate((switchControl) => Number.parseFloat(getComputedStyle(switchControl, '::after').right))
-  expect(activeThumbRight).toBeLessThan(3)
+  const activeThumbTransform = await removeAnimations.evaluate((switchControl) => getComputedStyle(switchControl, '::after').transform)
+  expect(activeThumbTransform).not.toBe('none')
   await page.getByRole('button', { name: 'save settings' }).click()
   await expect(page.getByRole('status')).toHaveText('settings saved')
   await expect.poll(() => page.evaluate(() => {

@@ -278,8 +278,8 @@
 }
 
 .language-comparison__item-set--open { position: relative; z-index: 2; overflow: visible; }
-.language-comparison__item-set-row:has(.crafting-sheet__query-input:focus-within) { position: relative; z-index: 4; }
-.language-comparison__item-set--open:has(.crafting-sheet__query-input:focus-within) { z-index: 5; }
+.language-comparison__item-set-row:has(.crafting-sheet__query-input:focus-within) { position: relative; z-index: 120; }
+.language-comparison__item-set--open:has(.crafting-sheet__query-input:focus-within) { z-index: 121; }
 
 .language-comparison__item-set-toggle {
   display: grid;

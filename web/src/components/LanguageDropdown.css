@@ -3,6 +3,8 @@
   min-width: 0;
 }
 
+.language-dropdown:focus-within { z-index: 120; }
+
 .language-dropdown__field {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -20,7 +22,7 @@
 
 .language-dropdown__menu {
   position: absolute;
-  z-index: 40;
+  z-index: 200;
   inset: calc(100% + .2rem) 0 auto;
   display: grid;
   min-width: min(100%, 22rem);

@@ -259,7 +259,7 @@ test('keeps the full sheet and comparison pages fluid in normal and compact layo
     await page.getByRole('button', { name: 'recipe book sim', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'recipe book simulator' })).toBeVisible()
     await page.getByRole('button', { name: 'settings', exact: true }).click()
-    await expect(page.getByRole('heading', { name: 'scoring settings' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'site settings' })).toBeVisible()
     await page.getByRole('button', { name: 'search crafting', exact: true }).click()
     await expect(page.getByRole('button', { name: 'crafting sheet', exact: true })).toBeVisible()
   }

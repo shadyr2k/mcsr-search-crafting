@@ -17,7 +17,7 @@ interface NumberSetting {
   key: keyof AppSettings['scoring']
   label: string
   description: string
-  step?: string
+  step?: number
 }
 
 const searchSettings: readonly NumberSetting[] = [
@@ -25,7 +25,7 @@ const searchSettings: readonly NumberSetting[] = [
     key: 'freeInitialCharacters',
     label: 'free initial characters',
     description: 'How many characters in the first search add no score before the additional character penalty begins.',
-    step: '1',
+    step: 1,
   },
   {
     key: 'additionalCharacterPenalty',
@@ -42,9 +42,6 @@ const searchSettings: readonly NumberSetting[] = [
     label: 'shift home penalty',
     description: 'Score penalty for each Shift+Home used to replace a search.',
   },
-]
-
-const junkSettings: readonly NumberSetting[] = [
   {
     key: 'junkExistingPenalty',
     label: 'junk existing penalty',
@@ -101,22 +98,44 @@ export function SettingsPage({
     }))
   }
 
+  function nudgeNumber(setting: NumberSetting, direction: -1 | 1) {
+    const step = setting.step ?? .25
+    const current = draft.scoring[setting.key]
+    const maximum = setting.key === 'freeInitialCharacters' ? 5 : Number.POSITIVE_INFINITY
+    const next = Math.min(maximum, Math.max(0, Number((current + step * direction).toFixed(4))))
+    setNumber(setting.key, String(next))
+  }
+
   function renderNumberSettings(numberSettings: readonly NumberSetting[]) {
     return <div className="settings-page__numbers">
       {numberSettings.map((setting) => {
         const disabled = setting.key === 'additionalCharacterPenalty' && draft.scoring.freeInitialCharacters >= 5
         return <label key={setting.key} title={setting.description}>
           <span>{setting.label}</span>
-          <input
-            type="number"
-            min="0"
-            max={setting.key === 'freeInitialCharacters' ? '5' : undefined}
-            step={setting.step ?? 'any'}
-            value={draft.scoring[setting.key]}
-            disabled={disabled}
-            aria-describedby={`${setting.key}-description`}
-            onChange={(event) => setNumber(setting.key, event.target.value)}
-          />
+          <span className="settings-page__number-control">
+            <button
+              type="button"
+              aria-label={`Decrease ${setting.label}`}
+              disabled={disabled || draft.scoring[setting.key] <= 0}
+              onClick={() => nudgeNumber(setting, -1)}
+            >↓</button>
+            <input
+              type="number"
+              min="0"
+              max={setting.key === 'freeInitialCharacters' ? '5' : undefined}
+              step={setting.step ?? .25}
+              value={draft.scoring[setting.key]}
+              disabled={disabled}
+              aria-describedby={`${setting.key}-description`}
+              onChange={(event) => setNumber(setting.key, event.target.value)}
+            />
+            <button
+              type="button"
+              aria-label={`Increase ${setting.label}`}
+              disabled={disabled || draft.scoring[setting.key] >= (setting.key === 'freeInitialCharacters' ? 5 : Number.POSITIVE_INFINITY)}
+              onClick={() => nudgeNumber(setting, 1)}
+            >↑</button>
+          </span>
           <small id={`${setting.key}-description`}>{setting.description}</small>
         </label>
       })}
@@ -130,8 +149,7 @@ export function SettingsPage({
 
   return <section className="settings-page" aria-labelledby="settings-heading">
     <header>
-      <h2 id="settings-heading">scoring settings</h2>
-      <p>A language’s score estimates the effort needed to find every enabled item set in its recipe book. Lower scores are better.</p>
+      <h2 id="settings-heading">site settings</h2>
     </header>
     <form onSubmit={(event) => { event.preventDefault(); save() }}>
       <fieldset>
@@ -169,10 +187,6 @@ export function SettingsPage({
         </div>
       </fieldset>
       <fieldset>
-        <legend>junk settings</legend>
-        {renderNumberSettings(junkSettings)}
-      </fieldset>
-      <fieldset>
         <legend>site settings</legend>
         <div className="settings-page__toggle" title="Show every site state immediately.">
           <button
@@ -206,7 +220,7 @@ export function SettingsPage({
         </div>
         <div className="settings-page__cache">
           <div>
-            <span>calculation cache</span>
+            <span>reset calculation cache</span>
             <small>Clears saved optimal language scores and craft results, then rebuilds them from the current item sets and scoring rules. Your item sets, craft-sheet choices, and site settings stay saved.</small>
           </div>
           <button type="button" onClick={onResetCalculationCache} disabled={calculationCacheResetting}>

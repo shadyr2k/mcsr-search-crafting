@@ -3535,3 +3535,68 @@ h3 {
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
+
+/* A focused picker is an overlay, not part of the next panel's paint layer.
+   Keeping that layer on the trigger also preserves every existing scroll and
+   tap handler inside the menu. */
+.item-picker:focus-within,
+.language-dropdown:focus-within,
+.language-selector:has(.language-selector__sort-options),
+.theme-picker:has(.theme-picker__menu),
+.version-picker:has(.version-picker__menu) {
+  z-index: 120;
+}
+
+.item-picker__results,
+.language-dropdown__menu,
+.language-selector__sort-options,
+.theme-picker__menu,
+.version-picker__menu {
+  z-index: 200;
+}
+
+.recipe-book-sim__controls:has(.item-picker:focus-within),
+.item-set-editor:has(.item-picker:focus-within),
+.item-set-workspace:has(.item-picker:focus-within) {
+  position: relative;
+  z-index: 110;
+  overflow: visible;
+}
+
+/* Tile menus should center their visual content even when an item name uses
+   fewer lines than the neighboring tiles. */
+.item-picker__option { justify-content: center; }
+.theme-picker__menu { place-items: center; }
+.recipe-book-sim__characters ul { justify-content: center; }
+
+/* The header's interactive controls share a single control rhythm. */
+.app-header__nav button,
+.app-header__menu > button,
+.app-header__menu .theme-picker__trigger,
+.app-header__menu .version-picker__trigger,
+.app-header__menu .theme-switch {
+  min-height: 3rem;
+  height: 3rem;
+  font-family: 'Coiny', sans-serif;
+  font-weight: 400;
+}
+
+.app-header__menu .theme-switch { font-size: .9rem; }
+.app-header__menu .theme-switch__thumb { top: 50%; transform: translateY(-50%); }
+.app-header__menu .theme-switch[aria-checked='true'] .theme-switch__thumb { transform: translate(1.62rem, -50%); }
+.app-header__help { font-family: 'Coiny', sans-serif; }
+
+@media (max-width: 72rem) {
+  .app-header__nav button,
+  .app-header__menu > button,
+  .app-header__menu .theme-picker__trigger,
+  .app-header__menu .version-picker__trigger,
+  .app-header__menu .theme-switch {
+    min-height: 2rem;
+    height: 2rem;
+  }
+
+  .app-header__menu .theme-picker__trigger .item-icon { width: 1.45rem; height: 1.45rem; }
+  .app-header__menu .version-picker__trigger { min-width: 4.8rem; padding-inline: .35rem; font-size: .78rem; }
+  .app-header__menu .theme-switch { width: 3.5rem; min-width: 3.5rem; padding-inline: .28rem; }
+}
