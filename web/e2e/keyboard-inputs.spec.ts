@@ -57,7 +57,9 @@ test('detects mapped controls and offers independent language characters with th
   const fifth = await mouse.locator('[data-code="Mouse4"]').boundingBox()
   const left = await mouse.locator('[data-code="Mouse0"]').boundingBox()
   expect(fourth!.x).toBe(fifth!.x)
-  expect(fourth!.x).toBeLessThan(left!.x)
+  expect(fourth!.x).toBe(left!.x)
+  expect(fourth!.y).toBeGreaterThanOrEqual(left!.y + left!.height)
+  expect(fifth!.y).toBeGreaterThanOrEqual(fourth!.y + fourth!.height)
   const width = await page.getByRole('textbox', { name: 'additional character penalty', exact: true }).evaluate((element) => {
     const styles = getComputedStyle(element)
     return { width: Number.parseFloat(styles.width), font: Number.parseFloat(styles.fontSize) }
