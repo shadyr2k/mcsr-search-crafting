@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode, type Ref } from 'react'
 
 import type { LanguageMetadata, LanguageScoreState } from '../domain/types'
-import { normalizeExactSearchText } from '../engine/search'
+import { normalizeSearchText } from '../engine/search'
 import { TapOrScrollButton } from './TapOrScrollButton'
 
 import './LanguageDropdown.css'
@@ -146,7 +146,7 @@ function scorePositions(scores: ReadonlyMap<string, LanguageScoreState>): Readon
 function languageMatches(language: LanguageMetadata, query: string): boolean {
   if (!query) return true
   return [englishLanguageName(language), languageDisplayName(language), language.locale]
-    .some((value) => normalizeExactSearchText(value).includes(query))
+    .some((value) => normalizeSearchText(value).includes(query))
 }
 
 export function isRtlLocale(locale: string): boolean {
@@ -304,7 +304,7 @@ export function LanguageSelector({
   const narrowOptionTouchActiveRef = useRef(false)
   const [sortMode, setSortMode] = useState<LanguageSortMode>('score-ascending')
   const [sortOpen, setSortOpen] = useState(false)
-  const normalizedQuery = normalizeExactSearchText(query.trim())
+  const normalizedQuery = normalizeSearchText(query.trim())
   const scorePositionByLocale = useMemo(() => scorePositions(scores), [scores])
   const visibleLanguages = useMemo(() => languages
     .filter((language) => languageMatches(language, normalizedQuery))
@@ -411,7 +411,7 @@ export function LanguageDropdown({
   const [query, setQuery] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
   const listId = useId()
-  const normalizedQuery = normalizeExactSearchText(query.trim())
+  const normalizedQuery = normalizeSearchText(query.trim())
   const visibleLanguages = useMemo(() => languages.filter((language) => languageMatches(language, normalizedQuery)), [languages, normalizedQuery])
   const selectedLanguage = languages.find((language) => language.locale === selectedLocale)
   const selectedLabel = selectedLanguage ? `${englishLocaleName(selectedLanguage, languages)} - ${languageDisplayName(selectedLanguage)}` : selectedLocale

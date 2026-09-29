@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { englishLanguageName, englishLocaleName, resultsColumnTitle, LanguageSelector } from './LanguageSelector'
+import { englishLanguageName, englishLocaleName, resultsColumnTitle, LanguageSelector, LanguageDropdown } from './LanguageSelector'
 
 const languages = [
   { locale: 'en_us', name: 'English', region: 'United States', script: 'latin' as const },
@@ -20,6 +20,29 @@ afterEach(() => {
 })
 
 describe('LanguageSelector', () => {
+  test.each(['main list', 'shared dropdown'])('matches English approximations of accented names in the %s', (picker) => {
+    const choices = [...languages, { locale: 'fo_fo', name: 'Føroyskt', region: 'Føroyar', script: 'latin' as const }]
+    if (picker === 'main list') {
+      render(<LanguageSelector languages={choices} selectedLocale="en_us" enabledBannedLocales={new Set()} scores={new Map()} onSelect={vi.fn()} onBannedLocaleEnabledChange={vi.fn()} />)
+    } else {
+      render(<LanguageDropdown languages={choices} selectedLocale="en_us" label="Choose language" onSelect={vi.fn()} />)
+    }
+    const input = screen.getByRole(picker === 'main list' ? 'searchbox' : 'combobox')
+    fireEvent.focus(input)
+    for (const [query, name] of [
+      ['ov', 'elfdalian - övdalska (swerre)'],
+      ['ovdals', 'elfdalian - övdalska (swerre)'],
+      ['ÖVDALS', 'elfdalian - övdalska (swerre)'],
+      ['francais', 'french - français (canada)'],
+      ['CANÁDA', 'french - français (canada)'],
+      ['foroy', 'faroese - føroyskt (føroyar)'],
+    ]) {
+      fireEvent.change(input, { target: { value: query } })
+      expect(screen.getByRole(picker === 'main list' ? 'button' : 'option', { name })).toBeTruthy()
+      expect(screen.queryByRole(picker === 'main list' ? 'button' : 'option', { name: 'german - deutsch (deutschland)' })).toBeNull()
+    }
+  })
+
   test('groups the normal language list into Latin, non-Latin, and banned categories', () => {
     render(<LanguageSelector languages={languages} selectedLocale="en_us" enabledBannedLocales={new Set()} scores={new Map()} onSelect={vi.fn()} onBannedLocaleEnabledChange={vi.fn()} />)
 
