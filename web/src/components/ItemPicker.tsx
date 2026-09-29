@@ -4,6 +4,7 @@ import type { IconManifest } from '../data/iconManifest'
 import { normalizeExactSearchText } from '../engine/search'
 import { ItemIcon } from './ItemIcon'
 import { isScrollbarPointer } from './outsidePointer'
+import { TapOrScrollButton } from './TapOrScrollButton'
 
 interface PickerItem {
   id: string
@@ -42,7 +43,9 @@ export function ItemPicker({
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const scrollbarPointerRef = useRef(false)
+  const optionTouchActiveRef = useRef(false)
   const searchId = useId()
   const searchLabel = label.startsWith('Search ') ? label : `Search ${label}`
   const selected = useMemo(() => new Set(selectedIds), [selectedIds])
@@ -95,22 +98,25 @@ export function ItemPicker({
     onChange([...next].sort())
   }
 
+  function selectItem(itemId: string) {
+    toggleItem(itemId)
+    window.setTimeout(() => searchInputRef.current?.focus(), 0)
+  }
+
   function option(item: PickerItem) {
     const selectable = allowSelection(item)
     return <li key={item.id}>
-      <button
+      <TapOrScrollButton
         type="button"
         className="item-picker__option"
         aria-label={item.name}
         disabled={!selectable}
-        // Keep focus in the search field until click selects the item. Touch
-        // browsers may otherwise blur with no relatedTarget and close the list.
-        onPointerDown={(event) => event.preventDefault()}
-        onClick={() => toggleItem(item.id)}
+        onTap={() => selectItem(item.id)}
+        onTouchGestureChange={(active) => { optionTouchActiveRef.current = active }}
       >
         {manifest && <ItemIcon itemId={item.id} name={item.name} manifest={manifest} size="compact" />}
         <span>{item.name}</span>
-      </button>
+      </TapOrScrollButton>
     </li>
   }
 
@@ -118,7 +124,7 @@ export function ItemPicker({
     ref={pickerRef}
     className={`item-picker${className ? ` ${className}` : ''}`}
     onBlurCapture={(event) => {
-      if (scrollbarPointerRef.current) return
+      if (scrollbarPointerRef.current || optionTouchActiveRef.current) return
       if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false)
     }}
   >
@@ -144,6 +150,7 @@ export function ItemPicker({
     </div>
     <input
       id={searchId}
+      ref={searchInputRef}
       type="search"
       value={query}
       onFocus={() => setOpen(true)}

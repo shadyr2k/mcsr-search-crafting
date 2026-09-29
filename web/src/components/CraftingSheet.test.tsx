@@ -214,6 +214,23 @@ describe('CraftingSheet', () => {
     }
   })
 
+  test('chooses a craft on touch release but leaves a scrolling gesture unselected', () => {
+    const onChoose = vi.fn(() => ({ valid: true, query: 'bed' }))
+    render(<CraftQueryInput label="mobile craft" value="" suggestions={[{
+      id: 'bed', label: 'bed', isOptimal: true, search: search('bed'), totalTypedCharacters: 3, totalScore: 1, scoreDelta: 0, junkCount: 0,
+    }]} onChoose={onChoose} />)
+
+    fireEvent.focus(screen.getByRole('searchbox', { name: 'Craft query for mobile craft' }))
+    const suggestion = within(screen.getByRole('list', { name: 'Calculated craft suggestions for mobile craft' })).getByRole('button', { name: /bed/ })
+    fireEvent.pointerDown(suggestion, { pointerType: 'touch', pointerId: 1 })
+    fireEvent.pointerCancel(suggestion, { pointerType: 'touch', pointerId: 1 })
+    expect(onChoose).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(suggestion, { pointerType: 'touch', pointerId: 2 })
+    fireEvent.pointerUp(suggestion, { pointerType: 'touch', pointerId: 2 })
+    expect(onChoose).toHaveBeenCalledWith('bed')
+  })
+
   test('offers a valid typed craft that was not among the calculated suggestions', () => {
     vi.useFakeTimers()
     try {

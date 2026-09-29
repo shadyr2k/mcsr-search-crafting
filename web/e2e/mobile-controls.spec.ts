@@ -17,6 +17,23 @@ test('selects dropdown items with a tap in the editor and simulator', async ({ p
   await page.getByRole('button', { name: 'Diamond', exact: true }).tap()
   await expect(page.getByRole('button', { name: 'Remove Diamond', exact: true })).toBeVisible()
   await expect(inventory).toBeFocused()
+  const language = page.getByRole('combobox', { name: 'Simulator language' })
+  await language.tap()
+  await page.getByRole('option', { name: 'german - deutsch (deutschland)' }).tap()
+  await expect(language).toHaveValue('german (germany) - deutsch (deutschland)')
+})
+
+test('scrolls an item dropdown without selecting an option', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Add item set' }).tap()
+  await page.getByRole('searchbox', { name: 'Search Goals' }).tap()
+  const results = page.getByRole('list', { name: 'Goals results' })
+  await expect.poll(() => results.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true)
+  await results.hover()
+  await page.mouse.wheel(0, 260)
+
+  await expect.poll(() => results.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  await expect(page.getByRole('region', { name: 'Goals selected items' })).toContainText('none selected')
 })
 
 test('keeps the theme menu inside small viewports', async ({ page }) => {

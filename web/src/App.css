@@ -760,6 +760,7 @@ h3 {
   max-height: calc(6 * 1.9rem + 5 * .25rem);
   overflow-y: auto;
   scrollbar-gutter: stable;
+  touch-action: pan-y;
 }
 
 .language-selector__language {
@@ -777,6 +778,9 @@ h3 {
   padding: .32rem .45rem;
   overflow: hidden;
   min-height: 1.9rem;
+  border-color: var(--border);
+  border-radius: .3rem;
+  background: var(--control);
   font-size: .76rem;
   line-height: 1.15;
   text-align: start;
@@ -3345,6 +3349,7 @@ h3 {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+  touch-action: pan-y;
 }
 
 /* At the one-column breakpoint the language catalogue becomes the same
@@ -3367,17 +3372,13 @@ h3 {
 
 .language-selector--compact .language-selector__language > button:first-child {
   padding: .42rem .48rem;
-  border-color: transparent;
+  border-color: var(--border);
   border-radius: .3rem;
+  background: var(--control);
 }
 
 /* Narrow language choices remain individually tappable tiles instead of
    blending into the dropdown background. */
-.language-selector--narrow .language-selector__language > button:first-child {
-  border-color: var(--border);
-  background: var(--control);
-}
-
 .language-selector--narrow .language-selector__language > button[aria-pressed='true'] {
   border-color: var(--accent-strong);
   background: var(--panel-selected);
@@ -3510,6 +3511,21 @@ h3 {
   max-height: min(19rem, calc(100dvh - 8rem));
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+  touch-action: pan-y;
+  background: var(--panel);
+  box-shadow: 0 .45rem 1.2rem color-mix(in srgb, var(--page) 75%, transparent);
+}
+
+/* Search result tiles share the same bordered control surface as language
+   choices, while retaining their icon grid. */
+.item-picker__option {
+  border-color: var(--border);
+  border-radius: .3rem;
+  background: var(--control);
+}
+
+.tap-or-scroll-button {
+  touch-action: pan-y;
 }
 
 .theme-picker__menu,

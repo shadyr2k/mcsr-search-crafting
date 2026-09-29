@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type R
 
 import type { LanguageMetadata, LanguageScoreState } from '../domain/types'
 import { normalizeExactSearchText } from '../engine/search'
+import { TapOrScrollButton } from './TapOrScrollButton'
 
 import './LanguageDropdown.css'
 
@@ -227,7 +228,7 @@ function LanguageOption({
   onSelect,
   onBannedLocaleEnabledChange,
   compactLayout = false,
-  selectOnTouch = false,
+  onOptionTouchGestureChange,
 }: {
   language: LanguageMetadata
   selectedLocale: string
@@ -238,8 +239,7 @@ function LanguageOption({
   onSelect: (locale: string) => void
   onBannedLocaleEnabledChange: (locale: string, enabled: boolean) => void
   compactLayout?: boolean
-  /** Touch selection must happen before a narrow picker closes on search blur. */
-  selectOnTouch?: boolean
+  onOptionTouchGestureChange?: (active: boolean) => void
 }) {
   const displayName = languageDisplayName(language)
   const banned = isBannedLocale(language.locale)
@@ -247,53 +247,15 @@ function LanguageOption({
   const selected = language.locale === selectedLocale
   const score = scores.get(language.locale)
   const scorePosition = scorePositionByLocale.get(language.locale)
-  const touchPointer = useRef<{ id: number; x: number; y: number; moved: boolean } | undefined>(undefined)
-  const suppressTouchClick = useRef(false)
-
-  const clearTouchClickSuppression = () => {
-    window.setTimeout(() => { suppressTouchClick.current = false }, 0)
-  }
-
   return <li className="language-selector__language">
-    <button
+    <TapOrScrollButton
       type="button"
       dir="ltr"
       aria-pressed={selected}
       aria-label={`${englishLanguageName(language)} - ${displayName}`}
       disabled={!enabled || loadingLocale !== undefined}
-      onPointerDown={(event) => {
-        if (!selectOnTouch || event.pointerType === 'mouse') return
-        touchPointer.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false }
-        suppressTouchClick.current = true
-        // Keep the search focused so its blur handler cannot close the menu
-        // before this touch resolves as a tap or a vertical scroll.
-        event.preventDefault()
-      }}
-      onPointerMove={(event) => {
-        const activeTouch = touchPointer.current
-        if (activeTouch === undefined || activeTouch.id !== event.pointerId) return
-        if (Math.hypot(event.clientX - activeTouch.x, event.clientY - activeTouch.y) >= 8) activeTouch.moved = true
-      }}
-      onPointerCancel={(event) => {
-        if (touchPointer.current?.id !== event.pointerId) return
-        touchPointer.current = undefined
-        clearTouchClickSuppression()
-      }}
-      onPointerUp={(event) => {
-        const activeTouch = touchPointer.current
-        if (activeTouch === undefined || activeTouch.id !== event.pointerId) return
-        touchPointer.current = undefined
-        const moved = activeTouch.moved || Math.hypot(event.clientX - activeTouch.x, event.clientY - activeTouch.y) >= 8
-        if (!moved) onSelect(language.locale)
-        clearTouchClickSuppression()
-      }}
-      onClick={() => {
-        if (suppressTouchClick.current) {
-          suppressTouchClick.current = false
-          return
-        }
-        onSelect(language.locale)
-      }}
+      onTap={() => onSelect(language.locale)}
+      onTouchGestureChange={onOptionTouchGestureChange}
     >
       <span>
         {englishLanguageName(language)} - <span dir={isRtlLocale(language.locale) ? 'rtl' : 'ltr'}>{displayName}</span>
@@ -305,7 +267,7 @@ function LanguageOption({
       >{scoreText(score.score)}</strong>}
       {score?.status === 'pending' && <span className="language-selector__score" aria-hidden="true">…</span>}
       {score?.status === 'not-calculated' && <span className="language-selector__score" title="Waiting for its background score calculation." aria-hidden="true">—</span>}
-    </button>
+    </TapOrScrollButton>
     {banned && (compactLayout
       ? <div className="language-selector__enable-options" role="group" aria-label={`Enable ${displayName} for calculation`}>
         <button type="button" aria-pressed={!enabled} onClick={() => onBannedLocaleEnabledChange(language.locale, false)}>off</button>
@@ -339,6 +301,7 @@ export function LanguageSelector({
   const useCompactLayout = compactLayout || narrowViewport
   const [query, setQuery] = useState('')
   const [narrowChoicesOpen, setNarrowChoicesOpen] = useState(false)
+  const narrowOptionTouchActiveRef = useRef(false)
   const [sortMode, setSortMode] = useState<LanguageSortMode>('score-ascending')
   const [sortOpen, setSortOpen] = useState(false)
   const normalizedQuery = normalizeExactSearchText(query.trim())
@@ -364,7 +327,7 @@ export function LanguageSelector({
     },
     onBannedLocaleEnabledChange,
     compactLayout: useCompactLayout,
-    selectOnTouch: narrowViewport,
+    onOptionTouchGestureChange: narrowViewport ? (active: boolean) => { narrowOptionTouchActiveRef.current = active } : undefined,
   }
   const selectedLanguage = languages.find((language) => language.locale === selectedLocale)
   const selectedScore = selectedLanguage === undefined ? undefined : scores.get(selectedLanguage.locale)
@@ -403,7 +366,7 @@ export function LanguageSelector({
   />
 
   if (useCompactLayout) return <section ref={containerRef} className={`language-selector language-selector--compact${narrowViewport ? ' language-selector--narrow' : ''}`} aria-label="Languages" onBlur={(event) => {
-    if (narrowViewport && !event.currentTarget.contains(event.relatedTarget as Node | null)) setNarrowChoicesOpen(false)
+    if (narrowViewport && !narrowOptionTouchActiveRef.current && !event.currentTarget.contains(event.relatedTarget as Node | null)) setNarrowChoicesOpen(false)
   }}>
     {!narrowViewport && toolbar}
     {selectedSummary}
@@ -491,10 +454,10 @@ export function LanguageDropdown({
     {open && <section className="language-dropdown__menu" aria-label={`${label} choices`}>
       {visibleLanguages.length > 0
         ? <ul id={listId} role="listbox" aria-label={`${label} choices`}>{visibleLanguages.map((language) => <li key={language.locale}>
-          <button type="button" role="option" aria-selected={language.locale === selectedLocale} dir="ltr" onClick={() => { onSelect(language.locale); setOpen(false); setQuery('') }}>
+          <TapOrScrollButton type="button" role="option" aria-selected={language.locale === selectedLocale} dir="ltr" onTap={() => { onSelect(language.locale); setOpen(false); setQuery('') }}>
             <span className="language-dropdown__option-label">{englishLanguageName(language)} - <span dir={isRtlLocale(language.locale) ? 'rtl' : 'ltr'}>{languageDisplayName(language)}</span></span>
             {renderAccessory?.(language)}
-          </button>
+          </TapOrScrollButton>
         </li>)}</ul>
         : <p className="language-dropdown__empty">no matching languages</p>}
     </section>}

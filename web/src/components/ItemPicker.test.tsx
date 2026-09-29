@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
@@ -82,6 +82,21 @@ describe('ItemPicker', () => {
     await user.pointer({ keys: '[MouseLeft>]', target: screen.getByRole('button', { name: 'Stick' }) })
     expect(document.activeElement).toBe(search)
     await user.pointer({ keys: '[/MouseLeft]' })
+    expect(onChange).toHaveBeenCalledWith(['minecraft:stick'])
+  })
+
+  test('selects an item on a touch release but not when the touch becomes a scroll', () => {
+    const onChange = vi.fn()
+    render(<ItemPicker items={items} selectedIds={[]} manifest={icons} onChange={onChange} label="Goals" />)
+
+    fireEvent.focus(screen.getByRole('searchbox', { name: 'Search Goals' }))
+    const stick = screen.getByRole('button', { name: 'Stick' })
+    fireEvent.pointerDown(stick, { pointerType: 'touch', pointerId: 1 })
+    fireEvent.pointerCancel(stick, { pointerType: 'touch', pointerId: 1 })
+    expect(onChange).not.toHaveBeenCalled()
+
+    fireEvent.pointerDown(stick, { pointerType: 'touch', pointerId: 2 })
+    fireEvent.pointerUp(stick, { pointerType: 'touch', pointerId: 2 })
     expect(onChange).toHaveBeenCalledWith(['minecraft:stick'])
   })
 

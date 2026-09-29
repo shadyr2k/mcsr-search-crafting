@@ -8,6 +8,7 @@ import { normalizeSearchLine, normalizeSearchText } from '../engine/search'
 import { ArrowSprite } from './ArrowSprite'
 import { ItemIcon } from './ItemIcon'
 import { isScrollbarPointer } from './outsidePointer'
+import { TapOrScrollButton } from './TapOrScrollButton'
 import { QueryControl } from './QueryControl'
 
 import './CraftingSheet.css'
@@ -326,10 +327,10 @@ export function CraftQueryInput({ label, value, suggestions, calculatedSearches,
     {message && <p className="crafting-sheet__query-status" role="status">{message}</p>}
     {isOpen && matchingSuggestions.length > 0 && <ul className="crafting-sheet__query-suggestions" aria-label={`Calculated craft suggestions for ${label}`}>
       {matchingSuggestions.map((option) => <li key={option.id}>
-        <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => choose(option.search.queries[0])}>
+        <TapOrScrollButton type="button" onTap={() => choose(option.search.queries[0])}>
           <QuerySequence search={option.search} />
           <span>{option.totalTypedCharacters} chars · {option.junkCount} junk · {deltaLabel(option.scoreDelta)}</span>
-        </button>
+        </TapOrScrollButton>
       </li>)}
     </ul>}
   </div>

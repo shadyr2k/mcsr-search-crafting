@@ -42,6 +42,7 @@
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
   list-style: none;
+  touch-action: pan-y;
 }
 
 .language-dropdown__menu li { min-width: 0; }
@@ -67,6 +68,7 @@
 }
 
 .language-dropdown__menu li button[aria-selected='true'] {
+  border-color: var(--accent-strong);
   background: var(--panel-selected);
   color: var(--accent-strong);
 }
