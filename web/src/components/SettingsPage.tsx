@@ -1,11 +1,18 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useState } from 'react'
 
 import type { AppSettings } from '../persistence/storage'
+import { DEFAULT_KEYBOARD_SETTINGS, keyboardConflicts } from '../domain/keyboard'
+import { KeyboardSettingsEditor } from './KeyboardSettingsEditor'
+import { KeyboardCharacterPicker } from './KeyboardCharacterPicker'
+import type { GeneratedData, LanguageMetadata } from '../domain/types'
 
 import './SettingsPage.css'
 
 interface SettingsPageProps {
   settings: AppSettings
+  languages?: readonly LanguageMetadata[]
+  baseData?: GeneratedData
+  dataBaseUrl?: string
   catifyAvailable?: boolean
   onSave(settings: AppSettings): void
   onResetCalculationCache(): void
@@ -69,6 +76,9 @@ const searchSettings: readonly NumberSetting[] = [
 
 export function SettingsPage({
   settings,
+  languages = [],
+  baseData,
+  dataBaseUrl,
   catifyAvailable,
   onSave,
   onResetCalculationCache,
@@ -78,6 +88,12 @@ export function SettingsPage({
   const [draft, setDraft] = useState(settings)
   const [numberInputs, setNumberInputs] = useState(() => numberInputsFor(settings.scoring))
   const [saved, setSaved] = useState(false)
+  const keyboard = draft.keyboard ?? DEFAULT_KEYBOARD_SETTINGS
+  const invalidKeyboard = keyboardConflicts(keyboard).duplicates.size > 0
+
+  useEffect(() => {
+    setDraft((current) => ({ ...current, keyboard: settings.keyboard }))
+  }, [settings.keyboard])
 
   useEffect(() => {
     setDraft((current) => current.scoring === settings.scoring ? current : { ...current, scoring: settings.scoring })
@@ -166,7 +182,6 @@ export function SettingsPage({
               aria-describedby={`${setting.key}-description`}
               onBlur={() => finalizeNumberInput(setting)}
               onChange={(event) => setNumber(setting, event.target.value)}
-              style={{ width: `${Math.min(4, Math.max(2, numberInputs[setting.key].length))}ch` } as CSSProperties}
             />
             <button
               type="button"
@@ -182,6 +197,7 @@ export function SettingsPage({
   }
 
   function save() {
+    if (invalidKeyboard) return
     onSave(draft)
     setSaved(true)
   }
@@ -290,9 +306,14 @@ export function SettingsPage({
           ? 'Use Fat Cat v2 textures where the pack provides an item image. Missing images keep the default texture.'
           : 'Catify items is available while item textures are loading.'}</small>
       </fieldset>}
+      <fieldset>
+        <legend>keyboard inputs</legend>
+        <KeyboardSettingsEditor value={keyboard} onChange={(value) => { setDraft((current) => ({ ...current, keyboard: value })); setSaved(false) }} />
+        {languages.length > 0 && <KeyboardCharacterPicker languages={languages} baseData={baseData} dataBaseUrl={dataBaseUrl} />}
+      </fieldset>
       <div className="settings-page__save">
         {saved && <p role="status">settings saved</p>}
-        <button type="submit">save settings</button>
+        <button type="submit" disabled={invalidKeyboard}>save settings</button>
       </div>
     </form>
   </section>

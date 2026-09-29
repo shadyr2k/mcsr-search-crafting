@@ -1,8 +1,11 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
-import { describe, expect, test, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { DEFAULT_SCORING_SETTINGS } from '../engine/scoring'
 import { SettingsPage } from './SettingsPage'
+import { DEFAULT_KEYBOARD_SETTINGS } from '../domain/keyboard'
+
+afterEach(cleanup)
 
 const settings = {
   scoring: DEFAULT_SCORING_SETTINGS,
@@ -11,9 +14,61 @@ const settings = {
   removeAnimations: false,
   compactLayout: false,
   catifyItems: false,
+  keyboard: DEFAULT_KEYBOARD_SETTINGS,
 }
 
 describe('SettingsPage', () => {
+  test('detects controls from custom outputs, allows clearing detection, and accepts pasted characters', () => {
+    const onSave = vi.fn()
+    render(<SettingsPage settings={settings} onSave={onSave} onResetCalculationCache={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Rebind r' }))
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'New output for r' }), { key: 'Backspace', code: 'Backspace' })
+    expect(screen.getByRole('button', { name: 'Bind backspace' }).textContent).toBe('r (detected)')
+    fireEvent.click(screen.getByRole('button', { name: 'Clear backspace' }))
+    expect(screen.getByRole('button', { name: 'Bind backspace' }).textContent).toBe('unbound')
+    fireEvent.click(screen.getByRole('button', { name: 'Rebind x' }))
+    const input = screen.getByRole('textbox', { name: 'New output for x' })
+    fireEvent.keyDown(input, { key: 'Control', code: 'ControlLeft', ctrlKey: true })
+    fireEvent.keyDown(input, { key: 'v', code: 'KeyV', ctrlKey: true })
+    fireEvent.paste(input, { clipboardData: { getData: () => 'ø' } })
+    fireEvent.click(screen.getByRole('button', { name: 'save settings' }))
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ keyboard: { mappings: { KeyR: 'Backspace', KeyX: 'ø' }, controls: { backspace: '' } } }))
+  })
+
+  test('captures custom outputs, excludes shadowed defaults, and prevents duplicate custom bindings', () => {
+    const onSave = vi.fn()
+    render(<SettingsPage settings={settings} onSave={onSave} onResetCalculationCache={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Rebind x' }))
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'New output for x' }), { key: 's', code: 'KeyS' })
+    expect(screen.getByRole('button', { name: 'Rebind s (conflict, unused)' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'save settings' }))
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ keyboard: { mappings: { KeyX: 's' }, controls: {} } }))
+    fireEvent.click(screen.getByRole('button', { name: 'Rebind c' }))
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'New output for c' }), { key: 's', code: 'KeyS' })
+    expect(screen.getByRole('button', { name: 'Rebind x → s (conflict, unused)' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Rebind c → s (conflict, unused)' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'save settings' }).hasAttribute('disabled')).toBe(true)
+    fireEvent.submit(screen.getByRole('button', { name: 'save settings' }).closest('form')!)
+    expect(onSave).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Rebind c → s (conflict, unused)' }))
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'New output for c' }), { key: 'e', code: 'KeyE' })
+    expect(screen.getByRole('button', { name: 'save settings' }).hasAttribute('disabled')).toBe(false)
+  })
+
+  test('binds and clears a mouse chat control and supports mobile text input', () => {
+    const onSave = vi.fn()
+    render(<SettingsPage settings={settings} onSave={onSave} onResetCalculationCache={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Bind chat key' }))
+    fireEvent(screen.getByRole('textbox', { name: 'New binding for chat key' }), new MouseEvent('pointerdown', { button: 3, bubbles: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'Rebind x' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'New output for x' }), { target: { value: 's' } })
+    fireEvent.click(screen.getByRole('button', { name: 'save settings' }))
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ keyboard: { mappings: { KeyX: 's' }, controls: { chat: 'Mouse3' } } }))
+    fireEvent.click(screen.getByRole('button', { name: 'Clear chat key' }))
+    fireEvent.click(screen.getByRole('button', { name: 'save settings' }))
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ keyboard: { mappings: { KeyX: 's' }, controls: {} } }))
+  })
+
   test('resets calculated scores and crafts without changing the saved workspace controls', () => {
     const onResetCalculationCache = vi.fn()
     render(<SettingsPage settings={settings} onSave={vi.fn()} onResetCalculationCache={onResetCalculationCache} />)

@@ -513,6 +513,9 @@ function App() {
     <div key={pageContentTransition.key} className={`page-transition__content${pageContentTransition.animated ? ' page-transition__content--entering' : ''}${pageContentTransition.direction ? ` page-transition__content--slide-${pageContentTransition.direction}` : ''}`}>
     {page === 'settings' && <SettingsPage
       settings={appSettings}
+      languages={languages}
+      baseData={baseData}
+      dataBaseUrl={gameVersion.packageBaseUrl}
       catifyAvailable={catifySupportedLocally && (!catifyOverridesResolved || catifiedIconOverrides !== undefined)
         ? catifiedIconOverrides !== undefined
         : undefined}
@@ -553,6 +556,8 @@ function App() {
       compactLayout={appSettings.compactLayout}
     />}
     {data && activeIcons && page === 'crafting-sheet' && <CraftingSheet
+      keyboardSettings={appSettings.keyboard}
+      removeAnimations={appSettings.removeAnimations}
       layout="page"
       compactLayout={appSettings.compactLayout}
       onBack={() => selectPage('home')}
@@ -608,6 +613,8 @@ function App() {
       <LanguageSelector containerRef={languageSelectorRef} languages={languages} selectedLocale={selectedLocale} enabledBannedLocales={enabledBannedLocales} scores={languageScores} loadingLocale={loadingLocale} compactLayout={appSettings.compactLayout} onSelect={selectLocale} onBannedLocaleEnabledChange={setBannedLocaleEnabled} />
       <section inert={!!editor} aria-hidden={!!editor} className={`results-column${editor ? ' results-column--editing' : ''}`} dir={isRtlLocale(selectedLocale) ? 'rtl' : 'ltr'} aria-label="Calculated searches">
         <CraftingSheet
+          keyboardSettings={appSettings.keyboard}
+          removeAnimations={appSettings.removeAnimations}
           open={false}
           onOpenChange={(open) => { if (open) { setEditor(null); selectPage('crafting-sheet') } }}
           languageName={selectedLanguageName}

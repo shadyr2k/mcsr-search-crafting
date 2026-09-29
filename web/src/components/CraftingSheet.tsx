@@ -10,6 +10,8 @@ import { ItemIcon } from './ItemIcon'
 import { isScrollbarPointer } from './outsidePointer'
 import { TapOrScrollButton } from './TapOrScrollButton'
 import { QueryControl } from './QueryControl'
+import { DEFAULT_KEYBOARD_SETTINGS, type KeyboardSettings } from '../domain/keyboard'
+import { KeyboardPlayback } from './KeyboardPlayback'
 
 import './CraftingSheet.css'
 
@@ -34,6 +36,8 @@ export interface CraftingSheetProps {
   onOpenChange?: (open: boolean) => void
   layout?: 'inline' | 'page'
   compactLayout?: boolean
+  keyboardSettings?: KeyboardSettings
+  removeAnimations?: boolean
   onBack?: () => void
   onCompare?: () => void
   onPreviewItemQuery?: (entryId: string, itemId: string, query: string) => CraftingSheetOption | undefined
@@ -119,7 +123,7 @@ function ItemLabels({ itemIds, items, icons }: { itemIds: readonly string[]; ite
   </span>)}</span>
 }
 
-function ItemSetCard({ entry, items, icons, onPreviewItemQuery, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, compactLayout = false, onOpenChange }: Pick<CraftingSheetProps, 'items' | 'icons' | 'onPreviewItemQuery' | 'onSetItemQuery' | 'onMoveItemCraft' | 'onSetEntryDisabled' | 'compactLayout'> & { entry: CraftingSheetEntry; onOpenChange?: (open: boolean) => void }) {
+function ItemSetCard({ entry, items, icons, onPreviewItemQuery, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, compactLayout = false, keyboardSettings = DEFAULT_KEYBOARD_SETTINGS, removeAnimations = false, onOpenChange }: Pick<CraftingSheetProps, 'items' | 'icons' | 'onPreviewItemQuery' | 'onSetItemQuery' | 'onMoveItemCraft' | 'onSetEntryDisabled' | 'compactLayout' | 'keyboardSettings' | 'removeAnimations'> & { entry: CraftingSheetEntry; onOpenChange?: (open: boolean) => void }) {
   const [isOpen, setIsOpen] = useState(false)
   const headingId = useId()
   const detailsId = useId()
@@ -173,8 +177,8 @@ function ItemSetCard({ entry, items, icons, onPreviewItemQuery, onSetItemQuery, 
           {entry.selectedSearch && <QuerySequence search={entry.selectedSearch} />}
 
         </div>
+        {isOpen && entry.selectedSearch && <KeyboardPlayback search={entry.selectedSearch} settings={keyboardSettings} removeAnimations={removeAnimations} />}
         <div className="crafting-sheet__individual">
-            <p className="crafting-sheet__hint">Reorder with the arrows. Matching queries share a step. Shared prefixes use up to 3 backspaces; otherwise the search is replaced. Chars and scores reflect this order.</p>
             {entry.itemChoices.map((choice, index) => {
               const selected = choice.options.find((option) => option.id === choice.selectedOptionId)
               return <div className="crafting-sheet__individual-item" key={choice.itemId}>
@@ -399,7 +403,7 @@ function SheetSummary({
   </>
 }
 
-function ItemSetList({ entries, items, icons, onPreviewItemQuery, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, compactLayout = false, columns = false }: Pick<CraftingSheetProps, 'entries' | 'items' | 'icons' | 'onPreviewItemQuery' | 'onSetItemQuery' | 'onMoveItemCraft' | 'onSetEntryDisabled' | 'compactLayout'> & { columns?: boolean }) {
+function ItemSetList({ entries, items, icons, onPreviewItemQuery, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, compactLayout = false, keyboardSettings, removeAnimations, columns = false }: Pick<CraftingSheetProps, 'entries' | 'items' | 'icons' | 'onPreviewItemQuery' | 'onSetItemQuery' | 'onMoveItemCraft' | 'onSetEntryDisabled' | 'compactLayout' | 'keyboardSettings' | 'removeAnimations'> & { columns?: boolean }) {
   const columnsRef = useRef<HTMLDivElement>(null)
   const [openEntryIds, setOpenEntryIds] = useState<readonly string[]>([])
   const [rowCount, setRowCount] = useState<number>()
@@ -459,7 +463,7 @@ function ItemSetList({ entries, items, icons, onPreviewItemQuery, onSetItemQuery
   }
 
   function renderEntry(entry: CraftingSheetEntry) {
-    return <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onPreviewItemQuery={onPreviewItemQuery} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={setEntryDisabled} compactLayout={compactLayout} onOpenChange={columns ? (open) => setEntryOpen(entry.id, open) : undefined} />
+    return <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onPreviewItemQuery={onPreviewItemQuery} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={setEntryDisabled} compactLayout={compactLayout} keyboardSettings={keyboardSettings} removeAnimations={removeAnimations} onOpenChange={columns ? (open) => setEntryOpen(entry.id, open) : undefined} />
   }
 
   return <section className={`crafting-sheet__sets${columns ? ' crafting-sheet__sets--columns' : ''}`} aria-label="Selected item sets"><h3>item sets</h3>
@@ -468,7 +472,7 @@ function ItemSetList({ entries, items, icons, onPreviewItemQuery, onSetItemQuery
   </section>
 }
 
-export function CraftingSheet({ languageName, entries, characterSet, characterUsages, optimalCharacterCount, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, defaultOpen = false, open, onOpenChange, layout = 'inline', compactLayout = false, onBack, onCompare, onPreviewItemQuery, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, onReset }: CraftingSheetProps) {
+export function CraftingSheet({ languageName, entries, characterSet, characterUsages, optimalCharacterCount, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, defaultOpen = false, open, onOpenChange, layout = 'inline', compactLayout = false, keyboardSettings, removeAnimations, onBack, onCompare, onPreviewItemQuery, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, onReset }: CraftingSheetProps) {
   const [localOpen, setLocalOpen] = useState(defaultOpen)
   const [selectedCharacter, setSelectedCharacter] = useState<string>()
   const isOpen = open ?? localOpen
@@ -496,7 +500,7 @@ export function CraftingSheet({ languageName, entries, characterSet, characterUs
         <CharacterDetails selectedCharacter={selectedCharacter} usages={usages} />
       </aside>
       <UsageChart usages={usages} className="crafting-sheet__chart--page" />
-      <ItemSetList columns compactLayout={compactLayout} entries={entries} items={items} icons={icons} onPreviewItemQuery={onPreviewItemQuery} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />
+      <ItemSetList columns keyboardSettings={keyboardSettings} removeAnimations={removeAnimations} compactLayout={compactLayout} entries={entries} items={items} icons={icons} onPreviewItemQuery={onPreviewItemQuery} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />
     </div>
   </section>
 
@@ -513,7 +517,7 @@ export function CraftingSheet({ languageName, entries, characterSet, characterUs
     <SheetDisclosure id={panelId} open={isOpen}>
     <div className="crafting-sheet__panel">
       <SheetSummary entries={entries} characterSet={characterSet} totalTypedCharacters={totalTypedCharacters} totalScore={totalScore} scoreDelta={scoreDelta} optimalCharacterCount={optimalCharacterCount} selectedCharacter={selectedCharacter} onSelectCharacter={selectCharacter} isCalculating={isCalculating} warning={warning} readyCount={readyCount} onReset={onReset} />
-      <ItemSetList compactLayout={compactLayout} entries={entries} items={items} icons={icons} onPreviewItemQuery={onPreviewItemQuery} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />
+      <ItemSetList keyboardSettings={keyboardSettings} removeAnimations={removeAnimations} compactLayout={compactLayout} entries={entries} items={items} icons={icons} onPreviewItemQuery={onPreviewItemQuery} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />
       <CharacterDetails selectedCharacter={selectedCharacter} usages={usages} />
     </div>
     </SheetDisclosure>

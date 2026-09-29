@@ -10,7 +10,7 @@
 .settings-page__number-control { display: grid; grid-template-columns: 2.15rem auto 2.15rem; gap: .25rem; align-items: center; min-height: 2.2rem; }
 .settings-page__number-control button { display: grid; place-items: center; width: 2.15rem; min-width: 2.15rem; min-height: 2.15rem; padding: 0; border: 1px solid var(--border); border-radius: .4rem; color: var(--accent-strong); background: var(--control); font-family: 'Coiny', sans-serif; font-size: .95rem; font-weight: 400; line-height: 1; }
 .settings-page__number-control button:hover:not(:disabled) { background: var(--panel-selected); }
-.settings-page__number-input { min-width: 2ch; max-width: 4ch; min-height: 2.15rem; padding: .25rem .3rem; border: 1px solid var(--border); border-radius: .4rem; background: var(--control); text-align: center; }
+.settings-page__number-input { box-sizing: content-box; width: 4ch; min-width: 4ch; max-width: 4ch; min-height: 1.55rem; padding: .25rem .3rem; border: 1px solid var(--border); border-radius: .4rem; background: var(--control); text-align: center; }
 .settings-page__numbers small { grid-column: 1 / -1; color: var(--muted); font-size: .72rem; line-height: 1.35; }
 .settings-page__numbers input:disabled { opacity: .55; cursor: not-allowed; }
 .settings-page__toggle { display: grid; grid-template-columns: auto 1fr; gap: .25rem .6rem; align-items: center; width: min(100%, 36rem); color: var(--accent-strong); }

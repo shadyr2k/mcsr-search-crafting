@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import { DEFAULT_SCORING_SETTINGS } from '../engine/scoring'
+import { DEFAULT_KEYBOARD_SETTINGS } from '../domain/keyboard'
 import {
   clearLanguageScoreCache,
   clearCustomInventorySlot,
@@ -604,11 +605,13 @@ describe('app settings persistence', () => {
     expect(loadAppSettings(storage).value.hideNumberCraftsByDefault).toBe(false)
     expect(loadAppSettings(storage).value.removeAnimations).toBe(false)
     expect(loadAppSettings(storage).value.compactLayout).toBe(false)
+    expect(loadAppSettings(storage).value.keyboard).toEqual(DEFAULT_KEYBOARD_SETTINGS)
   })
 
   test('saves score settings globally and clears a versioned score cache', () => {
     const storage = new MemoryStorage()
     const settings = {
+      keyboard: { mappings: { KeyX: 's', KeyC: 'e' }, controls: { chat: 'Mouse3' } },
       scoring: {
         freeInitialCharacters: 5,
         additionalCharacterPenalty: 1,
@@ -640,5 +643,41 @@ describe('app settings persistence', () => {
     saveLanguageScoreCache({ entryScores: { stale: { en_us: { score: 8, optimalCharacterCount: 4, leastJunk: 1 } } } }, storage, minecraftVersion, generation)
 
     expect(loadLanguageScoreCache(storage, minecraftVersion).value).toEqual({ entryScores: {} })
+  })
+
+  test('refuses duplicate custom keyboard outputs without overwriting saved settings', () => {
+    const storage = new MemoryStorage()
+    const settings = loadAppSettings(storage).value
+    saveAppSettings(settings, storage)
+    expect(() => saveAppSettings({ ...settings, keyboard: { mappings: { KeyX: 's', KeyC: 'S' }, controls: {} } }, storage)).toThrow(/duplicate bindings/)
+    expect(loadAppSettings(storage).value).toEqual(settings)
+  })
+
+  test('rejects shared control bindings while allowing a character mapping on a control key', () => {
+    const storage = new MemoryStorage()
+    const settings = loadAppSettings(storage).value
+    expect(() => saveAppSettings({ ...settings, keyboard: { mappings: {}, controls: { shift: 'KeyX', home: 'KeyX' } } }, storage)).toThrow(/duplicate bindings/)
+    const keyboard = { mappings: { KeyX: 's' }, controls: { chat: 'KeyX' } }
+    saveAppSettings({ ...settings, keyboard }, storage)
+    expect(loadAppSettings(storage).value.keyboard).toEqual(keyboard)
+  })
+
+  test('persists explicit disabling of an automatically detected keyboard control', () => {
+    const storage = new MemoryStorage()
+    const keyboard = { mappings: { KeyR: 'Backspace' }, controls: { backspace: '' } }
+    saveAppSettings({ ...loadAppSettings(storage).value, keyboard }, storage)
+    expect(loadAppSettings(storage).value.keyboard).toEqual(keyboard)
+  })
+
+  test('normalizes malformed keyboard members while preserving other preferences', () => {
+    const storage = new MemoryStorage()
+    storage.setItem('mcsr.app-settings.v1', JSON.stringify({
+      schemaVersion: 1, ...loadAppSettings(storage).value, compactLayout: true,
+      keyboard: { mappings: { KeyX: 'S', Unknown: 'x', KeyC: 4 }, controls: { chat: 'Mouse3', shift: 'Unknown' } },
+    }))
+    const loaded = loadAppSettings(storage)
+    expect(loaded.warning).toBeUndefined()
+    expect(loaded.value.compactLayout).toBe(true)
+    expect(loaded.value.keyboard).toEqual({ mappings: { KeyX: 's' }, controls: { chat: 'Mouse3' } })
   })
 })

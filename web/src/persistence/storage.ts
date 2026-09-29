@@ -1,4 +1,5 @@
 import type { CraftingSheetPreferences, CraftingSheetSelection, CustomInventoryPreset, TargetWorkspace, TargetWorkspaceEntry } from '../domain/types'
+import { keyboardConflicts, normalizeKeyboardSettings, type KeyboardSettings } from '../domain/keyboard'
 import { DEFAULT_SCORING_SETTINGS, type ScoringSettings } from '../engine/scoring'
 
 const INVENTORY_SLOTS_KEY = 'mcsr.inventory-slots.v1'
@@ -75,6 +76,7 @@ interface VersionedThemePreference extends ThemePreference {
 }
 
 export interface AppSettings {
+  keyboard: KeyboardSettings
   scoring: ScoringSettings
   itemIdSearch: boolean
   hideNumberCraftsByDefault: boolean
@@ -116,8 +118,9 @@ interface LegacyVersionedLanguageScoreCache {
   entryScores: Record<string, Record<string, number>>
 }
 
-interface VersionedAppSettings extends Omit<AppSettings, 'itemIdSearch' | 'hideNumberCraftsByDefault' | 'removeAnimations' | 'compactLayout'> {
+interface VersionedAppSettings extends Omit<AppSettings, 'keyboard' | 'itemIdSearch' | 'hideNumberCraftsByDefault' | 'removeAnimations' | 'compactLayout'> {
   schemaVersion: 1
+  keyboard?: unknown
   itemIdSearch?: boolean
   hideNumberCraftsByDefault?: boolean
   // Retain compatibility with the short-lived separate setting while users'
@@ -249,6 +252,7 @@ export function languageScoreCacheGeneration(minecraftVersion = LEGACY_GAME_VERS
 
 function defaultAppSettings(): AppSettings {
   return {
+    keyboard: normalizeKeyboardSettings(undefined),
     scoring: { ...DEFAULT_SCORING_SETTINGS },
     itemIdSearch: false,
     hideNumberCraftsByDefault: false,
@@ -314,7 +318,7 @@ function isAppSettings(value: unknown): value is VersionedAppSettings {
     && (value.removeAnimations === undefined || typeof value.removeAnimations === 'boolean')
     && (value.compactLayout === undefined || typeof value.compactLayout === 'boolean')
     && typeof value.catifyItems === 'boolean'
-    && Object.keys(value).every((key) => key === 'schemaVersion' || key === 'scoring' || key === 'itemIdSearch' || key === 'hideNumberCraftsByDefault' || key === 'textControlKeycaps' || key === 'removeAnimations' || key === 'compactLayout' || key === 'catifyItems')
+    && Object.keys(value).every((key) => key === 'schemaVersion' || key === 'keyboard' || key === 'scoring' || key === 'itemIdSearch' || key === 'hideNumberCraftsByDefault' || key === 'textControlKeycaps' || key === 'removeAnimations' || key === 'compactLayout' || key === 'catifyItems')
 }
 
 function isCustomInventoryPreset(value: unknown): value is CustomInventoryPreset {
@@ -690,6 +694,7 @@ export function loadAppSettings(storage?: Storage): PersistenceLoadResult<AppSet
     if (!isAppSettings(parsed)) return recover(target, APP_SETTINGS_KEY, 'app-settings', raw, fallback)
     return {
       value: {
+        keyboard: normalizeKeyboardSettings(parsed.keyboard),
         scoring: { ...parsed.scoring },
         itemIdSearch: parsed.itemIdSearch ?? false,
         hideNumberCraftsByDefault: parsed.hideNumberCraftsByDefault ?? false,
@@ -708,9 +713,14 @@ export function saveAppSettings(settings: AppSettings, storage?: Storage): Persi
   if (!isAppSettings({ schemaVersion: 1, ...settings })) {
     throw new TypeError('App settings must contain valid non-negative score penalties and valid search, display, and texture preferences.')
   }
+  const keyboard = normalizeKeyboardSettings(settings.keyboard)
+  if (keyboardConflicts(keyboard).duplicates.size > 0) {
+    throw new TypeError('Custom key outputs and control keys must have unique bindings. Resolve duplicate bindings before saving.')
+  }
   const target = storageOrDefault(storage)
   target.setItem(APP_SETTINGS_KEY, JSON.stringify({
     schemaVersion: 1,
+    keyboard,
     scoring: settings.scoring,
     itemIdSearch: settings.itemIdSearch,
     hideNumberCraftsByDefault: settings.hideNumberCraftsByDefault,
