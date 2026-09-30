@@ -38,10 +38,13 @@ async function expectPopupFits(page: Page) {
 }
 
 test('query suggestions preserve the sheet scroll container and remain anchored when it scrolls', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.setViewportSize({ width: 1440, height: 1000 })
   const card = await openFirstItemSet(page)
   const input = card.getByRole('searchbox').first()
   await input.scrollIntoViewIfNeeded()
+  await card.locator('.crafting-sheet__details--open').evaluate(async (element) => {
+    await Promise.all(element.getAnimations().map((animation) => animation.finished))
+  })
   const columns = page.locator('.crafting-sheet__set-columns')
   const before = await columns.evaluate((element) => ({ top: element.scrollTop, left: element.scrollLeft, overflow: getComputedStyle(element).overflow }))
   await input.click()
@@ -51,7 +54,7 @@ test('query suggestions preserve the sheet scroll container and remain anchored 
   expect(after).toEqual(before)
   const oldTop = await input.evaluate((element) => element.getBoundingClientRect().top)
   await columns.evaluate((element) => { element.scrollTop += 40 })
-  await expect.poll(() => input.evaluate((element) => element.getBoundingClientRect().top)).toBeLessThanOrEqual(oldTop)
+  await expect.poll(() => input.evaluate((element) => element.getBoundingClientRect().top)).toBeLessThan(oldTop)
   const popup = page.locator('.crafting-sheet__query-suggestions')
   if (await popup.isVisible()) await expectPopupFits(page)
   await input.click()
@@ -74,5 +77,24 @@ test('phone query focus keeps one bounded popup and selecting a suggestion works
   const label = await inputs.nth(1).getAttribute('aria-label')
   await expect(popup).toHaveAttribute('aria-label', label!.replace('Craft query', 'Calculated craft suggestions'))
   await popup.getByRole('button').first().tap()
+  await expect(popup).toHaveCount(0)
+})
+
+test('switching item rows unmounts the old editor and rapid typing only shows the latest prefix', async ({ page }) => {
+  const first = await openFirstItemSet(page)
+  const input = first.getByRole('searchbox').first()
+  await input.fill('fl')
+  await input.fill('e')
+  const popup = page.locator('.crafting-sheet__query-suggestions')
+  await expect(popup).toBeVisible()
+  const queries = popup.locator('.crafting-sheet__query-text')
+  await expect.poll(() => queries.allTextContents()).toEqual(expect.arrayContaining(['ee']))
+  expect((await queries.allTextContents()).every((query) => query.startsWith('e'))).toBe(true)
+  const second = page.getByRole('region', { name: 'item set 2', exact: true })
+  await second.getByRole('button', { name: 'Expand item set 2' }).click()
+  await expect(first.getByRole('button', { name: 'Expand item set 1' })).toHaveAttribute('aria-expanded', 'false')
+  await expect(first.locator('.crafting-sheet__entry-body')).toHaveCount(0)
+  await expect(second.locator('.crafting-sheet__entry-body')).toBeVisible()
+  await expect(page.locator('.keyboard-playback')).toHaveCount(1)
   await expect(popup).toHaveCount(0)
 })

@@ -24,19 +24,31 @@ test('manual binds override displaced physical keys and persist on the keyboard 
 
 test('keeps header controls the same height and moves playback guidance into craft-sheet help', async ({ page }) => {
   await page.goto('/')
-  for (const width of [1440, 1000, 390]) {
+  for (const width of [1440, 1152, 1000, 390, 320]) {
     await page.setViewportSize({ width, height: 1000 })
     const nav = await page.getByRole('button', { name: 'settings', exact: true }).boundingBox()
     for (const name of ['Help for search crafting', 'Choose color theme']) {
       const button = await page.getByRole('button', { name, exact: true }).boundingBox()
       expect(button!.height).toBeCloseTo(nav!.height, 0)
     }
+    const help = page.getByRole('button', { name: 'Help for search crafting', exact: true })
+    await expect(help).toHaveCSS('font-family', 'Monocraft, monospace')
+    expect(await help.evaluate((button) => {
+      const range = document.createRange()
+      range.selectNodeContents(button)
+      const text = range.getBoundingClientRect()
+      const bounds = button.getBoundingClientRect()
+      return text.top >= bounds.top && text.bottom <= bounds.bottom
+        && text.left >= bounds.left && text.right <= bounds.right
+    })).toBe(true)
     await page.locator('.app-header').screenshot({ path: `test-results/header-controls-${width}.png` })
   }
   await page.getByRole('button', { name: 'crafting sheet', exact: true }).click()
   await page.getByRole('button', { name: 'Expand item set 1' }).click()
   const playback = page.locator('.keyboard-playback').first()
   await expect(playback.locator('.keyboard-playback__actions small')).toHaveCount(0)
+  await expect(playback.locator('.keyboard-visual__label')).toHaveCount(0)
+  await expect(playback.locator('.keyboard-visual__key').first()).toHaveAttribute('aria-label', 'esc')
   await page.getByRole('button', { name: 'Help for crafting sheet' }).click()
   const tutorial = page.getByRole('dialog')
   await expect(tutorial.getByRole('heading', { name: 'Your craft sheet' })).toBeVisible()
@@ -77,17 +89,8 @@ test('saves custom keys, rejects duplicates, and translates craft playback after
   await entry.getByRole('button', { name: 'Expand item set 1' }).click()
   await expect(entry.locator('.keyboard-playback__token').first()).toHaveText('x')
   await expect(entry.getByRole('group', { name: '75% keyboard and five-button mouse' })).toBeVisible()
-  await page.evaluate(() => { document.documentElement.dataset.theme = 'dark' })
-  const fadedText = await entry.locator('.keyboard-visual__key:has(.keyboard-visual__light) .keyboard-visual__label').evaluate((element) => {
-    element.getAnimations().forEach((animation) => animation.finish())
-    const expected = document.createElement('span')
-    expected.style.color = 'var(--text)'
-    element.parentElement!.append(expected)
-    const colors = { actual: getComputedStyle(element).color, expected: getComputedStyle(expected).color }
-    expected.remove()
-    return colors
-  })
-  expect(fadedText.actual).toBe(fadedText.expected)
+  await expect(entry.locator('.keyboard-visual__label')).toHaveCount(0)
+  await expect(entry.locator('.keyboard-visual__light').first()).toHaveCSS('animation-duration', '0.464s')
   await entry.getByRole('button', { name: 'pause sequence' }).click()
   await entry.screenshot({ path: 'test-results/keyboard-playback.png' })
   expect(await entry.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)

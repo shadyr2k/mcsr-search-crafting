@@ -27,7 +27,7 @@ export function KeyboardPlayback({ search, settings, removeAnimations = false }:
     const timer = window.setTimeout(() => {
       setPosition((current) => (current + 1) % tokens.length)
       setPass((current) => current + 1)
-    }, position === tokens.length - 1 ? 1500 : 650)
+    }, position === tokens.length - 1 ? 1200 : 520)
     return () => window.clearTimeout(timer)
   }, [playing, position, pass, still, tokens.length, visible])
 
@@ -40,7 +40,7 @@ export function KeyboardPlayback({ search, settings, removeAnimations = false }:
         {token.kind === 'character' && token.label.length === 1 ? token.label : `(${token.label})`}{token.missing && '?'}
       </span>)}
     </div>
-    <KeyboardVisualization highlights={current ? [current] : []} pulse={pass} />
+    <KeyboardVisualization highlights={current ? [current] : []} pulse={pass} showLabels={false} />
     <div className="keyboard-playback__actions">
       {!still && <button type="button" disabled={tokens.length === 0} onClick={() => setPlaying((value) => !value)}>{playing ? 'pause sequence' : 'play sequence'}</button>}
       <button type="button" disabled={tokens.length === 0} onClick={() => { setPosition(0); setPass((value) => value + 1); setPlaying(true) }}>replay sequence</button>

@@ -60,7 +60,8 @@
 .crafting-sheet--page .crafting-sheet__set-columns--expanded { grid-template-rows: repeat(var(--crafting-sheet-entry-row-count), max-content); align-content: start; align-items: start; }
 .crafting-sheet--page .crafting-sheet__set-columns--compact-rows { display: flex; align-content: start; align-items: start; }
 .crafting-sheet--page .crafting-sheet__set-column { display: flex; flex: 0 0 max-content; flex-direction: column; align-items: stretch; gap: .35rem; min-width: 0; }
-.crafting-sheet--page .crafting-sheet__entry { width: auto; max-width: min(28rem, calc(100vw - 4rem)); padding: .45rem .65rem; }
+/* Keep columns stable without mounting hidden editors to measure their width. */
+.crafting-sheet--page .crafting-sheet__entry { width: min(24rem, calc(100vw - 4rem)); max-width: min(28rem, calc(100vw - 4rem)); padding: .45rem .65rem; }
 .crafting-sheet--page .crafting-sheet__entry-heading { gap: .45rem; }
 .crafting-sheet--page .crafting-sheet__entry-toggle { gap: .35rem; padding: .1rem; }
 .crafting-sheet--page .crafting-sheet__entry-summary { gap: .2rem; }

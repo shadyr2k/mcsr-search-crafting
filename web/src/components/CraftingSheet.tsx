@@ -4,8 +4,7 @@ import { createPortal } from 'react-dom'
 import type { IconManifest } from '../data/iconManifest'
 import type { RankedSearch, SearchItem } from '../domain/types'
 import { craftingSheetOptionsForSearches, type CraftingSheetCharacterUsage, type CraftingSheetEntry, type CraftingSheetOption } from '../engine/craftingSheet'
-import { normalizeManualCraftQuery } from '../engine/manualCraft'
-import { normalizeSearchLine, normalizeSearchText } from '../engine/search'
+import { matchingCraftQuerySearches } from '../engine/craftQuerySuggestions'
 import { ArrowSprite } from './ArrowSprite'
 import { ItemIcon } from './ItemIcon'
 import { isScrollbarPointer } from './outsidePointer'
@@ -124,8 +123,7 @@ function ItemLabels({ itemIds, items, icons }: { itemIds: readonly string[]; ite
   </span>)}</span>
 }
 
-function ItemSetCard({ entry, items, icons, onPreviewItemQuery, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, compactLayout = false, keyboardSettings = DEFAULT_KEYBOARD_SETTINGS, removeAnimations = false, onOpenChange }: Pick<CraftingSheetProps, 'items' | 'icons' | 'onPreviewItemQuery' | 'onSetItemQuery' | 'onMoveItemCraft' | 'onSetEntryDisabled' | 'compactLayout' | 'keyboardSettings' | 'removeAnimations'> & { entry: CraftingSheetEntry; onOpenChange?: (open: boolean) => void }) {
-  const [isOpen, setIsOpen] = useState(false)
+function ItemSetCard({ entry, items, icons, onPreviewItemQuery, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, compactLayout = false, keyboardSettings = DEFAULT_KEYBOARD_SETTINGS, removeAnimations = false, isOpen, onOpenChange }: Pick<CraftingSheetProps, 'items' | 'icons' | 'onPreviewItemQuery' | 'onSetItemQuery' | 'onMoveItemCraft' | 'onSetEntryDisabled' | 'compactLayout' | 'keyboardSettings' | 'removeAnimations'> & { entry: CraftingSheetEntry; isOpen: boolean; onOpenChange: (open: boolean) => void }) {
   const headingId = useId()
   const detailsId = useId()
   const summaryGroups = entry.itemIds.reduce<{ itemIds: string[]; step?: RankedSearch['steps'][number] }[]>((groups, itemId) => {
@@ -145,9 +143,7 @@ function ItemSetCard({ entry, items, icons, onPreviewItemQuery, onSetItemQuery, 
   return <section className={`crafting-sheet__entry${entry.disabled ? ' crafting-sheet__entry--disabled' : ''}`} aria-labelledby={headingId}>
     <header className="crafting-sheet__entry-heading">
       <button type="button" className="crafting-sheet__entry-toggle" aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${entry.label}`} aria-expanded={isOpen} aria-controls={detailsId} onClick={() => {
-        const nextOpen = !isOpen
-        setIsOpen(nextOpen)
-        onOpenChange?.(nextOpen)
+        onOpenChange(!isOpen)
       }}>
         <span className="crafting-sheet__entry-summary">
           <span id={headingId} className="crafting-sheet__entry-label">{entry.label}{!isOpen && entry.status !== 'ready' && <span className="crafting-sheet__entry-status">{entry.status === 'pending' ? 'Calculating crafts…' : 'No available craft.'}</span>}</span>
@@ -165,7 +161,7 @@ function ItemSetCard({ entry, items, icons, onPreviewItemQuery, onSetItemQuery, 
       <label className="crafting-sheet__include"><input type="checkbox" checked={!entry.disabled} aria-label={`Include ${entry.label}`} onChange={(event) => onSetEntryDisabled(entry.id, !event.target.checked)} />{entry.disabled ? 'excluded' : 'included'}</label>
     </header>
     <SheetDisclosure id={detailsId} open={isOpen} sizeWhileCollapsed>
-    <div className="crafting-sheet__entry-body">
+    {isOpen && <div className="crafting-sheet__entry-body">
     {entry.status !== 'ready'
       ? <p className="crafting-sheet__empty">{entry.status === 'pending' ? 'Calculating crafts…' : 'No available craft for this item set. Check its inventory and targets.'}</p>
       : <>
@@ -197,7 +193,7 @@ function ItemSetCard({ entry, items, icons, onPreviewItemQuery, onSetItemQuery, 
             })}
           </div>
       </>}
-    </div>
+    </div>}
     </SheetDisclosure>
   </section>
 }
@@ -214,38 +210,6 @@ export interface CraftQueryResult {
   message?: string
 }
 
-const MAX_CALCULATED_PREFIX_MATCHES = 48
-const normalizedCalculatedCrafts = new WeakMap<RankedSearch, ReturnType<typeof normalizeSearchLine>>()
-
-function normalizedCalculatedCraft(search: RankedSearch): ReturnType<typeof normalizeSearchLine> {
-  const cached = normalizedCalculatedCrafts.get(search)
-  if (cached) return cached
-  const normalized = normalizeSearchLine(search.queries[0] ?? '', true)
-  normalizedCalculatedCrafts.set(search, normalized)
-  return normalized
-}
-
-/**
- * The source list is ranked. Reuse each craft's normalized form and stop once
- * there is enough of a ranked surplus to produce the visible top ten rows.
- * This avoids turning every cached prefix match into a dropdown row.
- */
-function matchingCalculatedSearches(searches: readonly RankedSearch[], query: string): RankedSearch[] {
-  const normalizedQuery = normalizeSearchText(normalizeManualCraftQuery(query))
-  if (normalizedQuery.length === 0) return []
-  const matches: RankedSearch[] = []
-  for (const search of searches) {
-    const normalizedCraft = normalizedCalculatedCraft(search)
-    const firstCharacterEnd = normalizedCraft.originalCharacterStarts[1] ?? normalizedCraft.text.length
-    if (!normalizedCraft.candidateStarts.some((start) => start < firstCharacterEnd && normalizedCraft.text.startsWith(normalizedQuery, start))) continue
-    matches.push(search)
-    // The source bucket is already rank ordered. Retaining a small surplus
-    // lets the display-layer de-duplication still return the best ten rows.
-    if (matches.length === MAX_CALCULATED_PREFIX_MATCHES) break
-  }
-  return matches
-}
-
 /** A typed prefix opens calculated choices without changing the selected craft. */
 export function CraftQueryInput({ label, value, suggestions, calculatedSearches, calculatedBestScore, onPreview, onChoose }: {
   label: string
@@ -260,8 +224,8 @@ export function CraftQueryInput({ label, value, suggestions, calculatedSearches,
   const [draft, setDraft] = useState(displayQuery(value))
   const [isOpen, setIsOpen] = useState(false)
   const [filterByDraft, setFilterByDraft] = useState(false)
-  const [calculatedDraft, setCalculatedDraft] = useState<string>()
-  const [manualSuggestion, setManualSuggestion] = useState<CraftingSheetOption>()
+  const candidates = useMemo(() => calculatedSearches ?? suggestions.map((option) => option.search), [calculatedSearches, suggestions])
+  const [calculated, setCalculated] = useState<{ draft: string; source: readonly RankedSearch[]; options: CraftingSheetOption[] }>()
   const [message, setMessage] = useState<string>()
   const inputRef = useRef<HTMLDivElement>(null)
   const suggestionsRef = useRef<HTMLUListElement>(null)
@@ -276,8 +240,7 @@ export function CraftQueryInput({ label, value, suggestions, calculatedSearches,
     const nextDraft = displayQuery(value)
     appliedDraftRef.current = nextDraft
     setDraft(nextDraft)
-    setCalculatedDraft(undefined)
-    setManualSuggestion(undefined)
+    setCalculated(undefined)
     setFilterByDraft(false)
   }, [value])
   useEffect(() => {
@@ -300,8 +263,7 @@ export function CraftQueryInput({ label, value, suggestions, calculatedSearches,
     const nextDraft = displayQuery(result.query)
     appliedDraftRef.current = nextDraft
     setDraft(nextDraft)
-    setCalculatedDraft(undefined)
-    setManualSuggestion(undefined)
+    setCalculated(undefined)
     setFilterByDraft(false)
     setMessage(result.message)
     setIsOpen(false)
@@ -309,26 +271,22 @@ export function CraftQueryInput({ label, value, suggestions, calculatedSearches,
 
   useEffect(() => {
     if (!isOpen || !filterByDraft || draft.trim().length === 0) return
-    const timer = window.setTimeout(() => {
-      setManualSuggestion(previewRef.current?.(draft))
-      setCalculatedDraft(draft)
-    }, 1000)
-    return () => window.clearTimeout(timer)
-  }, [draft, filterByDraft, isOpen])
+    const controller = new AbortController()
+    void matchingCraftQuerySearches(candidates, draft, controller.signal).then((searches) => {
+      if (controller.signal.aborted) return
+      const manual = previewRef.current?.(draft)
+      const options = craftingSheetOptionsForSearches(searches, calculatedBestScore ?? suggestions[0]?.totalScore ?? 0)
+      if (manual) options.unshift(manual)
+      setCalculated({ draft, source: candidates, options: options.filter((option, index) => options.findIndex((candidate) => candidate.id === option.id) === index).slice(0, 10) })
+    }).catch(() => {
+      if (!controller.signal.aborted) setMessage('Unable to calculate suggestions. Try typing again.')
+    })
+    return () => controller.abort()
+  }, [draft, filterByDraft, isOpen, candidates, calculatedBestScore, suggestions])
 
-  const matchingSuggestions = useMemo(() => {
-    const calculatedSuggestions = (filterByDraft
-    ? calculatedDraft === undefined
-      ? []
-      : craftingSheetOptionsForSearches(
-          matchingCalculatedSearches(calculatedSearches ?? suggestions.map((option) => option.search), calculatedDraft),
-          calculatedBestScore ?? suggestions[0]?.totalScore ?? 0,
-        )
-    : suggestions
-    )
-    const options = manualSuggestion === undefined ? calculatedSuggestions : [manualSuggestion, ...calculatedSuggestions]
-    return options.filter((option, index) => options.findIndex((candidate) => candidate.id === option.id) === index).slice(0, 10)
-  }, [calculatedBestScore, calculatedDraft, calculatedSearches, filterByDraft, manualSuggestion, suggestions])
+  const matchingSuggestions = filterByDraft
+    ? calculated?.draft === draft && calculated.source === candidates ? calculated.options : []
+    : suggestions.slice(0, 10)
 
   useLayoutEffect(() => {
     if (!isOpen) return
@@ -385,8 +343,8 @@ export function CraftQueryInput({ label, value, suggestions, calculatedSearches,
 
   return <div ref={inputRef} className="crafting-sheet__query-input">
     <input type="search" value={draft} aria-label={`Craft query for ${label}`} aria-expanded={isOpen && matchingSuggestions.length > 0} aria-controls={isOpen && matchingSuggestions.length > 0 ? suggestionsId : undefined} placeholder="type a craft…" title="Latin accents and special letters accept English keyboard equivalents."
-      onFocus={() => { setFilterByDraft(false); setCalculatedDraft(undefined); setManualSuggestion(undefined); setIsOpen(true) }}
-      onChange={(event) => { setDraft(displayQuery(event.target.value)); setFilterByDraft(true); setCalculatedDraft(undefined); setManualSuggestion(undefined); setMessage(undefined); setIsOpen(true) }}
+      onFocus={() => { setFilterByDraft(false); setCalculated(undefined); setIsOpen(true) }}
+      onChange={(event) => { setDraft(displayQuery(event.target.value)); setFilterByDraft(true); setCalculated(undefined); setMessage(undefined); setIsOpen(true) }}
       onKeyDown={(event) => {
         if (event.key === 'Escape') setIsOpen(false)
         if (event.key === 'Enter') event.preventDefault()
@@ -468,11 +426,10 @@ function SheetSummary({
 
 function ItemSetList({ entries, items, icons, onPreviewItemQuery, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, compactLayout = false, keyboardSettings, removeAnimations, columns = false }: Pick<CraftingSheetProps, 'entries' | 'items' | 'icons' | 'onPreviewItemQuery' | 'onSetItemQuery' | 'onMoveItemCraft' | 'onSetEntryDisabled' | 'compactLayout' | 'keyboardSettings' | 'removeAnimations'> & { columns?: boolean }) {
   const columnsRef = useRef<HTMLDivElement>(null)
-  const [openEntryIds, setOpenEntryIds] = useState<readonly string[]>([])
+  const [openEntryId, setOpenEntryId] = useState<string>()
   const [rowCount, setRowCount] = useState<number>()
-  const openEntries = openEntryIds.filter((entryId) => entries.some((entry) => entry.id === entryId && !entry.disabled))
   const hasExcludedEntries = columns && entries.some((entry) => entry.disabled)
-  const hasExpandedEntries = columns && openEntries.length > 0
+  const hasExpandedEntries = columns && entries.some((entry) => entry.id === openEntryId && !entry.disabled)
   const hasMeasuredRows = columns && rowCount !== undefined
   const usesNaturalRows = (hasExcludedEntries || hasExpandedEntries) && hasMeasuredRows
   const usesIndependentColumns = hasExcludedEntries && hasMeasuredRows
@@ -515,9 +472,7 @@ function ItemSetList({ entries, items, icons, onPreviewItemQuery, onSetItemQuery
 
   function setEntryOpen(entryId: string, open: boolean) {
     if (open && rowCount === undefined) measureRowCount()
-    setOpenEntryIds((current) => open
-      ? current.includes(entryId) ? current : [...current, entryId]
-      : current.filter((currentEntryId) => currentEntryId !== entryId))
+    setOpenEntryId((current) => open ? entryId : current === entryId ? undefined : current)
   }
 
   function setEntryDisabled(entryId: string, disabled: boolean) {
@@ -526,7 +481,7 @@ function ItemSetList({ entries, items, icons, onPreviewItemQuery, onSetItemQuery
   }
 
   function renderEntry(entry: CraftingSheetEntry) {
-    return <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onPreviewItemQuery={onPreviewItemQuery} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={setEntryDisabled} compactLayout={compactLayout} keyboardSettings={keyboardSettings} removeAnimations={removeAnimations} onOpenChange={columns ? (open) => setEntryOpen(entry.id, open) : undefined} />
+    return <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onPreviewItemQuery={onPreviewItemQuery} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={setEntryDisabled} compactLayout={compactLayout} keyboardSettings={keyboardSettings} removeAnimations={removeAnimations} isOpen={entry.id === openEntryId} onOpenChange={(open) => setEntryOpen(entry.id, open)} />
   }
 
   return <section className={`crafting-sheet__sets${columns ? ' crafting-sheet__sets--columns' : ''}`} aria-label="Selected item sets"><h3>item sets</h3>

@@ -148,7 +148,21 @@ describe('CraftingSheet', () => {
     expect(screen.getByLabelText('Distinct characters')).toHaveTextContent(/^1$/)
   })
 
-  test('keeps inclusion independent of expansion and retains the editor while animating closed', () => {
+  test.each(['inline', 'page'] as const)('only mounts the expanded item editor in the %s sheet', (layout) => {
+    const input = props()
+    const { container } = render(<CraftingSheet {...input} layout={layout} entries={[input.entries[0], { ...input.entries[0], id: 'second', label: 'item set 2' }]} />)
+    expect(container.querySelectorAll('.crafting-sheet__entry-body')).toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Expand item set 1' }))
+    fireEvent.focus(screen.getByRole('searchbox', { name: 'Craft query for bed' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Expand item set 2' }))
+    expect(screen.getByRole('button', { name: 'Expand item set 1' })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('button', { name: 'Collapse item set 2' })).toHaveAttribute('aria-expanded', 'true')
+    expect(container.querySelectorAll('.crafting-sheet__entry-body')).toHaveLength(1)
+    expect(container.querySelectorAll('.keyboard-playback')).toHaveLength(1)
+    expect(screen.queryByRole('list', { name: 'Calculated craft suggestions for bed' })).toBeNull()
+  })
+
+  test('keeps inclusion independent of expansion and unmounts the collapsed editor', () => {
     const input = props()
     render(<CraftingSheet {...input} />)
     const toggle = screen.getByRole('button', { name: 'Expand item set 1' })
@@ -162,7 +176,7 @@ describe('CraftingSheet', () => {
     const details = document.getElementById(toggle.getAttribute('aria-controls')!)!
     expect(details).toHaveAttribute('aria-hidden', 'true')
     expect(details).toHaveAttribute('inert')
-    expect(within(details).getAllByRole('searchbox', { hidden: true })).toHaveLength(2)
+    expect(within(details).queryAllByRole('searchbox', { hidden: true })).toHaveLength(0)
     expect(screen.queryByRole('searchbox', { name: 'Craft query for bed' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'crafting sheet' }))
     expect(screen.queryByRole('region', { name: 'Selected item sets' })).not.toBeInTheDocument()
@@ -170,7 +184,7 @@ describe('CraftingSheet', () => {
     expect(screen.getByRole('button', { name: 'Expand item set 1' })).toBeVisible()
   })
 
-  test('calculates ten matching choices after one second without changing the selected craft', () => {
+  test('calculates ten matching choices immediately without changing the selected craft', async () => {
     vi.useFakeTimers()
     try {
       const input = props()
@@ -181,10 +195,9 @@ describe('CraftingSheet', () => {
       expect(within(screen.getByRole('list', { name: 'Calculated craft suggestions for bed' })).getAllByRole('button')).toHaveLength(10)
       fireEvent.change(query, { target: { value: 'q' } })
 
-      act(() => { vi.advanceTimersByTime(999) })
       expect(input.onSetItemQuery).not.toHaveBeenCalled()
       expect(screen.queryByRole('list', { name: 'Calculated craft suggestions for bed' })).toBeNull()
-      act(() => { vi.advanceTimersByTime(1) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
       const choices = within(screen.getByRole('list', { name: 'Calculated craft suggestions for bed' }))
       expect(choices.getAllByRole('button')).toHaveLength(10)
       expect(input.onSetItemQuery).not.toHaveBeenCalled()
@@ -195,7 +208,7 @@ describe('CraftingSheet', () => {
     }
   })
 
-  test('keeps first-character keyboard aliases in the filtered suggestion menu', () => {
+  test('keeps first-character keyboard aliases in the filtered suggestion menu', async () => {
     vi.useFakeTimers()
     try {
       render(<CraftQueryInput label="ligature" value="" suggestions={[{
@@ -205,7 +218,7 @@ describe('CraftingSheet', () => {
       const query = screen.getByRole('searchbox', { name: 'Craft query for ligature' })
       fireEvent.focus(query)
       fireEvent.change(query, { target: { value: 'e' } })
-      act(() => { vi.advanceTimersByTime(1000) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
       const suggestions = within(screen.getByRole('list', { name: 'Calculated craft suggestions for ligature' }))
       expect(suggestions.getAllByRole('button')).toHaveLength(1)
       expect(suggestions.getByText('æst')).toBeVisible()
@@ -214,7 +227,29 @@ describe('CraftingSheet', () => {
     }
   })
 
-  test('keeps only the active query popup open and does not reopen a blurred pending search', () => {
+  test('discards unfinished suggestions when typing changes and cancels on unmount', async () => {
+    vi.useFakeTimers()
+    try {
+      const onPreview = vi.fn()
+      const candidates = [...Array.from({ length: 2000 }, (_, index) => search(`q${index}`)), search('bed'), search('anchor')]
+      const { unmount } = render(<CraftQueryInput label="rapid typing" value="" suggestions={[]} calculatedSearches={candidates} onPreview={onPreview} onChoose={vi.fn()} />)
+      const query = screen.getByRole('searchbox')
+      fireEvent.focus(query)
+      fireEvent.change(query, { target: { value: 'b' } })
+      fireEvent.change(query, { target: { value: 'a' } })
+      expect(screen.queryByRole('list')).toBeNull()
+      await act(async () => { await vi.runAllTimersAsync() })
+      expect(within(screen.getByRole('list')).getAllByRole('button')).toHaveLength(1)
+      expect(within(screen.getByRole('list')).getByText('anchor')).toBeVisible()
+      expect(onPreview).toHaveBeenCalledExactlyOnceWith('a')
+      fireEvent.change(query, { target: { value: 'be' } })
+      unmount()
+      await act(async () => { await vi.runAllTimersAsync() })
+      expect(onPreview).toHaveBeenCalledTimes(1)
+    } finally { vi.useRealTimers() }
+  })
+
+  test('keeps only the active query popup open and does not reopen a blurred pending search', async () => {
     vi.useFakeTimers()
     try {
       const option = { id: 'bed', label: 'bed', isOptimal: true, search: search('bed'), totalTypedCharacters: 3, totalScore: 1, scoreDelta: 0, junkCount: 0 }
@@ -224,13 +259,13 @@ describe('CraftingSheet', () => {
       act(() => first.focus())
       fireEvent.change(first, { target: { value: 'be' } })
       act(() => second.focus())
-      act(() => vi.advanceTimersByTime(1000))
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
       expect(screen.queryByRole('list', { name: 'Calculated craft suggestions for first' })).toBeNull()
       expect(screen.getByRole('list', { name: 'Calculated craft suggestions for second' })).toBeVisible()
     } finally { vi.useRealTimers() }
   })
 
-  test('finishes query preview even when a parent rerender supplies a fresh callback', () => {
+  test('finishes query preview even when a parent rerender supplies a fresh callback', async () => {
     vi.useFakeTimers()
     try {
       const option = { id: 'bed', label: 'bed', isOptimal: true, search: search('bed'), totalTypedCharacters: 3, totalScore: 1, scoreDelta: 0, junkCount: 0 }
@@ -239,9 +274,9 @@ describe('CraftingSheet', () => {
       const input = screen.getByRole('searchbox')
       fireEvent.focus(input)
       fireEvent.change(input, { target: { value: 'bed' } })
-      act(() => vi.advanceTimersByTime(500))
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
       rerender(<CraftQueryInput label="rerender" value="" suggestions={[]} onPreview={() => option} onChoose={onChoose} />)
-      act(() => vi.advanceTimersByTime(500))
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
       expect(screen.getByRole('list')).toBeVisible()
     } finally { vi.useRealTimers() }
   })
@@ -285,7 +320,7 @@ describe('CraftingSheet', () => {
     expect(onChoose).toHaveBeenCalledWith('bed')
   })
 
-  test('offers a valid typed craft that was not among the calculated suggestions', () => {
+  test('offers a valid typed craft that was not among the calculated suggestions', async () => {
     vi.useFakeTimers()
     try {
       const typedCraft = {
@@ -298,7 +333,7 @@ describe('CraftingSheet', () => {
       const query = screen.getByRole('searchbox', { name: 'Craft query for accented craft' })
       fireEvent.focus(query)
       fireEvent.change(query, { target: { value: 'ak' } })
-      act(() => { vi.advanceTimersByTime(1000) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
 
       const choices = within(screen.getByRole('list', { name: 'Calculated craft suggestions for accented craft' }))
       expect(onPreview).toHaveBeenCalledWith('ak')

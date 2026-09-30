@@ -16,13 +16,14 @@ export interface KeyboardHighlight {
 }
 
 /** Shared physical layout for the editor and craft playback. */
-export function KeyboardVisualization({ settings, onSelect, selected, blocked = new Set(), highlights = [], pulse = 0 }: {
+export function KeyboardVisualization({ settings, onSelect, selected, blocked = new Set(), highlights = [], pulse = 0, showLabels = true }: {
   settings?: KeyboardSettings
   onSelect?: (code: string) => void
   selected?: string
   blocked?: ReadonlySet<string>
   highlights?: readonly KeyboardHighlight[]
   pulse?: number
+  showLabels?: boolean
 }) {
   const mappings = settings ? effectiveKeyboardMappings(settings) : {}
   function renderKey(key: { code: string; label: string; width?: number }) {
@@ -32,12 +33,12 @@ export function KeyboardVisualization({ settings, onSelect, selected, blocked = 
     const conflict = blocked.has(key.code)
     const className = ['keyboard-visual__key', (custom !== undefined || chat) && 'keyboard-visual__key--custom', conflict && 'keyboard-visual__key--conflict', selected === key.code && 'keyboard-visual__key--selected'].filter(Boolean).join(' ')
     const label = chat ? 'CH' : custom === ' ' ? 'space' : custom === undefined ? mouseLabels[key.code] ?? key.label : compactOutputs[custom] ?? custom
-    const contents = <>{highlight && <span key={pulse} className={`keyboard-visual__light keyboard-visual__light--${highlight.kind}`} aria-hidden="true" />}<span key={`label-${pulse}`} className="keyboard-visual__label">{label}</span></>
+    const contents = <>{highlight && <span key={pulse} className={`keyboard-visual__light keyboard-visual__light--${highlight.kind}`} aria-hidden="true" />}{showLabels && <span key={`label-${pulse}`} className="keyboard-visual__label">{label}</span>}</>
     const description = `${keyLabel(key.code)}${custom !== undefined ? ` → ${custom === ' ' ? 'space' : custom}` : ''}${chat ? ' (chat)' : ''}${conflict ? ' (conflict, unused)' : ''}`
     const style = { flex: key.width ?? 1 } as CSSProperties
     return onSelect
       ? <button key={key.code} type="button" className={className} style={style} data-code={key.code} aria-label={`Rebind ${description}`} aria-pressed={selected === key.code} onClick={() => onSelect(key.code)} title={description}>{contents}</button>
-      : <span key={key.code} className={className} style={style} data-code={key.code} title={description}>{contents}</span>
+      : <span key={key.code} className={className} style={style} data-code={key.code} title={description} role="img" aria-label={description}>{contents}</span>
   }
 
   return <div className={`keyboard-visual${onSelect ? ' keyboard-visual--editable' : ''}`} role="group" aria-label="75% keyboard and five-button mouse" dir="ltr">
