@@ -45,8 +45,7 @@ export function KeyboardPlayback({ search, settings, removeAnimations = false }:
       {!still && <button type="button" disabled={tokens.length === 0} onClick={() => setPlaying((value) => !value)}>{playing ? 'pause sequence' : 'play sequence'}</button>}
       <button type="button" disabled={tokens.length === 0} onClick={() => { setPosition(0); setPass((value) => value + 1); setPlaying(true) }}>replay sequence</button>
       <button type="button" disabled={tokens.length === 0} onClick={() => { setPlaying(false); setPosition((value) => (value + 1) % tokens.length); setPass((value) => value + 1) }}>next key</button>
-      <small>{tokens.length > 0 ? `${position + 1} / ${tokens.length}` : 'no keys'} · blue: type · orange: backspace · red: shift + home · purple: chat</small>
     </div>
-    {missing.length > 0 && <p>Unmapped characters: {missing.join(', ')}. Bind them in site settings → keyboard inputs.</p>}
+    {missing.length > 0 && <p>Unmapped characters: {missing.join(', ')}</p>}
   </div>
 }

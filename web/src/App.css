@@ -3575,11 +3575,13 @@ h3 {
 .app-header__menu .theme-picker__trigger,
 .app-header__menu .version-picker__trigger {
   min-height: 2.35rem;
+  height: 2.35rem;
   font-family: 'Coiny', sans-serif;
   font-weight: 400;
 }
 
-.app-header__help { font-family: 'Coiny', sans-serif; }
+.app-header__help { font-family: 'Coiny', sans-serif; font-size: 1.3rem; line-height: 1; }
+.app-header__menu .theme-picker__trigger .item-icon { width: 1.8rem; height: 1.8rem; }
 
 @media (max-width: 72rem) {
   .app-header__nav button,
@@ -3587,8 +3589,10 @@ h3 {
   .app-header__menu .theme-picker__trigger,
   .app-header__menu .version-picker__trigger {
     min-height: 1.7rem;
+    height: 1.7rem;
   }
 
-  .app-header__menu .theme-picker__trigger .item-icon { width: 1.45rem; height: 1.45rem; }
+  .app-header__help { font-size: 1.1rem; }
+  .app-header__menu .theme-picker__trigger .item-icon { width: 1.15rem; height: 1.15rem; }
   .app-header__menu .version-picker__trigger { min-width: 4.8rem; padding-inline: .35rem; font-size: .78rem; }
 }

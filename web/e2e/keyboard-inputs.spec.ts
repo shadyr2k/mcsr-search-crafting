@@ -1,5 +1,33 @@
 import { expect, test } from '@playwright/test'
 
+test('keeps header controls the same height and moves playback guidance into craft-sheet help', async ({ page }) => {
+  await page.goto('/')
+  for (const width of [1440, 1000, 390]) {
+    await page.setViewportSize({ width, height: 1000 })
+    const nav = await page.getByRole('button', { name: 'settings', exact: true }).boundingBox()
+    for (const name of ['Help for search crafting', 'Choose color theme']) {
+      const button = await page.getByRole('button', { name, exact: true }).boundingBox()
+      expect(button!.height).toBeCloseTo(nav!.height, 0)
+    }
+    await page.locator('.app-header').screenshot({ path: `test-results/header-controls-${width}.png` })
+  }
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).click()
+  await page.getByRole('button', { name: 'Expand item set 1' }).click()
+  const playback = page.locator('.keyboard-playback').first()
+  await expect(playback.locator('.keyboard-playback__actions small')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Help for crafting sheet' }).click()
+  const tutorial = page.getByRole('dialog')
+  await expect(tutorial.getByRole('heading', { name: 'Your craft sheet' })).toBeVisible()
+  await tutorial.getByRole('button', { name: 'next', exact: true }).click()
+  await expect(tutorial).toContainText('pastel blue')
+  await tutorial.getByRole('button', { name: 'next', exact: true }).click()
+  await expect(tutorial).toContainText('Unmapped characters')
+  await tutorial.getByRole('button', { name: 'next', exact: true }).click()
+  await expect(tutorial).toContainText('Pause')
+  await tutorial.getByRole('button', { name: 'finish', exact: true }).click()
+  await expect(tutorial).toHaveCount(0)
+})
+
 test('saves custom keys, rejects duplicates, and translates craft playback after reload', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'crafting sheet', exact: true }).click()

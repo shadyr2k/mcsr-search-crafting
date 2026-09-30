@@ -48,7 +48,6 @@
 .keyboard-playback__token--chat { border-bottom: 2px solid #d8ccf2; }
 .keyboard-playback__actions { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
 .keyboard-playback__actions button { min-height: 1.8rem; padding: .2rem .4rem; font-size: .7rem; }
-.keyboard-playback__actions small { margin-inline-start: auto; color: var(--muted); font-size: .65rem; }
 .keyboard-playback--still .keyboard-visual__light { animation: none; opacity: 1; }
 .keyboard-playback--still .keyboard-visual__key:has(.keyboard-visual__light) .keyboard-visual__label { animation: none; color: #263440; }
 @media (prefers-reduced-motion: reduce) { .keyboard-visual__light { animation: none; opacity: 1; }.keyboard-visual__key:has(.keyboard-visual__light) .keyboard-visual__label { animation: none; color: #263440; } }
