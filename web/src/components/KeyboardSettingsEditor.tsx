@@ -13,6 +13,8 @@ export function KeyboardSettingsEditor({ value, onChange }: { value: KeyboardSet
   const conflicts = keyboardConflicts(value)
   const resolvedControls = effectiveKeyboardControls(value)
   const blocked = new Set([...conflicts.blocked, ...conflicts.duplicates])
+  // A game control can use a physical key whose ordinary character is displaced.
+  for (const code of Object.values(resolvedControls)) if (!conflicts.duplicates.has(code)) blocked.delete(code)
   const pendingLabel = pending?.kind === 'mapping' ? keyLabel(pending.code) : controls.find(([code]) => code === pending?.code)?.[1]
 
   useEffect(() => { if (pending) input.current?.focus() }, [pending])
@@ -25,7 +27,8 @@ export function KeyboardSettingsEditor({ value, onChange }: { value: KeyboardSet
         setMessage('Press a key shown on the diagram, or enter one character.')
         return
       }
-      onChange({ ...value, mappings: { ...value.mappings, [pending.code]: normalized } })
+      const nextControls = Object.fromEntries(Object.entries(value.controls).filter(([, code]) => code !== pending.code))
+      onChange({ ...value, mappings: { ...value.mappings, [pending.code]: normalized }, controls: nextControls })
     } else {
       const code = physicalCode && isKeyboardCode(physicalCode) ? physicalCode : KEYBOARD_ROWS.flat().find((key) => key.value === output.toLowerCase())?.code
       if (!code) { setMessage('Use a key shown on the keyboard or one of the five mouse buttons.'); return }
@@ -40,7 +43,8 @@ export function KeyboardSettingsEditor({ value, onChange }: { value: KeyboardSet
     if (pending.kind === 'mapping') {
       const mappings = { ...value.mappings }
       delete mappings[pending.code]
-      onChange({ ...value, mappings })
+      const nextControls = Object.fromEntries(Object.entries(value.controls).filter(([, code]) => code !== pending.code))
+      onChange({ ...value, mappings, controls: nextControls })
     } else {
       const next = { ...value.controls }
       delete next[pending.code]
@@ -67,7 +71,7 @@ export function KeyboardSettingsEditor({ value, onChange }: { value: KeyboardSet
         onChange({ ...value, controls: next })
       }}>clear</button>}
     </div>)}</div>
-    <p>Shift, Home, Backspace, and T (default chat) are detected from custom keys. You can override them by pressing a physical key or choosing it on the diagram. Unbound controls are omitted; chat is used between crafts.</p>
+    <p>Shift, Home, Backspace, and T (default chat) are detected from custom keys. Manual binds always use the physical key you press or select on the diagram, regardless of its output. Shift, Home, and Backspace replace that key’s character; chat marks its game action. Unbound controls are omitted from playback.</p>
     {pending && <div className="keyboard-editor__capture">
       <label htmlFor="keyboard-binding-capture">{pending.kind === 'mapping' ? `New output for ${pendingLabel}` : `New binding for ${pendingLabel}`}</label>
       <input id="keyboard-binding-capture" ref={input} value="" autoComplete="off" autoCapitalize="off" spellCheck={false} placeholder="press a key…"

@@ -214,6 +214,60 @@ describe('CraftingSheet', () => {
     }
   })
 
+  test('keeps only the active query popup open and does not reopen a blurred pending search', () => {
+    vi.useFakeTimers()
+    try {
+      const option = { id: 'bed', label: 'bed', isOptimal: true, search: search('bed'), totalTypedCharacters: 3, totalScore: 1, scoreDelta: 0, junkCount: 0 }
+      render(<><CraftQueryInput label="first" value="" suggestions={[option]} onChoose={vi.fn()} /><CraftQueryInput label="second" value="" suggestions={[option]} onChoose={vi.fn()} /></>)
+      const first = screen.getByRole('searchbox', { name: 'Craft query for first' })
+      const second = screen.getByRole('searchbox', { name: 'Craft query for second' })
+      act(() => first.focus())
+      fireEvent.change(first, { target: { value: 'be' } })
+      act(() => second.focus())
+      act(() => vi.advanceTimersByTime(1000))
+      expect(screen.queryByRole('list', { name: 'Calculated craft suggestions for first' })).toBeNull()
+      expect(screen.getByRole('list', { name: 'Calculated craft suggestions for second' })).toBeVisible()
+    } finally { vi.useRealTimers() }
+  })
+
+  test('finishes query preview even when a parent rerender supplies a fresh callback', () => {
+    vi.useFakeTimers()
+    try {
+      const option = { id: 'bed', label: 'bed', isOptimal: true, search: search('bed'), totalTypedCharacters: 3, totalScore: 1, scoreDelta: 0, junkCount: 0 }
+      const onChoose = vi.fn()
+      const { rerender } = render(<CraftQueryInput label="rerender" value="" suggestions={[]} onPreview={() => option} onChoose={onChoose} />)
+      const input = screen.getByRole('searchbox')
+      fireEvent.focus(input)
+      fireEvent.change(input, { target: { value: 'bed' } })
+      act(() => vi.advanceTimersByTime(500))
+      rerender(<CraftQueryInput label="rerender" value="" suggestions={[]} onPreview={() => option} onChoose={onChoose} />)
+      act(() => vi.advanceTimersByTime(500))
+      expect(screen.getByRole('list')).toBeVisible()
+    } finally { vi.useRealTimers() }
+  })
+
+  test('portals suggestions above a low anchor within sheet bounds and closes when its anchor scrolls away', () => {
+    const onChoose = vi.fn(() => ({ valid: true, query: 'bed' }))
+    const { container } = render(<section className="crafting-sheet"><CraftQueryInput label="bounded" value="" suggestions={[{ id: 'bed', label: 'bed', isOptimal: true, search: search('bed'), totalTypedCharacters: 3, totalScore: 1, scoreDelta: 0, junkCount: 0 }]} onChoose={onChoose} /></section>)
+    const query = screen.getByRole('searchbox', { name: 'Craft query for bounded' })
+    vi.spyOn(container.querySelector('.crafting-sheet')!, 'getBoundingClientRect').mockReturnValue(new DOMRect(20, 20, 400, 600))
+    const anchorRect = vi.spyOn(query, 'getBoundingClientRect').mockReturnValue(new DOMRect(40, 550, 200, 30))
+    act(() => query.focus())
+    const popup = screen.getByRole('list', { name: 'Calculated craft suggestions for bounded' })
+    expect(container.contains(popup)).toBe(false)
+    expect(popup).toHaveStyle({ position: 'fixed', left: '40px', width: '200px', maxHeight: '192px', top: '546px', transform: 'translateY(-100%)' })
+    expect(query).toHaveAttribute('aria-controls', popup.id)
+    expect(query).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.pointerDown(within(popup).getByRole('button'))
+    fireEvent.pointerUp(within(popup).getByRole('button'))
+    fireEvent.click(within(popup).getByRole('button'))
+    expect(onChoose).toHaveBeenCalledWith('bed')
+    fireEvent.focus(query)
+    anchorRect.mockReturnValue(new DOMRect(40, 700, 200, 30))
+    fireEvent.scroll(document)
+    expect(screen.queryByRole('list', { name: 'Calculated craft suggestions for bounded' })).toBeNull()
+  })
+
   test('chooses a craft on touch release but leaves a scrolling gesture unselected', () => {
     const onChoose = vi.fn(() => ({ valid: true, query: 'bed' }))
     render(<CraftQueryInput label="mobile craft" value="" suggestions={[{

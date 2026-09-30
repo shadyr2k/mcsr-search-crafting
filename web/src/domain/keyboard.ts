@@ -73,6 +73,7 @@ export function normalizeKeyboardSettings(value: unknown): KeyboardSettings {
 /** Resolve manual overrides before controls implied by custom key outputs. */
 export function effectiveKeyboardControls(settings: KeyboardSettings): KeyboardSettings['controls'] {
   const outputs = { shift: 'Shift', home: 'Home', chat: 't', backspace: 'Backspace' }
+  const mappings = effectiveKeyboardMappings(settings)
   const resolved: KeyboardSettings['controls'] = {}
   for (const control of ['shift', 'home', 'chat', 'backspace'] as const) {
     if (Object.hasOwn(settings.controls, control)) {
@@ -80,15 +81,26 @@ export function effectiveKeyboardControls(settings: KeyboardSettings): KeyboardS
       if (isKeyboardCode(code)) resolved[control] = code
       continue
     }
-    const candidates = Object.entries(settings.mappings).filter(([code, output]) => isKeyboardCode(code) && normalizeKeyValue(output) === outputs[control])
+    const candidates = Object.entries(mappings).filter(([code, output]) => isKeyboardCode(code) && normalizeKeyValue(output) === outputs[control])
     if (candidates.length === 1) resolved[control] = candidates[0][0]
   }
   return resolved
 }
 
+/** Manual non-text controls replace the physical key's character output. */
+export function effectiveKeyboardMappings(settings: KeyboardSettings): KeyboardSettings['mappings'] {
+  const mappings = { ...settings.mappings }
+  for (const [control, output] of [['shift', 'Shift'], ['home', 'Home'], ['backspace', 'Backspace']] as const) {
+    const code = settings.controls[control]
+    if (isKeyboardCode(code)) mappings[code] = output
+  }
+  return mappings
+}
+
 export function keyboardConflicts(settings: KeyboardSettings): { blocked: Set<string>; duplicates: Set<string> } {
+  const mappings = effectiveKeyboardMappings(settings)
   const explicitOutputs = new Map<string, string[]>()
-  for (const [code, output] of Object.entries(settings.mappings)) {
+  for (const [code, output] of Object.entries(mappings)) {
     if (!isKeyboardCode(code)) continue
     const normalized = normalizeKeyValue(output)
     explicitOutputs.set(normalized, [...(explicitOutputs.get(normalized) ?? []), code])
@@ -108,7 +120,7 @@ export function keyboardConflicts(settings: KeyboardSettings): { blocked: Set<st
     controlCodes.add(code)
   }
   for (const descriptor of allKeys) {
-    if (settings.mappings[descriptor.code] === undefined && descriptor.value !== undefined && explicitOutputs.has(normalizeKeyValue(descriptor.value))) {
+    if (mappings[descriptor.code] === undefined && descriptor.value !== undefined && explicitOutputs.has(normalizeKeyValue(descriptor.value))) {
       blocked.add(descriptor.code)
     }
   }
@@ -118,9 +130,10 @@ export function keyboardConflicts(settings: KeyboardSettings): { blocked: Set<st
 export function translateCharacter(character: string, settings: KeyboardSettings): string | undefined {
   const normalized = normalizeKeyValue(character)
   const { blocked } = keyboardConflicts(settings)
-  const explicit = Object.entries(settings.mappings).find(([code, output]) => isKeyboardCode(code) && !blocked.has(code) && normalizeKeyValue(output) === normalized)
+  const mappings = effectiveKeyboardMappings(settings)
+  const explicit = Object.entries(mappings).find(([code, output]) => isKeyboardCode(code) && !blocked.has(code) && normalizeKeyValue(output) === normalized)
   if (explicit) return explicit[0]
-  return allKeys.find(descriptor => !blocked.has(descriptor.code) && settings.mappings[descriptor.code] === undefined && descriptor.value !== undefined && normalizeKeyValue(descriptor.value) === normalized)?.code
+  return allKeys.find(descriptor => !blocked.has(descriptor.code) && mappings[descriptor.code] === undefined && descriptor.value !== undefined && normalizeKeyValue(descriptor.value) === normalized)?.code
 }
 
 export interface KeyboardSequenceToken {
@@ -132,11 +145,11 @@ export interface KeyboardSequenceToken {
 
 export function buildKeyboardSequence(search: RankedSearch, settings: KeyboardSettings): KeyboardSequenceToken[] {
   const tokens: KeyboardSequenceToken[] = []
-  const { blocked } = keyboardConflicts(settings)
+  const { duplicates } = keyboardConflicts(settings)
   const controls = effectiveKeyboardControls(settings)
   const controlCode = (name: keyof KeyboardSettings['controls']): string | undefined => {
     const code = controls[name]
-    return isKeyboardCode(code) && !blocked.has(code) ? code : undefined
+    return isKeyboardCode(code) && !duplicates.has(code) ? code : undefined
   }
   const chat = controlCode('chat')
   const backspace = controlCode('backspace')

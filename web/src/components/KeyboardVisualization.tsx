@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { KEYBOARD_ROWS, MOUSE_KEYS, keyLabel, type KeyboardSettings } from '../domain/keyboard'
+import { KEYBOARD_ROWS, MOUSE_KEYS, effectiveKeyboardMappings, keyLabel, type KeyboardSettings } from '../domain/keyboard'
 import './KeyboardVisualization.css'
 
 const compactOutputs: Record<string, string> = {
@@ -24,14 +24,16 @@ export function KeyboardVisualization({ settings, onSelect, selected, blocked = 
   highlights?: readonly KeyboardHighlight[]
   pulse?: number
 }) {
+  const mappings = settings ? effectiveKeyboardMappings(settings) : {}
   function renderKey(key: { code: string; label: string; width?: number }) {
-    const custom = settings?.mappings[key.code]
+    const custom = mappings[key.code]
+    const chat = settings?.controls.chat === key.code
     const highlight = highlights.find((item) => item.codes.includes(key.code))
     const conflict = blocked.has(key.code)
-    const className = ['keyboard-visual__key', custom !== undefined && 'keyboard-visual__key--custom', conflict && 'keyboard-visual__key--conflict', selected === key.code && 'keyboard-visual__key--selected'].filter(Boolean).join(' ')
-    const label = custom === ' ' ? 'space' : custom === undefined ? mouseLabels[key.code] ?? key.label : compactOutputs[custom] ?? custom
+    const className = ['keyboard-visual__key', (custom !== undefined || chat) && 'keyboard-visual__key--custom', conflict && 'keyboard-visual__key--conflict', selected === key.code && 'keyboard-visual__key--selected'].filter(Boolean).join(' ')
+    const label = chat ? 'CH' : custom === ' ' ? 'space' : custom === undefined ? mouseLabels[key.code] ?? key.label : compactOutputs[custom] ?? custom
     const contents = <>{highlight && <span key={pulse} className={`keyboard-visual__light keyboard-visual__light--${highlight.kind}`} aria-hidden="true" />}<span key={`label-${pulse}`} className="keyboard-visual__label">{label}</span></>
-    const description = `${keyLabel(key.code)}${custom !== undefined ? ` → ${custom === ' ' ? 'space' : custom}` : ''}${conflict ? ' (conflict, unused)' : ''}`
+    const description = `${keyLabel(key.code)}${custom !== undefined ? ` → ${custom === ' ' ? 'space' : custom}` : ''}${chat ? ' (chat)' : ''}${conflict ? ' (conflict, unused)' : ''}`
     const style = { flex: key.width ?? 1 } as CSSProperties
     return onSelect
       ? <button key={key.code} type="button" className={className} style={style} data-code={key.code} aria-label={`Rebind ${description}`} aria-pressed={selected === key.code} onClick={() => onSelect(key.code)} title={description}>{contents}</button>

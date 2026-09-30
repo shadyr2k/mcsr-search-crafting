@@ -18,6 +18,25 @@ const settings = {
 }
 
 describe('SettingsPage', () => {
+  test('manual control binds use physical event codes and update the diagram despite existing remaps', () => {
+    const onSave = vi.fn()
+    render(<SettingsPage settings={{ ...settings, keyboard: { mappings: { KeyX: 'i', KeyF: 't' }, controls: {} } }} onSave={onSave} onResetCalculationCache={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Bind home' }))
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'New binding for home' }), { key: 'Home', code: 'KeyI' })
+    expect(screen.getByRole('button', { name: 'Rebind i → Home' }).textContent).toBe('hm')
+    expect(screen.getByRole('button', { name: 'Bind home' }).getAttribute('aria-invalid')).toBe('false')
+    fireEvent.click(screen.getByRole('button', { name: 'Bind chat key' }))
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'New binding for chat key' }), { key: 'q', code: 'KeyT' })
+    expect(screen.getByRole('button', { name: 'Rebind t (chat)' }).textContent).toBe('CH')
+    expect(screen.getByRole('button', { name: 'Bind chat key' }).getAttribute('aria-invalid')).toBe('false')
+    fireEvent.click(screen.getByRole('button', { name: 'save settings' }))
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ keyboard: { mappings: { KeyX: 'i', KeyF: 't' }, controls: { home: 'KeyI', chat: 'KeyT' } } }))
+    fireEvent.click(screen.getByRole('button', { name: 'Rebind i → Home' }))
+    fireEvent.click(screen.getByRole('button', { name: 'restore key' }))
+    expect(screen.getByRole('button', { name: 'Bind home' }).textContent).toBe('unbound')
+    expect(screen.getByRole('button', { name: 'Rebind i (conflict, unused)' })).toBeTruthy()
+  })
+
   test('detects controls from custom outputs, allows clearing detection, and accepts pasted characters', () => {
     const onSave = vi.fn()
     render(<SettingsPage settings={settings} onSave={onSave} onResetCalculationCache={vi.fn()} />)

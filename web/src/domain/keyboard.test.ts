@@ -10,6 +10,20 @@ function search(steps: Array<{ query: string; retainedPrefix?: string; freeBacks
 }
 
 describe('custom keyboard translation', () => {
+  test('uses manually assigned physical control keys even when their original letters were moved', () => {
+    const settings: KeyboardSettings = { mappings: { KeyX: 'i', KeyF: 't' }, controls: { shift: 'CapsLock', home: 'KeyI', chat: 'KeyT' } }
+    expect(keyboardConflicts(settings).duplicates.size).toBe(0)
+    expect(keyboardConflicts(settings).blocked.has('KeyI')).toBe(false)
+    expect(translateCharacter('i', settings)).toBe('KeyX')
+    expect(translateCharacter('t', settings)).toBe('KeyF')
+    const tokens = buildKeyboardSequence(search([{ query: 'a' }, { query: 'b', freeBackspaceCount: 1 }]), settings)
+    expect(tokens.filter(token => token.kind !== 'character')).toEqual([
+      { codes: ['KeyT'], kind: 'chat', label: 't' },
+      { codes: ['CapsLock', 'KeyI'], kind: 'replace', label: 'caps + i' },
+    ])
+    expect(translateCharacter('i', { mappings: { KeyI: 'i' }, controls: { home: 'KeyI' } })).toBeUndefined()
+  })
+
   test('translates produced characters back to physical keys and blocks displaced defaults', () => {
     expect(translateCharacter('s', custom)).toBe('KeyX')
     expect(translateCharacter('E', custom)).toBe('KeyC')
@@ -28,7 +42,7 @@ describe('custom keyboard translation', () => {
 
   test('blocks physical keys assigned to multiple controls but permits a mapping and control on the same key', () => {
     const duplicate: KeyboardSettings = { mappings: {}, controls: { shift: 'KeyX', home: 'KeyX' } }
-    expect(keyboardConflicts(duplicate)).toEqual({ blocked: new Set(['KeyX']), duplicates: new Set(['KeyX']) })
+    expect(keyboardConflicts(duplicate)).toEqual({ blocked: new Set(['KeyX', 'Home']), duplicates: new Set(['KeyX']) })
     const shared: KeyboardSettings = { mappings: { KeyX: 's' }, controls: { chat: 'KeyX' } }
     expect(keyboardConflicts(shared).duplicates.size).toBe(0)
     expect(translateCharacter('s', shared)).toBe('KeyX')
@@ -85,10 +99,12 @@ describe('custom keyboard translation', () => {
       .toEqual([{ codes: ['Mouse4'], kind: 'chat', label: 'mouse 5' }])
   })
 
-  test('blocks collisions between inferred and manual controls and avoids ambiguous inference', () => {
+  test('manual controls replace inferred actions on that physical key and avoid ambiguous inference', () => {
     const settings: KeyboardSettings = { mappings: { KeyR: 'Shift' }, controls: { home: 'KeyR' } }
-    expect(keyboardConflicts(settings).duplicates).toEqual(new Set(['KeyR']))
+    expect(keyboardConflicts(settings).duplicates.size).toBe(0)
+    expect(effectiveKeyboardControls(settings)).toEqual({ home: 'KeyR' })
     expect(buildKeyboardSequence(search([{ query: 'a' }, { query: 'b', freeBackspaceCount: 1 }]), settings).some(token => token.kind === 'replace')).toBe(false)
+    expect(effectiveKeyboardControls({ mappings: { KeyI: 't' }, controls: { home: 'KeyI' } })).toEqual({ home: 'KeyI' })
     expect(effectiveKeyboardControls({ mappings: { KeyR: 'Backspace', KeyB: 'Backspace' }, controls: {} }).backspace).toBeUndefined()
   })
 

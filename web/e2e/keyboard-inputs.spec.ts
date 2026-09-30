@@ -1,5 +1,27 @@
 import { expect, test } from '@playwright/test'
 
+test('manual binds override displaced physical keys and persist on the keyboard diagram', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'settings', exact: true }).click()
+  for (const [key, output] of [['x', 'i'], ['f', 't']]) {
+    await page.getByRole('button', { name: `Rebind ${key}`, exact: true }).click()
+    await page.getByRole('textbox', { name: `New output for ${key}` }).press(output)
+  }
+  for (const [control, key] of [['home', 'i'], ['shift', 'CapsLock'], ['chat key', 't']]) {
+    await page.getByRole('button', { name: `Bind ${control}`, exact: true }).click()
+    await page.getByRole('textbox', { name: `New binding for ${control}` }).press(key)
+    await expect(page.getByRole('button', { name: `Bind ${control}`, exact: true })).toHaveAttribute('aria-invalid', 'false')
+  }
+  await expect(page.locator('[data-code="KeyI"]')).toHaveText('hm')
+  await expect(page.locator('[data-code="CapsLock"]')).toHaveText('SH')
+  await expect(page.locator('[data-code="KeyT"]')).toHaveText('CH')
+  await page.getByRole('button', { name: 'save settings' }).click()
+  await page.reload()
+  await page.getByRole('button', { name: 'settings', exact: true }).click()
+  await expect(page.locator('[data-code="KeyI"]')).toHaveText('hm')
+  await expect(page.locator('[data-code="KeyI"]')).not.toHaveClass(/conflict/)
+})
+
 test('keeps header controls the same height and moves playback guidance into craft-sheet help', async ({ page }) => {
   await page.goto('/')
   for (const width of [1440, 1000, 390]) {
@@ -104,7 +126,14 @@ test('supports tapping keys on a narrow touch screen without overflowing setting
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true })
   const page = await context.newPage()
   await page.goto('/')
+  const languageSearch = page.getByRole('searchbox', { name: 'Search languages' })
+  await expect(languageSearch).toHaveCSS('font-size', '16px')
+  await languageSearch.tap()
+  await languageSearch.fill('ovdals')
+  await expect(page.getByRole('button', { name: /elfdalian - övdalska/ })).toBeVisible()
+  expect(await page.evaluate(() => window.visualViewport?.scale)).toBe(1)
   await page.getByRole('button', { name: 'settings', exact: true }).tap()
+  await expect(page.getByRole('combobox', { name: 'Keyboard character language' })).toHaveCSS('font-size', '16px')
   await page.getByRole('button', { name: 'Rebind x', exact: true }).tap()
   await page.getByRole('textbox', { name: 'New output for x' }).fill('s')
   await expect(page.getByRole('button', { name: 'Rebind x → s', exact: true })).toBeVisible()

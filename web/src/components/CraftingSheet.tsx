@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 import type { IconManifest } from '../data/iconManifest'
 import type { RankedSearch, SearchItem } from '../domain/types'
@@ -263,7 +264,13 @@ export function CraftQueryInput({ label, value, suggestions, calculatedSearches,
   const [manualSuggestion, setManualSuggestion] = useState<CraftingSheetOption>()
   const [message, setMessage] = useState<string>()
   const inputRef = useRef<HTMLDivElement>(null)
+  const suggestionsRef = useRef<HTMLUListElement>(null)
+  const suggestionsId = useId()
+  const previewRef = useRef(onPreview)
+  const [popupStyle, setPopupStyle] = useState<CSSProperties>()
   const appliedDraftRef = useRef(displayQuery(value))
+
+  useEffect(() => { previewRef.current = onPreview }, [onPreview])
 
   useEffect(() => {
     const nextDraft = displayQuery(value)
@@ -275,13 +282,17 @@ export function CraftQueryInput({ label, value, suggestions, calculatedSearches,
   }, [value])
   useEffect(() => {
     if (!isOpen) return
-    function closeOnOutsidePointerDown(event: PointerEvent) {
-      if (isScrollbarPointer(event)) return
-      if (event.target instanceof Node && inputRef.current?.contains(event.target)) return
+    function closeOnOutsideInteraction(event: Event) {
+      if (event.type === 'pointerdown' && isScrollbarPointer(event as PointerEvent)) return
+      if (event.target instanceof Node && (inputRef.current?.contains(event.target) || suggestionsRef.current?.contains(event.target))) return
       setIsOpen(false)
     }
-    document.addEventListener('pointerdown', closeOnOutsidePointerDown)
-    return () => document.removeEventListener('pointerdown', closeOnOutsidePointerDown)
+    document.addEventListener('pointerdown', closeOnOutsideInteraction)
+    document.addEventListener('focusin', closeOnOutsideInteraction)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideInteraction)
+      document.removeEventListener('focusin', closeOnOutsideInteraction)
+    }
   }, [isOpen])
 
   const choose = useCallback((query: string) => {
@@ -297,14 +308,13 @@ export function CraftQueryInput({ label, value, suggestions, calculatedSearches,
   }, [onChoose])
 
   useEffect(() => {
-    if (!filterByDraft || draft.trim().length === 0) return
+    if (!isOpen || !filterByDraft || draft.trim().length === 0) return
     const timer = window.setTimeout(() => {
-      setManualSuggestion(onPreview?.(draft))
+      setManualSuggestion(previewRef.current?.(draft))
       setCalculatedDraft(draft)
-      setIsOpen(true)
     }, 1000)
     return () => window.clearTimeout(timer)
-  }, [draft, filterByDraft, onPreview])
+  }, [draft, filterByDraft, isOpen])
 
   const matchingSuggestions = useMemo(() => {
     const calculatedSuggestions = (filterByDraft
@@ -320,8 +330,61 @@ export function CraftQueryInput({ label, value, suggestions, calculatedSearches,
     return options.filter((option, index) => options.findIndex((candidate) => candidate.id === option.id) === index).slice(0, 10)
   }, [calculatedBestScore, calculatedDraft, calculatedSearches, filterByDraft, manualSuggestion, suggestions])
 
+  useLayoutEffect(() => {
+    if (!isOpen) return
+    const input = inputRef.current?.querySelector('input')
+    if (!input) return
+    function positionPopup() {
+      const anchor = input!.getBoundingClientRect()
+      const viewport = window.visualViewport
+      let left = (viewport?.offsetLeft ?? 0) + 4
+      let top = (viewport?.offsetTop ?? 0) + 4
+      let right = left + (viewport?.width ?? window.innerWidth) - 8
+      let bottom = top + (viewport?.height ?? window.innerHeight) - 8
+      for (let parent = input!.parentElement; parent; parent = parent.parentElement) {
+        const style = getComputedStyle(parent)
+        const sheet = parent.classList.contains('crafting-sheet')
+        const scrollX = /auto|scroll/.test(style.overflowX)
+        const scrollY = /auto|scroll/.test(style.overflowY)
+        if (!sheet && !scrollX && !scrollY) continue
+        const bounds = parent.getBoundingClientRect()
+        if (bounds.width === 0 || bounds.height === 0) continue
+        if (sheet || scrollX) { left = Math.max(left, bounds.left + 4); right = Math.min(right, bounds.right - 4) }
+        if (sheet || scrollY) { top = Math.max(top, bounds.top + 4); bottom = Math.min(bottom, bounds.bottom - 4) }
+      }
+      if (anchor.width > 0 && (anchor.bottom <= top || anchor.top >= bottom || anchor.right <= left || anchor.left >= right)) {
+        setIsOpen(false)
+        return
+      }
+      const below = Math.max(0, bottom - anchor.bottom - 4)
+      const above = Math.max(0, anchor.top - top - 4)
+      const opensAbove = below < 192 && above > below
+      const maxHeight = Math.min(192, opensAbove ? above : below)
+      const width = Math.min(anchor.width, Math.max(0, right - left))
+      setPopupStyle({ position: 'fixed', left: Math.max(left, Math.min(anchor.left, right - width)), top: opensAbove ? anchor.top - 4 : anchor.bottom + 4, transform: opensAbove ? 'translateY(-100%)' : undefined, width, maxHeight })
+    }
+    positionPopup()
+    function reposition(event: Event) {
+      if (event.target instanceof Node && suggestionsRef.current?.contains(event.target)) return
+      positionPopup()
+    }
+    document.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', positionPopup)
+    window.visualViewport?.addEventListener('resize', positionPopup)
+    window.visualViewport?.addEventListener('scroll', positionPopup)
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(positionPopup)
+    observer?.observe(input)
+    return () => {
+      document.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', positionPopup)
+      window.visualViewport?.removeEventListener('resize', positionPopup)
+      window.visualViewport?.removeEventListener('scroll', positionPopup)
+      observer?.disconnect()
+    }
+  }, [isOpen])
+
   return <div ref={inputRef} className="crafting-sheet__query-input">
-    <input type="search" value={draft} aria-label={`Craft query for ${label}`} placeholder="type a craft…" title="Latin accents and special letters accept English keyboard equivalents."
+    <input type="search" value={draft} aria-label={`Craft query for ${label}`} aria-expanded={isOpen && matchingSuggestions.length > 0} aria-controls={isOpen && matchingSuggestions.length > 0 ? suggestionsId : undefined} placeholder="type a craft…" title="Latin accents and special letters accept English keyboard equivalents."
       onFocus={() => { setFilterByDraft(false); setCalculatedDraft(undefined); setManualSuggestion(undefined); setIsOpen(true) }}
       onChange={(event) => { setDraft(displayQuery(event.target.value)); setFilterByDraft(true); setCalculatedDraft(undefined); setManualSuggestion(undefined); setMessage(undefined); setIsOpen(true) }}
       onKeyDown={(event) => {
@@ -329,14 +392,14 @@ export function CraftQueryInput({ label, value, suggestions, calculatedSearches,
         if (event.key === 'Enter') event.preventDefault()
       }} />
     {message && <p className="crafting-sheet__query-status" role="status">{message}</p>}
-    {isOpen && matchingSuggestions.length > 0 && <ul className="crafting-sheet__query-suggestions" aria-label={`Calculated craft suggestions for ${label}`}>
+    {isOpen && matchingSuggestions.length > 0 && createPortal(<ul id={suggestionsId} ref={suggestionsRef} style={popupStyle} className="crafting-sheet__query-suggestions" aria-label={`Calculated craft suggestions for ${label}`}>
       {matchingSuggestions.map((option) => <li key={option.id}>
         <TapOrScrollButton type="button" onTap={() => choose(option.search.queries[0])}>
           <QuerySequence search={option.search} />
           <span>{option.totalTypedCharacters} chars · {option.junkCount} junk · {deltaLabel(option.scoreDelta)}</span>
         </TapOrScrollButton>
       </li>)}
-    </ul>}
+    </ul>, document.body)}
   </div>
 }
 

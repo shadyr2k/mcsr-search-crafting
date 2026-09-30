@@ -25,3 +25,11 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .item-icon { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; aspect-ratio: 1; object-fit: contain; image-rendering: pixelated; vertical-align: middle; }
 .item-icon--compact { width: 2rem; height: 2rem; }.item-icon--picker { width: 2.75rem; height: 2.75rem; }.item-icon--detail { width: 4rem; height: 4rem; }
 .item-icon--fallback { width: auto; min-width: 2.5rem; max-width: 8rem; padding: .2rem .35rem; overflow: hidden; border: 1px solid var(--border); color: var(--text); background: var(--panel); }.item-icon__fallback-label { overflow: hidden; font-size: .625rem; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Keep touch-screen fields readable without focus zoom; pinch zoom stays available. */
+@media (any-pointer: coarse) {
+  :root .app-shell :is(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']), textarea, select) {
+    font-size: max(16px, 1rem);
+    touch-action: manipulation;
+  }
+}
