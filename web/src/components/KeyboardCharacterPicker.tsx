@@ -47,14 +47,12 @@ export function KeyboardCharacterPicker({ languages, baseData, dataBaseUrl }: { 
   return <div className="keyboard-characters">
     <label>special characters</label>
     <LanguageDropdown languages={languages} selectedLocale={locale} label="Keyboard character language" onSelect={setLocale} />
-    <p>This picker is separate from craft calculations. Latin characters come from this language’s Minecraft item names and searchable text.</p>
-    {language?.script !== 'latin' ? <p>For non-Latin languages, use your keyboard or another character source.</p>
+    {language?.script !== 'latin' ? <p>No character list available for non-Latin languages.</p>
       : loading ? <p role="status">loading characters…</p>
         : error ? <p role="alert">{error} <button type="button" onClick={() => setRetry((value) => value + 1)}>retry</button></p>
           : characters.length > 0 ? <>
             <div className="keyboard-characters__row"><input aria-label="Copyable special characters" readOnly value={characters.join(' ')} onFocus={(event) => event.target.select()} /><button type="button" onClick={() => void copy(characters.join(' '))}>copy row</button></div>
             <div className="keyboard-characters__keys">{characters.map((character) => <button type="button" key={character} aria-label={`Copy ${character}`} onClick={() => void copy(character)}>{character}</button>)}</div>
-            <p>Tap a character to copy it, then paste it into a selected key’s input.</p>
           </> : <p>No special Latin characters found in this language’s item text.</p>}
     {copied && <p role="status">{copied}</p>}
   </div>

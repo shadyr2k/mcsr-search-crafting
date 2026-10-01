@@ -3,6 +3,7 @@ import { DEFAULT_KEYBOARD_SETTINGS, KEYBOARD_ROWS, effectiveKeyboardControls, is
 import { KeyboardVisualization } from './KeyboardVisualization'
 
 const controls = [['shift', 'shift'], ['home', 'home'], ['chat', 'chat key'], ['backspace', 'backspace']] as const
+const controlOutputs = { shift: 'Shift', home: 'Home', chat: 't', backspace: 'Backspace' }
 type PendingBinding = { kind: 'mapping'; code: string } | { kind: 'control'; code: keyof KeyboardSettings['controls'] }
 
 export function KeyboardSettingsEditor({ value, onChange }: { value: KeyboardSettings; onChange: (value: KeyboardSettings) => void }) {
@@ -17,7 +18,7 @@ export function KeyboardSettingsEditor({ value, onChange }: { value: KeyboardSet
   for (const code of Object.values(resolvedControls)) if (!conflicts.duplicates.has(code)) blocked.delete(code)
   const pendingLabel = pending?.kind === 'mapping' ? keyLabel(pending.code) : controls.find(([code]) => code === pending?.code)?.[1]
 
-  useEffect(() => { if (pending) input.current?.focus() }, [pending])
+  useEffect(() => { if (pending) input.current?.focus({ preventScroll: true }) }, [pending])
 
   function capture(output: string, physicalCode?: string) {
     if (!pending) return
@@ -38,6 +39,20 @@ export function KeyboardSettingsEditor({ value, onChange }: { value: KeyboardSet
     setMessage('')
   }
 
+  function clearControl(control: keyof KeyboardSettings['controls']) {
+    const mappings = { ...value.mappings }
+    const code = resolvedControls[control]
+    // Remove the output that implied this control, but preserve an unrelated
+    // character mapping beneath a manual override or on another physical key.
+    if (code && mappings[code] === controlOutputs[control]) delete mappings[code]
+    const next = { ...value.controls }
+    delete next[control]
+    if (effectiveKeyboardControls({ mappings, controls: next })[control]) next[control] = ''
+    onChange({ ...value, mappings, controls: next })
+    setPending(undefined)
+    setMessage('')
+  }
+
   function clearPending() {
     if (!pending) return
     if (pending.kind === 'mapping') {
@@ -46,32 +61,17 @@ export function KeyboardSettingsEditor({ value, onChange }: { value: KeyboardSet
       const nextControls = Object.fromEntries(Object.entries(value.controls).filter(([, code]) => code !== pending.code))
       onChange({ ...value, mappings, controls: nextControls })
     } else {
-      const next = { ...value.controls }
-      delete next[pending.code]
-      if (effectiveKeyboardControls({ ...value, controls: next })[pending.code]) next[pending.code] = ''
-      onChange({ ...value, controls: next })
+      clearControl(pending.code)
     }
     setPending(undefined)
   }
 
   return <div className="keyboard-editor">
-    <p>Click or tap a physical key, then press the character it types. For example, select X and press S if your X key types S. Custom keys turn green.</p>
+    <p>Select a key, then press or paste its output. For a control below, press or select its physical key.</p>
     <div className="keyboard-editor__scroll"><KeyboardVisualization settings={value} blocked={blocked} selected={pending?.kind === 'mapping' ? pending.code : undefined} onSelect={(code) => {
       if (pending?.kind === 'control') capture('', code)
       else { setPending({ kind: 'mapping', code }); setMessage('') }
     }} /></div>
-    <p>Red unchanged keys are unused because a custom key already types that character. Rebind them to use them again. Two custom keys cannot share an output.</p>
-    <div className="keyboard-editor__controls">{controls.map(([code, label]) => <div className="keyboard-editor__control" key={code}>
-      <span>{label}</span>
-      <button type="button" aria-label={`Bind ${label}`} aria-invalid={resolvedControls[code] !== undefined && blocked.has(resolvedControls[code])} onClick={() => { setPending({ kind: 'control', code }); setMessage('') }}>{resolvedControls[code] ? keyLabel(resolvedControls[code]) : 'unbound'}{resolvedControls[code] && value.controls[code] === undefined ? ' (detected)' : ''}</button>
-      {resolvedControls[code] && <button type="button" aria-label={`Clear ${label}`} onClick={() => {
-        const next = { ...value.controls }
-        delete next[code]
-        if (effectiveKeyboardControls({ ...value, controls: next })[code]) next[code] = ''
-        onChange({ ...value, controls: next })
-      }}>clear</button>}
-    </div>)}</div>
-    <p>Shift, Home, Backspace, and T (default chat) are detected from custom keys. Manual binds always use the physical key you press or select on the diagram, regardless of its output. Shift, Home, and Backspace replace that key’s character; chat marks its game action. Unbound controls are omitted from playback.</p>
     {pending && <div className="keyboard-editor__capture">
       <label htmlFor="keyboard-binding-capture">{pending.kind === 'mapping' ? `New output for ${pendingLabel}` : `New binding for ${pendingLabel}`}</label>
       <input id="keyboard-binding-capture" ref={input} value="" autoComplete="off" autoCapitalize="off" spellCheck={false} placeholder="press a key…"
@@ -109,8 +109,12 @@ export function KeyboardSettingsEditor({ value, onChange }: { value: KeyboardSet
         onContextMenu={(event) => event.preventDefault()} />
       <button type="button" onClick={clearPending}>{pending.kind === 'mapping' ? 'restore key' : 'clear binding'}</button>
       <button type="button" onClick={() => { setPending(undefined); setMessage('') }}>cancel</button>
-      <p>To capture a mouse button, press it inside the input. On touch screens, tap the input and type a character.</p>
     </div>}
+    <div className="keyboard-editor__controls">{controls.map(([code, label]) => <div className="keyboard-editor__control" key={code}>
+      <span>{label}</span>
+      <button type="button" aria-label={`Bind ${label}`} aria-invalid={resolvedControls[code] !== undefined && blocked.has(resolvedControls[code])} onClick={() => { setPending({ kind: 'control', code }); setMessage('') }}>{resolvedControls[code] ? keyLabel(resolvedControls[code]) : 'unbound'}</button>
+      {resolvedControls[code] && <button type="button" aria-label={`Clear ${label}`} onClick={() => clearControl(code)}>clear</button>}
+    </div>)}</div>
     {message && <p role="status">{message}</p>}
     {conflicts.duplicates.size > 0 && <p role="alert">Duplicate custom bindings: {Array.from(conflicts.duplicates).map(keyLabel).join(', ')}. Change, clear, or restore the red bindings before saving.</p>}
     <div><button type="button" onClick={() => { onChange(DEFAULT_KEYBOARD_SETTINGS); setPending(undefined); setMessage('') }}>reset keyboard inputs</button></div>

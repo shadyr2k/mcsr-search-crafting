@@ -16,7 +16,7 @@ const settings = { mappings: { KeyX: 's', KeyC: 'e' }, controls: { chat: 'Mouse3
 test('translates keys and plays chat, backspace, and simultaneous replacement in order', () => {
   vi.useFakeTimers()
   const { container } = render(<KeyboardPlayback search={search} settings={settings} />)
-  expect(screen.getByLabelText('Your keys').textContent).toBe('your keysxc(mouse 4)(backspace)a(mouse 4)(shift + home)b')
+  expect(screen.getByLabelText('Your keys').textContent).toBe('your keysxc(mb4)(backspace)a(mb4)(shift + home)b')
   expect(screen.queryByText(/blue: type/)).toBeNull()
   expect(container.querySelector('.keyboard-playback__actions small')).toBeNull()
   expect(container.querySelectorAll('.keyboard-visual__label')).toHaveLength(0)
@@ -59,6 +59,12 @@ test('keeps labels on the editable keyboard and mouse', () => {
   render(<KeyboardVisualization settings={settings} onSelect={() => undefined} />)
   expect(screen.getByRole('button', { name: 'Rebind x → s' }).textContent).toBe('s')
   expect(screen.getByRole('button', { name: 'Rebind mouse 5' }).textContent).toBe('5')
+})
+
+test('uses compact mouse labels in the translated sequence', () => {
+  render(<KeyboardPlayback search={{ steps: [{ query: 'abcde', typedSuffix: 'abcde', retainedPrefix: '', freeBackspaceCount: 0 }] } as RankedSearch}
+    settings={{ mappings: { Mouse0: 'a', Mouse1: 'b', Mouse2: 'c', Mouse3: 'd', Mouse4: 'e' }, controls: {} }} removeAnimations />)
+  expect(screen.getByLabelText('Your keys').textContent).toBe('your keys(lmb)(mb3)(rmb)(mb4)(mb5)')
 })
 
 test('omits unbound controls and supports manual stepping with animations removed', () => {

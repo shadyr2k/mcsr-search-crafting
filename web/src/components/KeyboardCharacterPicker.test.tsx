@@ -32,6 +32,6 @@ test('loads the independently selected language and provides a copyable characte
   expect(copy).toHaveBeenCalledWith('ø')
   fireEvent.focus(screen.getByRole('combobox', { name: 'Keyboard character language' }))
   fireEvent.click(screen.getByRole('option', { name: /japanese/i }))
-  expect(screen.getByText(/For non-Latin languages/)).toBeTruthy()
+  expect(screen.getByText(/No character list available for non-Latin languages/)).toBeTruthy()
   expect(loadLocalizedGeneratedData).not.toHaveBeenCalledWith('ja_jp', expect.anything(), expect.anything())
 })

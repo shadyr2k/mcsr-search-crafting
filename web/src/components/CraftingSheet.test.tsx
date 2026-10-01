@@ -73,10 +73,13 @@ describe('CraftingSheet', () => {
 
     const { container } = render(<CraftingSheet {...input} layout="page" />)
 
-    expect(screen.getByText('create a custom craft sheet')).toBeVisible()
+    expect(screen.queryByText('create a custom craft sheet')).toBeNull()
+    expect(screen.queryByText(/Character counts include spaces/)).toBeNull()
     expect(screen.getByRole('button', { name: 'Back to english crafts' })).toBeVisible()
     expect(screen.getByLabelText('Character occurrence bar chart')).toBeVisible()
     expect(container.querySelector('.crafting-sheet__panel--page > .crafting-sheet__page-info')).toBeTruthy()
+    expect(container.querySelector('.crafting-sheet__page-characters .crafting-sheet__character-set-block')).toBeTruthy()
+    expect(container.querySelector('.crafting-sheet__page-characters .crafting-sheet__character-details')).toBeTruthy()
     expect(container.querySelector('.crafting-sheet__chart--page')).toBeTruthy()
     expect(container.querySelector('.crafting-sheet__panel--page > .crafting-sheet__sets')).toBeTruthy()
     expect(container.querySelector('.crafting-sheet__sets--columns .crafting-sheet__set-columns')).toBeTruthy()

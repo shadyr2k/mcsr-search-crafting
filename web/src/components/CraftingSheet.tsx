@@ -389,6 +389,13 @@ function UsageChart({ usages, className = '' }: { usages: readonly CraftingSheet
   </section>
 }
 
+function CharacterSet({ characterSet, selectedCharacter, onSelectCharacter }: { characterSet: readonly string[]; selectedCharacter: string | undefined; onSelectCharacter: (character: string) => void }) {
+  return <div className="crafting-sheet__character-set-block"><h3>character set</h3>
+    {characterSet.length > 0 ? <ul className="crafting-sheet__character-set" aria-label="Selected characters">{characterSet.map((character) => <li key={character}><button type="button" aria-label={`Show details for ${character}`} aria-pressed={selectedCharacter === character} onClick={() => onSelectCharacter(character)}><span className="crafting-sheet__query-text">{character}</span></button></li>)}</ul> : <p className="crafting-sheet__empty">No search characters are needed.</p>}
+    <p className="crafting-sheet__hint">_ = space · ← = backspace · SH = shift home (replace search)</p>
+  </div>
+}
+
 function SheetSummary({
   entries,
   characterSet,
@@ -396,27 +403,20 @@ function SheetSummary({
   totalScore,
   scoreDelta,
   optimalCharacterCount,
-  selectedCharacter,
-  onSelectCharacter,
   isCalculating,
   warning,
   readyCount,
   onReset,
-}: Pick<CraftingSheetProps, 'entries' | 'characterSet' | 'totalTypedCharacters' | 'totalScore' | 'scoreDelta' | 'optimalCharacterCount' | 'isCalculating' | 'warning' | 'onReset'> & { readyCount: number; selectedCharacter: string | undefined; onSelectCharacter: (character: string) => void }) {
+}: Pick<CraftingSheetProps, 'entries' | 'characterSet' | 'totalTypedCharacters' | 'totalScore' | 'scoreDelta' | 'optimalCharacterCount' | 'isCalculating' | 'warning' | 'onReset'> & { readyCount: number }) {
   const scoreHue = totalScoreHue(entries, scoreDelta)
   const characterDelta = characterSet.length - optimalCharacterCount
   return <>
-    <div className="crafting-sheet__intro"><p>create a custom craft sheet</p><button type="button" className="crafting-sheet__reset" onClick={onReset}>reset sheet</button></div>
+    <div className="crafting-sheet__intro"><button type="button" className="crafting-sheet__reset" onClick={onReset}>reset sheet</button></div>
     <div className="crafting-sheet__totals" aria-live="polite" aria-atomic="true">
       <div><strong aria-label="Total characters">{totalTypedCharacters}</strong><span>total characters</span></div>
       <div><strong aria-label="Distinct characters" title="Difference from the fewest characters possible among all score-optimal craft choices.">{characterSet.length}{characterDelta !== 0 && <small className={`crafting-sheet__character-delta${characterDelta < 0 ? ' crafting-sheet__character-delta--saved' : ''}`}>{characterDelta > 0 ? '+' : ''}{characterDelta}</small>}</strong><span>distinct characters</span></div>
       <div><strong>{readyCount}</strong><span>included item sets</span></div>
       <div><strong className="crafting-sheet__score" style={{ '--crafting-sheet-score-hue': `${scoreHue}deg` } as CSSProperties} aria-label="Total score" title="Green is tied with the best score; red is the high end of the available score range.">{totalScore}</strong><span>total score · {scoreDelta === 0 ? 'best' : `${scoreDelta > 0 ? '+' : ''}${scoreDelta} vs best`}</span></div>
-    </div>
-    <p className="crafting-sheet__hint">Character counts include spaces and repeated letters. Control keys are excluded. Lower score is better.</p>
-    <div className="crafting-sheet__character-set-block"><h3>character set</h3>
-      {characterSet.length > 0 ? <ul className="crafting-sheet__character-set" aria-label="Selected characters">{characterSet.map((character) => <li key={character}><button type="button" aria-label={`Show details for ${character}`} aria-pressed={selectedCharacter === character} onClick={() => onSelectCharacter(character)}><span className="crafting-sheet__query-text">{character}</span></button></li>)}</ul> : <p className="crafting-sheet__empty">No search characters are needed.</p>}
-      <p className="crafting-sheet__hint">_ = space · ← = backspace · SH = shift home (replace search)</p>
     </div>
     {isCalculating && <p className="crafting-sheet__status" role="status">Updating crafting sheet… Totals include ready crafts.</p>}
     {entries.some((entry) => !entry.disabled && entry.status === 'unavailable') && <p className="crafting-sheet__status" role="status">Some item sets have no available craft and are excluded from totals.</p>}
@@ -514,7 +514,10 @@ export function CraftingSheet({ languageName, entries, characterSet, characterUs
             <span className="crafting-sheet__disclosure" aria-hidden="true"><ArrowSprite direction="left" compact /></span>
           </button>
         </h2></header>
-        <SheetSummary entries={entries} characterSet={characterSet} totalTypedCharacters={totalTypedCharacters} totalScore={totalScore} scoreDelta={scoreDelta} optimalCharacterCount={optimalCharacterCount} selectedCharacter={selectedCharacter} onSelectCharacter={selectCharacter} isCalculating={isCalculating} warning={warning} readyCount={readyCount} onReset={onReset} />
+        <SheetSummary entries={entries} characterSet={characterSet} totalTypedCharacters={totalTypedCharacters} totalScore={totalScore} scoreDelta={scoreDelta} optimalCharacterCount={optimalCharacterCount} isCalculating={isCalculating} warning={warning} readyCount={readyCount} onReset={onReset} />
+      </aside>
+      <aside className="crafting-sheet__page-characters">
+        <CharacterSet characterSet={characterSet} selectedCharacter={selectedCharacter} onSelectCharacter={selectCharacter} />
         <CharacterDetails selectedCharacter={selectedCharacter} usages={usages} />
       </aside>
       <UsageChart usages={usages} className="crafting-sheet__chart--page" />
@@ -534,8 +537,9 @@ export function CraftingSheet({ languageName, entries, characterSet, characterUs
     </header>
     <SheetDisclosure id={panelId} open={isOpen}>
     <div className="crafting-sheet__panel">
-      <SheetSummary entries={entries} characterSet={characterSet} totalTypedCharacters={totalTypedCharacters} totalScore={totalScore} scoreDelta={scoreDelta} optimalCharacterCount={optimalCharacterCount} selectedCharacter={selectedCharacter} onSelectCharacter={selectCharacter} isCalculating={isCalculating} warning={warning} readyCount={readyCount} onReset={onReset} />
+      <SheetSummary entries={entries} characterSet={characterSet} totalTypedCharacters={totalTypedCharacters} totalScore={totalScore} scoreDelta={scoreDelta} optimalCharacterCount={optimalCharacterCount} isCalculating={isCalculating} warning={warning} readyCount={readyCount} onReset={onReset} />
       <ItemSetList keyboardSettings={keyboardSettings} removeAnimations={removeAnimations} compactLayout={compactLayout} entries={entries} items={items} icons={icons} onPreviewItemQuery={onPreviewItemQuery} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />
+      <CharacterSet characterSet={characterSet} selectedCharacter={selectedCharacter} onSelectCharacter={selectCharacter} />
       <CharacterDetails selectedCharacter={selectedCharacter} usages={usages} />
     </div>
     </SheetDisclosure>

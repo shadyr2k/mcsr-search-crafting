@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { buildKeyboardSequence, type KeyboardSettings } from '../domain/keyboard'
+import { buildKeyboardSequence, keyLabel, type KeyboardSettings } from '../domain/keyboard'
 import type { RankedSearch } from '../domain/types'
 import { KeyboardVisualization } from './KeyboardVisualization'
 
+const mouseLabels: Record<string, string> = { Mouse0: 'lmb', Mouse1: 'mb3', Mouse2: 'rmb', Mouse3: 'mb4', Mouse4: 'mb5' }
+
 export function KeyboardPlayback({ search, settings, removeAnimations = false }: { search: RankedSearch; settings: KeyboardSettings; removeAnimations?: boolean }) {
-  const tokens = useMemo(() => buildKeyboardSequence(search, settings), [search, settings])
+  const tokens = useMemo(() => buildKeyboardSequence(search, settings).map((token) => token.codes.some((code) => mouseLabels[code])
+    ? { ...token, label: token.codes.map((code) => mouseLabels[code] ?? keyLabel(code)).join(' + ') }
+    : token), [search, settings])
   const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true)
   const still = removeAnimations || reducedMotion
   const [playing, setPlaying] = useState(true)
