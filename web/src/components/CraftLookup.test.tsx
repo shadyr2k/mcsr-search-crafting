@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+import type { ReactNode } from 'react'
 
 import type { CraftLookupLanguageCategory, CraftLookupLanguageState } from '../hooks/useCraftLookupLanguages'
 
@@ -10,7 +11,7 @@ vi.mock('../hooks/useCraftLookupLanguages', () => ({
 }))
 
 vi.mock('./CalculatedSearchRow', () => ({
-  CalculatedSearchRow: ({ summaryLabel }: { summaryLabel: string }) => <div>{summaryLabel}</div>,
+  CalculatedSearchRow: ({ summaryLabel, summaryMetric }: { summaryLabel: string; summaryMetric: ReactNode }) => <div>{summaryLabel}{summaryMetric}</div>,
 }))
 
 vi.mock('./ItemSetEditor', () => ({
@@ -69,17 +70,20 @@ describe('CraftLookup', () => {
     const list = screen.getByRole('list', { name: 'junkless, no overlap languages' })
     expect(list.className).toContain('craft-lookup__language-list')
     expect(within(list).getAllByRole('listitem')).toHaveLength(6)
+    expect(within(screen.getByRole('button', { name: 'Regular' })).getByText('6')).toBeTruthy()
+    expect(within(list).getAllByLabelText('Best score: 0')).toHaveLength(6)
     expect(screen.queryByRole('button', { name: /Show all|Show first/ })).toBeNull()
-    expect(screen.getByRole('button', { name: 'junkless overlap' }).hasAttribute('disabled')).toBe(true)
-    expect(screen.getByRole('button', { name: 'no viable craft' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: 'Overlap' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: 'No craft' }).hasAttribute('disabled')).toBe(true)
 
-    fireEvent.click(screen.getByRole('button', { name: 'cannot be junkless' }))
+    fireEvent.click(screen.getByRole('button', { name: 'With junk' }))
     expect(screen.queryByRole('list', { name: 'junkless, no overlap languages' })).toBeNull()
     expect(within(screen.getByRole('list', { name: 'cannot be junkless languages' })).getAllByRole('listitem')).toHaveLength(5)
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'find a language' }), { target: { value: 'language 7' } })
     expect(within(screen.getByRole('list', { name: 'cannot be junkless languages' })).getAllByRole('listitem')).toHaveLength(1)
     expect(screen.getByText(/found 1 matching language/)).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'junkless, no overlap' }).hasAttribute('disabled')).toBe(true)
+    expect(within(screen.getByRole('button', { name: 'With junk' })).getByText('1')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Regular' }).hasAttribute('disabled')).toBe(true)
   })
 })

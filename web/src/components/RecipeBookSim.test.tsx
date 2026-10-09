@@ -160,7 +160,7 @@ describe('RecipeBookSim', () => {
     expect(screen.getByRole('button', { name: 'Remove Oak Planks (Planches de chêne)' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove Oak Log (Bûche de chêne)' }))
-    fireEvent.click(screen.getByRole('searchbox', { name: 'Search Simulator inventory' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add inventory items' }))
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search Simulator inventory' }), { target: { value: 'oak' } })
     expect(screen.getByRole('button', { name: 'Oak Log (Bûche de chêne)' })).toBeTruthy()
   })

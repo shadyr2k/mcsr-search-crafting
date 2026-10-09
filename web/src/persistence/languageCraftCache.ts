@@ -67,7 +67,7 @@ function snapshotSearch(search: RankedSearch): RankedSearch {
   }
 }
 
-/** Search explanations are not needed to rebuild sheet/comparison controls. */
+/** Keep snapshots small; expanded craft rows rebuild explanations from localized data. */
 export function snapshotLanguageCraftOutcome(outcome: EntryOptimizationOutcome): EntryOptimizationOutcome {
   if (outcome.kind === 'no-viable') return {
     ...outcome,

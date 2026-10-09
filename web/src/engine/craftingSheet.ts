@@ -7,6 +7,7 @@ import type {
 import { DEFAULT_SCORING_SETTINGS, type ScoringSettings, scoreControlKeys, scoreStep } from './scoring'
 import { MAXIMUM_ORDINARY_BACKSPACES, transitionPresentation } from './overlapOptimizer'
 import { removeRedundantItemIdSearches } from './rankedSearch'
+import { itemSetLabel } from '../workspace/entryName'
 
 export interface CraftingSheetOption {
   /** Stable across a rank-order change as long as the calculated craft is the same. */
@@ -473,7 +474,7 @@ export function createCraftingSheetModel(
     const entry: CraftingSheetEntry = {
       id: candidate.entry.id,
       itemIds: editable.itemChoices.map((choice) => choice.itemId),
-      label: `item set ${candidate.entryNumber}`,
+      label: itemSetLabel(candidate.entry, candidate.entryNumber),
       queryLabel: selected.label,
       options: candidate.options,
       selectedOptionId,
@@ -505,7 +506,7 @@ export function createCraftingSheetModel(
     if (!entry.enabled || entry.targetIds.length === 0 || sheetEntries.some((current) => current.id === entry.id)) return
     const state = states.get(entry.id)
     sheetEntries.push({
-      id: entry.id, itemIds: entry.targetIds, label: `item set ${index + 1}`, queryLabel: '',
+      id: entry.id, itemIds: entry.targetIds, label: itemSetLabel(entry, index + 1), queryLabel: '',
       options: [], selectedOptionId: '', defaultOptionId: '', disabled: selections[entry.id]?.disabled === true,
       status: state === undefined || state.status === 'idle' || state.status === 'pending' ? 'pending' : 'unavailable',
       itemChoices: [], selectedSearch: undefined,

@@ -17,6 +17,9 @@ html, body, #root { min-height: 100%; }
 }
 body { min-height: 100vh; margin: 0; text-transform: lowercase; }
 button, input, select { font: inherit; }
+/* Replaced elements and form controls must not set a panel's intrinsic width. */
+img, input, select, textarea { max-width: 100%; }
+input, select, textarea { min-width: 0; }
 button, input, select { border: 2px solid var(--border); border-radius: .5rem; color: var(--text); background: #fff8f9; min-height: 2.75rem; }
 button { padding: .45rem .7rem; cursor: pointer; background: var(--panel); }
 button:hover:not(:disabled) { background: var(--panel-selected); border-color: var(--accent-strong); }

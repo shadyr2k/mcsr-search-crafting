@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { parseIconManifest } from '../data/iconManifest'
@@ -24,6 +25,58 @@ const icons = parseIconManifest({
 })
 
 describe('ItemPicker', () => {
+  test('reveals a multi-add picker and dismisses it without losing selected chips', async () => {
+    const user = userEvent.setup()
+    function EditorPicker() {
+      const [selectedIds, setSelectedIds] = useState<string[]>([])
+      return <ItemPicker items={items} selectedIds={selectedIds} manifest={icons} onChange={setSelectedIds} label="Inventory" displayLabel="Inventory items" revealOnAdd />
+    }
+    render(<><EditorPicker /><button>Outside</button></>)
+    expect(screen.queryByRole('searchbox')).toBeNull()
+    const add = screen.getByRole('button', { name: 'Add inventory items' })
+    await user.click(add)
+    expect(document.activeElement).toBe(screen.getByRole('searchbox'))
+    await user.click(screen.getByRole('button', { name: 'Oak Leaves' }))
+    await user.click(screen.getByRole('button', { name: 'Stick' }))
+    expect(screen.getByRole('searchbox')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Remove Oak Leaves' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Remove Stick' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Done adding/ })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Outside' }))
+    expect(screen.queryByRole('searchbox')).toBeNull()
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Outside' }))
+    await user.click(add)
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('searchbox')).toBeNull()
+    expect(document.activeElement).toBe(add)
+    await user.click(add)
+    await user.click(screen.getByRole('button', { name: 'Outside' }))
+    expect(screen.queryByRole('searchbox')).toBeNull()
+  })
+
+  test('keeps the picker open through touch blur and a retargeted click after selection', async () => {
+    const user = userEvent.setup()
+    function TouchPicker() {
+      const [selectedIds, setSelectedIds] = useState<string[]>([])
+      return <ItemPicker items={items} selectedIds={selectedIds} onChange={setSelectedIds} label="Goals" revealOnAdd />
+    }
+    render(<TouchPicker />)
+    await user.click(screen.getByRole('button', { name: 'Add goals' }))
+    const search = screen.getByRole('searchbox')
+    const stick = screen.getByRole('button', { name: 'Stick' })
+    fireEvent.pointerDown(stick, { pointerType: 'touch', pointerId: 1 })
+    fireEvent.blur(search, { relatedTarget: null })
+    fireEvent.pointerUp(stick, { pointerType: 'touch', pointerId: 1 })
+    // Mobile browsers may retarget the compatibility click after its option is removed.
+    fireEvent.click(document.body, { detail: 1 })
+    expect(screen.getByRole('searchbox')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Remove Stick' })).toBeTruthy()
+    fireEvent.pointerDown(document.body, { pointerType: 'touch', pointerId: 2 })
+    fireEvent.pointerUp(document.body, { pointerType: 'touch', pointerId: 2 })
+    fireEvent.click(document.body, { detail: 1 })
+    expect(screen.queryByRole('searchbox')).toBeNull()
+  })
+
   test('keeps suggestions closed until the search field receives focus', async () => {
     const user = userEvent.setup()
     render(<ItemPicker items={items} selectedIds={[]} manifest={icons} onChange={vi.fn()} label="Inventory" />)

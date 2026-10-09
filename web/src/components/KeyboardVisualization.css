@@ -1,12 +1,21 @@
-.keyboard-visual { display: flex; align-items: center; gap: 2%; width: 100%; min-width: 0; container-type: inline-size; }
-.keyboard-visual__board { display: grid; gap: 3px; width: 85%; padding: 5px; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); }
-.keyboard-visual__row { display: flex; gap: 3px; min-width: 0; }
-.keyboard-visual .keyboard-visual__key { position: relative; display: grid; place-items: center; overflow: hidden; min-width: 0; min-height: 0; height: clamp(15px, 4.2cqw, 34px); margin: 0; padding: 1px; border: 1px solid var(--border); border-radius: 3px; background: var(--page); color: var(--text); font: 400 clamp(5px, 1.35cqw, 10px) 'Monocraft', monospace; text-transform: none; box-shadow: 0 1px 0 var(--border); }
+/* Scale the complete physical layout together; spare panel width stays on the right. */
+.keyboard-visual {
+  /* Six rows share a 16-unit physical board. Wide keys include the gaps
+     between the units they replace, so every ordinary key stays square. */
+  --keyboard-gap: .45cqw;
+  --keyboard-padding: .75cqw;
+  --keyboard-unit: calc((85cqw - 2 * var(--keyboard-padding) - 15 * var(--keyboard-gap)) / 16);
+  display: flex; align-items: center; justify-self: start; gap: 2%; width: 100%; max-width: 42rem; min-width: 0; container-type: inline-size;
+}
+.keyboard-visual__board { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--keyboard-gap); flex: 0 0 85%; min-width: 0; box-sizing: border-box; padding: var(--keyboard-padding); box-shadow: inset 0 0 0 1px var(--border); border-radius: 1cqw; background: var(--panel); }
+.keyboard-visual__row { display: flex; justify-content: space-between; gap: var(--keyboard-gap); height: var(--keyboard-unit); min-width: 0; min-height: 0; }
+.keyboard-visual__row > .keyboard-visual__key { flex: 0 0 auto; width: calc(var(--key-units) * (var(--keyboard-unit) + var(--keyboard-gap)) - var(--keyboard-gap)); box-sizing: border-box; }
+.keyboard-visual .keyboard-visual__key { position: relative; display: grid; place-items: center; overflow: hidden; min-width: 0; min-height: 0; height: auto; margin: 0; padding: .15cqw; border: 1px solid var(--border); border-radius: .45cqw; background: var(--page); color: var(--text); font: 400 1.35cqw 'Monocraft', monospace; text-transform: none; box-shadow: 0 1px 0 var(--border); }
 .keyboard-visual__label { position: relative; z-index: 1; overflow: hidden; max-width: 100%; }
 :root[data-theme] .keyboard-visual .keyboard-visual__key.keyboard-visual__key--custom, .keyboard-visual .keyboard-visual__key--custom { background: #c4e8cf; color: #23452e; }
 :root[data-theme] .keyboard-visual .keyboard-visual__key.keyboard-visual__key--conflict, .keyboard-visual .keyboard-visual__key--conflict { background: #f2b9bd; color: #642d35; border-style: dashed; }
 .keyboard-visual .keyboard-visual__key--selected { outline: 2px solid var(--accent-strong); outline-offset: 1px; }
-.keyboard-visual__mouse { display: grid; grid-template-columns: 1fr .65fr 1fr; grid-template-rows: 1.4fr .6fr .55fr .55fr; gap: 3px; width: 13%; aspect-ratio: .7; padding: 4px; border: 1px solid var(--border); border-radius: 3px; background: var(--panel); }
+.keyboard-visual__mouse { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .65fr) minmax(0, 1fr); grid-template-rows: 1.4fr .6fr .55fr .55fr; gap: .45cqw; flex: 0 0 13%; min-width: 0; aspect-ratio: .7; box-sizing: border-box; padding: .6cqw; border: 1px solid var(--border); border-radius: .45cqw; background: var(--panel); }
 .keyboard-visual__mouse .keyboard-visual__key { height: auto; box-shadow: none; }
 .keyboard-visual__mouse [data-code='Mouse0'] { grid-column: 1; grid-row: 1 / 3; }
 .keyboard-visual__mouse [data-code='Mouse1'] { grid-column: 2; grid-row: 1; }

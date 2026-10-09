@@ -2,15 +2,17 @@ import { expect, test } from '@playwright/test'
 
 async function addStickSet(page: import('@playwright/test').Page, inventoryItem?: string) {
   await page.getByRole('button', { name: 'Add item set' }).click()
+  await page.getByRole('button', { name: 'Add target items' }).click()
   await page.getByRole('searchbox', { name: 'Search Goals' }).fill('stick')
   await page.getByRole('button', { name: 'Stick', exact: true }).click()
   if (inventoryItem) {
+    await page.getByRole('button', { name: 'Add inventory items' }).click()
     const inventory = page.getByRole('searchbox', { name: 'Search Inventory' })
     await inventory.fill(inventoryItem)
     await page.getByRole('button', { name: 'Oak Planks', exact: true }).click()
   }
   await page.getByRole('heading', { name: 'New item set' }).click()
-  await page.getByRole('switch', { name: 'Crafting grid size' }).click()
+  await page.getByRole('group', { name: 'Crafting grid size' }).getByRole('button', { name: '2×2' }).click()
   await page.getByRole('button', { name: 'Save item set' }).click()
 }
 
@@ -26,6 +28,7 @@ test('switches to the complete 26.1.2 data package', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Choose Minecraft version' })).toHaveText('26.1.2')
 
   await page.getByRole('button', { name: 'Add item set' }).click()
+  await page.getByRole('button', { name: 'Add target items' }).click()
   await page.getByRole('searchbox', { name: 'Search Goals' }).fill('pale oak planks')
   await expect(page.getByRole('button', { name: 'Pale Oak Planks', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Cancel' }).click()
@@ -147,7 +150,6 @@ test('keeps craft-row targets and junk counts ordered at every responsive breakp
 
     expect(regularGeometry.targets.left, `regular targets start after the query at ${width}px`).toBeGreaterThanOrEqual(regularGeometry.query.right - 1)
     expect(regularGeometry.targets.left - regularGeometry.query.right, `regular targets stay adjacent to the query at ${width}px`).toBeLessThanOrEqual(16)
-    expect(regularGeometry.junk, `regular crafts retain a junk count at ${width}px`).toBeDefined()
     if (regularGeometry.junk) {
       expect(regularGeometry.junk.left, `regular junk follows targets at ${width}px`).toBeGreaterThanOrEqual(regularGeometry.targets.right - 1)
       expect(regularGeometry.junk.left - regularGeometry.targets.right, `regular junk keeps its padded separation at ${width}px`).toBeLessThanOrEqual(16)
@@ -160,6 +162,15 @@ test('keeps craft-row targets and junk counts ordered at every responsive breakp
       expect(regularGeometry.arrow.left, `regular arrow stays last at ${width}px`).toBeGreaterThanOrEqual(regularGeometry.junk.right - 1)
     } else {
       expect(regularGeometry.arrow.left, `regular arrow stays after targets at ${width}px`).toBeGreaterThanOrEqual(regularGeometry.targets.right - 1)
+      // If the aggregate cannot fit, expansion must still expose every junk
+      // item. Keep a stable locator while expansion removes the preview sizers.
+      const fallback = regularCategory.getByRole('listitem', { name: (await regularCraft.getAttribute('aria-label'))!, exact: true })
+      const totalJunk = Number((await fallback.locator('[data-junk-icon-count="0"] .craft-result__more-junk').textContent())!.slice(1))
+      expect(totalJunk).toBeGreaterThan(0)
+      await fallback.locator('.craft-result__toggle').click()
+      await expect(fallback.locator('.craft-result__remaining-junk .item-icon')).toHaveCount(totalJunk)
+      await expect(fallback.locator('.craft-result__remaining-junk')).toBeVisible()
+      await fallback.locator('.craft-result__toggle').click()
     }
     expect(regularGeometry.itemsScrollWidth, `regular item strip is not clipped at ${width}px`).toBeLessThanOrEqual(regularGeometry.itemsClientWidth)
     expect(regularGeometry.items.left).toBeGreaterThanOrEqual(regularGeometry.craft.left - 1)
@@ -205,8 +216,8 @@ test('uses every selected palette color for dark editor controls', async ({ page
   await page.getByRole('button', { name: 'Add item set' }).click()
 
   const editorColors = await page.locator('.item-set-editor').evaluate((editor) => ({
-    control: getComputedStyle(editor.querySelector<HTMLElement>('.grid-size-switch__control')!).backgroundColor,
-    label: getComputedStyle(editor.querySelector<HTMLElement>('.grid-size-switch__label')!).backgroundColor,
+    control: getComputedStyle(editor.querySelector<HTMLElement>('.grid-size-switch .segmented-control')!).backgroundColor,
+    label: getComputedStyle(editor.querySelector<HTMLElement>('.grid-size-switch button[aria-pressed="true"]')!).backgroundColor,
   }))
   expect(editorColors.control).not.toBe('rgb(81, 36, 58)')
   expect(editorColors.label).not.toBe('rgb(81, 36, 58)')
@@ -406,23 +417,21 @@ test('opens the responsive craft lookup setup page', async ({ page }) => {
     scrollWidth: lookup.scrollWidth,
     clientWidth: lookup.clientWidth,
     columns: getComputedStyle(lookup.querySelector<HTMLElement>('.craft-lookup__layout')!).gridTemplateColumns,
-    goalPicker: lookup.querySelector<HTMLElement>('.item-picker--main-goals')!.getBoundingClientRect().toJSON(),
-    goalSelection: lookup.querySelector<HTMLElement>('.item-picker--main-goals .item-picker__selected')!.getBoundingClientRect().toJSON(),
-    inventorySelection: lookup.querySelector<HTMLElement>('.item-picker:not(.item-picker--main-goals) .item-picker__selected')!.getBoundingClientRect().toJSON(),
-    lookupButton: lookup.querySelector<HTMLElement>('.item-set-editor__save-next-to-goals')!.getBoundingClientRect().toJSON(),
+    goalBorder: getComputedStyle(lookup.querySelector('.item-set-editor__goals')!).borderWidth,
+    inventorySelection: lookup.querySelector<HTMLElement>('.item-set-editor__inventory .item-picker__selected')!.getBoundingClientRect().toJSON(),
+    lookupButton: lookup.querySelector<HTMLElement>('button[aria-label="Look up crafts"]')!.getBoundingClientRect().toJSON(),
   }))
   expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth)
   expect(layout.columns.split(' ').length).toBe(1)
-  expect(layout.goalSelection.height).toBeGreaterThan(layout.inventorySelection.height)
-  expect(layout.lookupButton.left).toBeGreaterThanOrEqual(layout.goalSelection.right - 1)
-  expect(layout.lookupButton.top).toBeGreaterThanOrEqual(layout.goalSelection.top - 1)
-  expect(layout.lookupButton.bottom).toBeLessThanOrEqual(layout.goalSelection.bottom + 1)
+  expect(layout.goalBorder).toBe('0px')
+  expect(layout.lookupButton.top).toBeGreaterThanOrEqual(layout.inventorySelection.bottom)
 })
 
 test('keeps each lookup language and its expandable text-only craft previews in one row', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto('/')
   await page.getByRole('button', { name: 'craft lookup' }).click()
+  await page.getByRole('button', { name: 'Add target items' }).click()
   await page.getByRole('searchbox', { name: 'Search Goals' }).fill('stick')
   await page.getByRole('button', { name: 'Stick', exact: true }).click()
   await page.getByRole('button', { name: 'Use inventory preset Overworld' }).click()

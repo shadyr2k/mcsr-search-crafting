@@ -116,6 +116,8 @@ export interface CustomInventoryPreset {
 
 export interface TargetWorkspaceEntry {
   id: string
+  /** Optional display name shared by all language sheets; never a calculation input. */
+  name?: string
   targetIds: string[]
   inventoryItemIds: string[]
   enabled: boolean

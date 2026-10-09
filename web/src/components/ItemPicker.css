@@ -1,0 +1,51 @@
+.item-picker__search-panel,
+.item-picker__search-controls {
+  min-width: 0;
+}
+
+.item-picker__search-controls input {
+  width: 100%;
+  min-width: 0;
+}
+
+.item-picker .item-picker__search-controls input:focus {
+  outline: none;
+  box-shadow: none;
+  background: var(--panel-selected);
+}
+
+.item-picker--add .item-picker__search-panel {
+  display: grid;
+  gap: .4rem;
+}
+
+.item-picker--add .item-picker__search-controls {
+  display: flex;
+  gap: .35rem;
+}
+
+.item-picker--add .item-picker__search-controls input {
+  flex: 1 1 0;
+}
+
+.item-set-editor .item-picker--add .item-picker__selected {
+  min-height: 0;
+  align-items: center;
+}
+
+.item-picker--add .item-picker__add {
+  flex: 0 0 2rem;
+  min-height: 2rem;
+  padding: .1rem;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.item-picker.item-picker--add .item-picker__results {
+  position: static;
+  width: 100%;
+  min-width: 0;
+  max-height: min(18rem, 50dvh);
+  grid-template-columns: repeat(auto-fill, minmax(min(4.5rem, 100%), 1fr));
+  box-shadow: none;
+}

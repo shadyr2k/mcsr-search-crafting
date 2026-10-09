@@ -16,6 +16,7 @@ export function newItemSetDraft(): ItemSetDraft {
 export function draftFromEntry(entry: TargetWorkspaceEntry): ItemSetDraft {
   return {
     sourceEntryId: entry.id,
+    ...(entry.name?.trim() ? { name: entry.name.trim() } : {}),
     targetIds: [...entry.targetIds],
     inventoryItemIds: [...entry.inventoryItemIds],
     enabled: entry.enabled,
@@ -52,6 +53,7 @@ export function validateItemSetDraft(
   inventoryItems?: ReadonlyMap<string, { id: string }>,
 ): boolean {
   return typeof draft.enabled === 'boolean'
+    && (draft.name === undefined || typeof draft.name === 'string')
     && (draft.gridSize === 2 || draft.gridSize === 3)
     && (draft.retainCraftOrder === undefined || typeof draft.retainCraftOrder === 'boolean')
     && draft.targetIds.length > 0

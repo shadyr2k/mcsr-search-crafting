@@ -53,6 +53,22 @@ function ready(entryId: string, searches: RankedSearch[]) {
 }
 
 describe('crafting sheet model', () => {
+  test('uses shared names for ready, pending, disabled, and character-usage labels', () => {
+    const entries = [
+      { ...entry('tools', 0), name: '  Tools  ' },
+      { ...entry('pending', 1), name: 'Next crafts' },
+      { ...entry('disabled', 2), name: 'Optional crafts' },
+      { ...entry('unnamed', 3), name: '  ' },
+    ]
+    const model = createCraftingSheetModel(entries, new Map([
+      ['tools', ready('tools', [search('a')])],
+      ['disabled', ready('disabled', [search('z')])],
+    ]), { disabled: { disabled: true } })
+    expect(model.entries.map(({ label }) => label)).toEqual(['Tools', 'Next crafts', 'Optional crafts', 'item set 4'])
+    expect(model.disabledEntries[0].label).toBe('Optional crafts')
+    expect(model.characterUsages[0].occurrences[0].label).toBe('Tools')
+  })
+
   test('seeds the unified editor from the selected shared craft and counts its junk once', () => {
     const itemSet = { ...entry('tools', 0), targetIds: ['helmet', 'pickaxe'] }
     const shared = search('gold', 4.5)

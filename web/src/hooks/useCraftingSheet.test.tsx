@@ -56,6 +56,19 @@ function statesFor(entryId: string, searches: RankedSearch[]): ReadonlyMap<strin
 afterEach(() => localStorage.clear())
 
 describe('useCraftingSheet', () => {
+  test('renaming updates labels without resetting saved per-language craft choices', () => {
+    const itemSet = entry('tools')
+    const searches = [search('a'), search('z', 1)]
+    const states = statesFor(itemSet.id, searches)
+    const hook = renderHook(({ currentEntry }) => useCraftingSheet('en_us', [currentEntry], states), { initialProps: { currentEntry: itemSet } })
+    act(() => hook.result.current.selectItemCraft(itemSet.id, itemSet.targetIds[0], craftingSheetCraftKey(searches[1])))
+    const saved = localStorage.getItem('mcsr.crafting-sheet.v1')
+    hook.rerender({ currentEntry: { ...itemSet, name: 'Tools' } })
+    expect(hook.result.current.entries[0].label).toBe('Tools')
+    expect(hook.result.current.entries[0].queryLabel).toBe('z')
+    expect(localStorage.getItem('mcsr.crafting-sheet.v1')).toBe(saved)
+  })
+
   test('shares saved choices between language sheets mounted at the same time', () => {
     const itemSet = entry('tools')
     const searches = [search('a'), search('z', 1)]

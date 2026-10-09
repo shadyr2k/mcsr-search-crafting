@@ -3,7 +3,7 @@ import type { ItemSetDraft, TargetWorkspaceEntry } from '../domain/types'
 export const ITEM_SET_WORKSPACE_SHARE_PREFIX = 'mcsr-item-sets-v2.'
 const LEGACY_SHARE_PREFIX = 'mcsr-item-sets-v1.'
 
-export type SharedItemSetDraft = Pick<ItemSetDraft, 'targetIds' | 'inventoryItemIds' | 'enabled' | 'gridSize' | 'retainCraftOrder'>
+export type SharedItemSetDraft = Pick<ItemSetDraft, 'name' | 'targetIds' | 'inventoryItemIds' | 'enabled' | 'gridSize' | 'retainCraftOrder'>
 
 export type ItemSetWorkspaceShareParseResult =
   | { ok: true; drafts: SharedItemSetDraft[] }
@@ -16,6 +16,7 @@ type SharePayload = {
   g: 2 | 3
   e: boolean
   r: boolean
+  n?: string
 }
 
 type WorkspaceSharePayload = {
@@ -25,12 +26,13 @@ type WorkspaceSharePayload = {
 
 // Item names and identical inventories are stored once for the whole collection.
 // A set tuple contains goal references, an inventory reference, and three flags:
-// bit 0 = 2x2 grid, bit 1 = enabled, bit 2 = retain craft order.
+// bit 0 = 2x2 grid, bit 1 = enabled, bit 2 = retain craft order. The optional
+// fourth element is the user-supplied display name; old three-element sets remain valid.
 type CompactWorkspaceSharePayload = {
   v: 2
   d: string[]
   i: number[][]
-  s: [number[], number, number][]
+  s: [number[], number, number, string?][]
 }
 
 interface AvailableItems {
@@ -72,13 +74,14 @@ function isStringArray(value: unknown): value is string[] {
 function isSharePayload(value: unknown): value is SharePayload {
   if (!isRecord(value)) return false
   const keys = Object.keys(value).sort()
-  if (keys.join(',') !== 'e,g,i,r,t,v') return false
+  if (keys.filter((key) => key !== 'n').join(',') !== 'e,g,i,r,t,v') return false
   return value.v === 1
     && isStringArray(value.t)
     && isStringArray(value.i)
     && (value.g === 2 || value.g === 3)
     && typeof value.e === 'boolean'
     && typeof value.r === 'boolean'
+    && (value.n === undefined || typeof value.n === 'string')
 }
 
 function toSharePayload(draft: SharedItemSetDraft): SharePayload {
@@ -90,6 +93,7 @@ function toSharePayload(draft: SharedItemSetDraft): SharePayload {
     g: draft.gridSize,
     e: draft.enabled,
     r: draft.retainCraftOrder === true,
+    ...(draft.name?.trim() ? { n: draft.name.trim() } : {}),
   }
 }
 
@@ -100,6 +104,7 @@ function toDraft(payload: SharePayload): SharedItemSetDraft {
     gridSize: payload.g,
     enabled: payload.e,
     retainCraftOrder: payload.r,
+    ...(payload.n?.trim() ? { name: payload.n.trim() } : {}),
   }
 }
 
@@ -135,16 +140,16 @@ function expandCompactPayload(value: unknown): WorkspaceSharePayload | undefined
   if (inventories.some((inventory) => inventory === undefined)) return undefined
   const sets: SharePayload[] = []
   for (const set of value.s) {
-    if (!Array.isArray(set) || set.length !== 3 || !isReference(set[1], inventories.length) || !isReference(set[2], 8)) return undefined
+    if (!Array.isArray(set) || (set.length !== 3 && set.length !== 4) || (set.length === 4 && typeof set[3] !== 'string') || !isReference(set[1], inventories.length) || !isReference(set[2], 8)) return undefined
     const targets = expandReferences(set[0])
     if (!targets) return undefined
-    sets.push({ v: 1, t: targets, i: inventories[set[1]]!, g: set[2] & 1 ? 2 : 3, e: Boolean(set[2] & 2), r: Boolean(set[2] & 4) })
+    sets.push({ v: 1, t: targets, i: inventories[set[1]]!, g: set[2] & 1 ? 2 : 3, e: Boolean(set[2] & 2), r: Boolean(set[2] & 4), ...(set[3] ? { n: set[3] } : {}) })
   }
   return { v: 1, s: sets }
 }
 
 /** Produces a compact, versioned code for the ordered collection of item sets. */
-export function createItemSetWorkspaceShareCode(entries: readonly Pick<TargetWorkspaceEntry, 'targetIds' | 'inventoryItemIds' | 'enabled' | 'gridSize' | 'retainCraftOrder'>[]): string {
+export function createItemSetWorkspaceShareCode(entries: readonly Pick<TargetWorkspaceEntry, 'name' | 'targetIds' | 'inventoryItemIds' | 'enabled' | 'gridSize' | 'retainCraftOrder'>[]): string {
   const payload: CompactWorkspaceSharePayload = { v: 2, d: [], i: [], s: [] }
   const itemReferences = new Map<string, number>()
   const inventoryReferences = new Map<string, number>()
@@ -167,7 +172,7 @@ export function createItemSetWorkspaceShareCode(entries: readonly Pick<TargetWor
       payload.i.push(inventory)
     }
     const flags = (entry.g === 2 ? 1 : 0) | (entry.e ? 2 : 0) | (entry.r ? 4 : 0)
-    payload.s.push([targets, inventoryReference, flags])
+    payload.s.push(entry.n ? [targets, inventoryReference, flags, entry.n] : [targets, inventoryReference, flags])
   }
   return `${ITEM_SET_WORKSPACE_SHARE_PREFIX}${encodeBase64Url(JSON.stringify(payload))}`
 }

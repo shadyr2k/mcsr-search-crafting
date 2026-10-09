@@ -6,7 +6,10 @@ import { applyInventoryPreset, normalizeDraftGrid, validateItemSetDraft } from '
 import { GridSizeSwitch } from './GridSizeSwitch'
 import { ItemIcon } from './ItemIcon'
 import { ItemPicker } from './ItemPicker'
+import { SavedInventories } from './SavedInventories'
+import { SegmentedControl } from './SegmentedControl'
 import { isScrollbarPointer } from './outsidePointer'
+import './ItemSetEditor.css'
 
 export type ItemSetEditorState = {
   kind: 'new' | 'existing'
@@ -41,10 +44,6 @@ interface ItemSetEditorProps {
   hidePresetIcons?: boolean
 }
 
-function unique(ids: readonly string[]): string[] {
-  return [...new Set(ids)].sort()
-}
-
 function presetIconId(presetId: string): string | undefined {
   if (presetId === 'overworld') return 'minecraft:chest'
   if (presetId === 'nether-bastion') return 'minecraft:gold_block'
@@ -77,7 +76,6 @@ export function ItemSetEditor({
 }: ItemSetEditorProps) {
   const { draft } = state
   const editorRef = useRef<HTMLElement>(null)
-  const [customSlotNames, setCustomSlotNames] = useState(() => customSlots.map((slot) => slot?.name ?? ''))
   const [openPickers, setOpenPickers] = useState({ goals: false, inventory: false })
   const valid = validateItemSetDraft(draft, data.items, data.inventoryItems)
   const inventoryPresets = [
@@ -85,12 +83,6 @@ export function ItemSetEditor({
       ...preset,
       iconItemId: presetIconId(preset.id),
     })),
-    ...customSlots.flatMap((preset, index) => preset ? [{
-      id: `custom-${index}`,
-      name: preset.name || `custom inventory ${index + 1}`,
-      itemIds: preset.itemIds,
-      iconItemId: undefined,
-    }] : []),
   ]
 
   useEffect(() => {
@@ -113,16 +105,6 @@ export function ItemSetEditor({
     setOpenPickers((current) => current[picker] === open ? current : { ...current, [picker]: open })
   }
 
-  function saveCustomSlot(index: number) {
-    const name = customSlotNames[index]?.trim() ?? ''
-    onSaveCustomSlot(index, { name, itemIds: unique(draft.inventoryItemIds) })
-  }
-
-  function clearCustomSlot(index: number) {
-    onClearCustomSlot(index)
-    setCustomSlotNames((current) => current.map((name, nameIndex) => nameIndex === index ? '' : name))
-  }
-
   function deleteEntry() {
     if (onDelete && window.confirm(`Delete item set ${entryNumber ?? ''}?`)) onDelete()
   }
@@ -133,7 +115,7 @@ export function ItemSetEditor({
   const resolvedCancelLabel = cancelLabel ?? 'Cancel'
   const saveAction = <button
     type="button"
-    className={saveNextToGoals ? 'item-set-editor__save-next-to-goals' : undefined}
+    className={"item-set-editor__primary" + (saveNextToGoals ? ' item-set-editor__save-next-to-goals' : '')}
     aria-label={saveButtonLabel}
     onClick={() => onSave({ draft })}
     disabled={!valid}
@@ -145,6 +127,8 @@ export function ItemSetEditor({
     <ItemPicker
       items={pickerData?.items ?? data.items}
       label="Goals"
+      displayLabel="Target items"
+      revealOnAdd
       selectedIds={draft.targetIds}
       preserveSelectionOrder
       manifest={icons}
@@ -153,37 +137,28 @@ export function ItemSetEditor({
       onOpenChange={(open) => setPickerOpen('goals', open)}
       onChange={(targetIds) => updateDraft({ ...draft, targetIds })}
     />
-    <GridSizeSwitch
-      value={draft.gridSize}
-      targetIds={draft.targetIds}
-      recipes={data.recipes}
-      compactLayout={compactLayout}
-      onChange={(gridSize) => updateDraft({ ...draft, gridSize })}
-    />
-    <div className={`craft-order-switch${compactLayout ? ' craft-order-switch--options' : ''}`}>
-      <span className="craft-order-switch__title">retain item order</span>
-      {compactLayout
-        ? <div className="craft-order-switch__options" role="group" aria-label="Retain item order">
-          <button type="button" aria-pressed={draft.retainCraftOrder !== true} onClick={() => updateDraft({ ...draft, retainCraftOrder: false })}>disabled</button>
-          <button type="button" aria-pressed={draft.retainCraftOrder === true} onClick={() => updateDraft({ ...draft, retainCraftOrder: true })}>enabled</button>
-        </div>
-        : <>
-          <span className="craft-order-switch__label">disabled</span>
-          <button
-            type="button"
-            role="switch"
-            className="craft-order-switch__control"
-            aria-label="Retain item order"
-            aria-checked={draft.retainCraftOrder === true}
-            onClick={() => updateDraft({ ...draft, retainCraftOrder: draft.retainCraftOrder !== true })}
-          >
-            <span className="craft-order-switch__thumb" aria-hidden="true" />
-          </button>
-          <span className="craft-order-switch__label">enabled</span>
-        </>}
-    </div>
+    <section className="item-set-editor__rules" aria-label="Rules">
+      <h3>Rules</h3>
+      <GridSizeSwitch
+        value={draft.gridSize}
+        targetIds={draft.targetIds}
+        recipes={data.recipes}
+        compactLayout={compactLayout}
+        segmented
+        onChange={(gridSize) => updateDraft({ ...draft, gridSize })}
+      />
+      <div className="craft-order-switch craft-order-switch--segmented">
+        <span className="craft-order-switch__title">retain item order</span>
+        <SegmentedControl
+          label="Retain item order"
+          value={draft.retainCraftOrder === true ? 'enabled' : 'disabled'}
+          options={[{ value: 'disabled', label: 'disabled' }, { value: 'enabled', label: 'enabled' }]}
+          onChange={(value) => updateDraft({ ...draft, retainCraftOrder: value === 'enabled' })}
+        />
+      </div>
+    </section>
     <div className="item-set-editor__presets" aria-label="Inventory presets">
-      <span>Inventory preset</span>
+      <h3>Inventory presets</h3>
       <div className="item-set-editor__preset-grid">
         {inventoryPresets.map((preset) => <button
           key={preset.id}
@@ -201,30 +176,27 @@ export function ItemSetEditor({
     <ItemPicker
       items={pickerData?.inventoryItems ?? data.inventoryItems}
       label="Inventory"
+      displayLabel="Inventory items"
+      revealOnAdd
       className="item-set-editor__inventory"
       selectedIds={draft.inventoryItemIds}
       manifest={icons}
       onOpenChange={(open) => setPickerOpen('inventory', open)}
       onChange={(inventoryItemIds) => updateDraft({ ...draft, inventoryItemIds })}
     />
-    <div className="custom-slots" aria-label="Custom inventory slots">
-      {customSlots.map((_, index) => <div key={index} className="custom-slots__row">
-        <input
-          aria-label={`Custom inventory ${index + 1}`}
-          placeholder={`custom inventory ${index + 1}`}
-          value={customSlotNames[index] ?? ''}
-          onChange={(event) => setCustomSlotNames((current) => current.map(
-            (name, nameIndex) => nameIndex === index ? event.target.value : name,
-          ))}
-        />
-        <button type="button" aria-label={`Save custom inventory ${index + 1}`} onClick={() => saveCustomSlot(index)}>Save</button>
-        <button type="button" aria-label={`Clear custom inventory ${index + 1}`} onClick={() => clearCustomSlot(index)}>Clear</button>
-      </div>)}
-    </div>
+    <SavedInventories
+      customSlots={customSlots}
+      inventoryItemIds={draft.inventoryItemIds}
+      onLoad={(preset) => updateDraft(applyInventoryPreset(draft, preset))}
+      onSave={onSaveCustomSlot}
+      onDelete={onClearCustomSlot}
+    />
     <div className="item-set-editor__actions">
-      {!saveNextToGoals && saveAction}
-      <button type="button" onClick={onCancel}>{resolvedCancelLabel}</button>
-      {state.kind === 'existing' && onDelete && <button type="button" aria-label="Delete item set" onClick={deleteEntry}>Delete</button>}
+      <div className="item-set-editor__commit-actions">
+        {!saveNextToGoals && saveAction}
+        <button type="button" onClick={onCancel}>{resolvedCancelLabel}</button>
+      </div>
+      {state.kind === 'existing' && onDelete && <button type="button" className="item-set-editor__delete" aria-label="Delete item set" onClick={deleteEntry}>Delete</button>}
     </div>
   </section>
 }

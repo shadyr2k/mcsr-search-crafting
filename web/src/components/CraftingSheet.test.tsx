@@ -4,9 +4,15 @@ import '@testing-library/jest-dom/vitest'
 
 import type { RankedSearch, RowOptimizationState, TargetWorkspaceEntry } from '../domain/types'
 import { createCraftingSheetModel } from '../engine/craftingSheet'
-import { CraftingSheet, CraftQueryInput, type CraftingSheetProps } from './CraftingSheet'
+import { CraftingSheet, CraftQueryInput, SheetDisclosure, type CraftingSheetProps } from './CraftingSheet'
 
 afterEach(cleanup)
+
+function finishClosing(details: Element) {
+  const event = new Event('animationend', { bubbles: true })
+  Object.defineProperty(event, 'animationName', { value: 'crafting-sheet-details-conceal' })
+  fireEvent(details, event)
+}
 
 function search(query: string, target = 'bed'): RankedSearch {
   const score = Math.max(0, query.length - 2)
@@ -34,6 +40,106 @@ function props(): CraftingSheetProps {
 }
 
 describe('CraftingSheet', () => {
+  test('renames above the craft-search divider on blur or Enter and cancels with Escape', () => {
+    const onRenameEntry = vi.fn()
+    const input = props()
+    const { rerender } = render(<CraftingSheet {...input} onRenameEntry={onRenameEntry} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Expand item set 1' }))
+    const name = screen.getByRole('textbox', { name: 'Item set name' })
+    expect(name).toHaveValue('item set 1')
+    fireEvent.change(name, { target: { value: '  Nether supplies  ' } })
+    fireEvent.blur(name)
+    expect(onRenameEntry).toHaveBeenLastCalledWith('bed-anchor', 'Nether supplies')
+    rerender(<CraftingSheet {...input} entries={[{ ...input.entries[0], label: 'Nether supplies' }]} onRenameEntry={onRenameEntry} />)
+    expect(name).toHaveValue('Nether supplies')
+    name.focus()
+    fireEvent.change(name, { target: { value: 'Discard me' } })
+    fireEvent.keyDown(name, { key: 'Escape' })
+    expect(name).toHaveValue('Nether supplies')
+    expect(onRenameEntry).toHaveBeenCalledTimes(1)
+    name.focus()
+    fireEvent.change(name, { target: { value: '' } })
+    fireEvent.keyDown(name, { key: 'Enter' })
+    expect(onRenameEntry).toHaveBeenLastCalledWith('bed-anchor', '')
+  })
+  test('retains closing contents inert until the closing animation finishes', () => {
+    const { container } = render(<CraftingSheet {...props()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Expand item set 1' }))
+    fireEvent.focus(screen.getByRole('searchbox', { name: 'Craft query for bed' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse item set 1' }))
+    const closing = container.querySelector('.crafting-sheet__details--closing')!
+    expect(closing).toHaveAttribute('inert')
+    expect(closing.querySelector('.keyboard-playback')).toBeTruthy()
+    expect(closing.querySelector('.crafting-sheet__entry-body')).toBeTruthy()
+    expect(screen.queryByRole('list', { name: 'Calculated craft suggestions for bed' })).toBeNull()
+    finishClosing(closing)
+    expect(closing.querySelector('.crafting-sheet__entry-body')).toBeNull()
+  })
+
+  test.each(['preference', 'setting'] as const)('skips delayed close for reduced motion via %s', (source) => {
+    const matchMedia = window.matchMedia
+    if (source === 'preference') window.matchMedia = vi.fn().mockReturnValue({ matches: true })
+    try {
+      const { rerender } = render(<SheetDisclosure id="reduced" open removeAnimations={source === 'setting'}><button>Child control</button></SheetDisclosure>)
+      rerender(<SheetDisclosure id="reduced" open={false} removeAnimations={source === 'setting'}><button>Child control</button></SheetDisclosure>)
+      expect(document.getElementById('reduced')).toBeNull()
+    } finally {
+      window.matchMedia = matchMedia
+    }
+  })
+
+  test('ignores stale close completion after reopening and completes a later close without an event', () => {
+    vi.useFakeTimers()
+    try {
+      const { rerender } = render(<SheetDisclosure id="reversal" open><button>Child control</button></SheetDisclosure>)
+      rerender(<SheetDisclosure id="reversal" open={false}><button>Child control</button></SheetDisclosure>)
+      const closing = document.getElementById('reversal')!
+      rerender(<SheetDisclosure id="reversal" open><button>Child control</button></SheetDisclosure>)
+      const event = new Event('animationend', { bubbles: true })
+      Object.defineProperty(event, 'animationName', { value: 'crafting-sheet-details-conceal' })
+      fireEvent(closing, event)
+      act(() => vi.advanceTimersByTime(300))
+      expect(screen.getByRole('button', { name: 'Child control' })).toBeVisible()
+      rerender(<SheetDisclosure id="reversal" open={false}><button>Child control</button></SheetDisclosure>)
+      act(() => vi.advanceTimersByTime(300))
+      expect(document.getElementById('reversal')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+  test('pages dedicated-sheet item sets and keeps every entry reachable', () => {
+    const input = props()
+    const entries = Array.from({ length: 24 }, (_, index) => ({ ...input.entries[0], id: `entry-${index}`, label: `item set ${index + 1}` }))
+    render(<CraftingSheet {...input} layout="page" entries={entries} />)
+
+    expect(screen.getByRole('button', { name: 'Previous item-set columns' })).toBeDisabled()
+    expect(screen.getByRole('region', { name: 'item set 10' })).toBeVisible()
+    expect(screen.queryByRole('region', { name: 'item set 11' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Next item-set columns' }))
+    expect(screen.getByRole('region', { name: 'item set 11' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Expand item set 11' }))
+    expect(screen.getByRole('searchbox', { name: 'Craft query for bed' })).toBeVisible()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Include item set 11' }))
+    expect(input.onSetEntryDisabled).toHaveBeenCalledWith('entry-10', true)
+    fireEvent.click(screen.getByRole('button', { name: 'Next item-set columns' }))
+    expect(screen.getByRole('region', { name: 'item set 24' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Next item-set columns' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Previous item-set columns' }))
+    expect(screen.getByRole('button', { name: 'Collapse item set 11' })).toBeVisible()
+  })
+
+  test('clamps the selected page when item sets are removed', () => {
+    const input = props()
+    const entries = Array.from({ length: 24 }, (_, index) => ({ ...input.entries[0], id: `entry-${index}`, label: `item set ${index + 1}` }))
+    const { rerender } = render(<CraftingSheet {...input} layout="page" entries={entries} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Next item-set columns' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Next item-set columns' }))
+    rerender(<CraftingSheet {...input} layout="page" entries={entries.slice(0, 5)} />)
+    expect(screen.getByRole('region', { name: 'item set 1' })).toBeVisible()
+    expect(screen.getByRole('region', { name: 'item set 5' })).toBeVisible()
+    expect(screen.queryByRole('navigation', { name: 'Item-set pages' })).not.toBeInTheDocument()
+  })
+
   test('opens a cheat sheet with totals and all item sets immediately reachable', () => {
     render(<CraftingSheet {...props()} defaultOpen={false} />)
     const toggle = screen.getByRole('button', { name: 'crafting sheet' })
@@ -76,6 +182,13 @@ describe('CraftingSheet', () => {
     expect(screen.queryByText('create a custom craft sheet')).toBeNull()
     expect(screen.queryByText(/Character counts include spaces/)).toBeNull()
     expect(screen.getByRole('button', { name: 'Back to english crafts' })).toBeVisible()
+    const back = screen.getByRole('button', { name: 'Back to english crafts' })
+    const reset = screen.getByRole('button', { name: 'reset sheet' })
+    expect(back.parentElement).toBe(reset.parentElement)
+    expect(back).toHaveClass('page-navigation')
+    expect(reset).toHaveClass('title-font-action')
+    fireEvent.click(reset)
+    expect(input.onReset).toHaveBeenCalledOnce()
     expect(screen.getByLabelText('Character occurrence bar chart')).toBeVisible()
     expect(container.querySelector('.crafting-sheet__panel--page > .crafting-sheet__page-info')).toBeTruthy()
     expect(container.querySelector('.crafting-sheet__page-characters .crafting-sheet__character-set-block')).toBeTruthy()
@@ -160,6 +273,7 @@ describe('CraftingSheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Expand item set 2' }))
     expect(screen.getByRole('button', { name: 'Expand item set 1' })).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByRole('button', { name: 'Collapse item set 2' })).toHaveAttribute('aria-expanded', 'true')
+    finishClosing(container.querySelector('.crafting-sheet__details--closing')!)
     expect(container.querySelectorAll('.crafting-sheet__entry-body')).toHaveLength(1)
     expect(container.querySelectorAll('.keyboard-playback')).toHaveLength(1)
     expect(screen.queryByRole('list', { name: 'Calculated craft suggestions for bed' })).toBeNull()
@@ -179,6 +293,8 @@ describe('CraftingSheet', () => {
     const details = document.getElementById(toggle.getAttribute('aria-controls')!)!
     expect(details).toHaveAttribute('aria-hidden', 'true')
     expect(details).toHaveAttribute('inert')
+    expect(within(details).queryAllByRole('searchbox', { hidden: true }).length).toBeGreaterThan(0)
+    finishClosing(details)
     expect(within(details).queryAllByRole('searchbox', { hidden: true })).toHaveLength(0)
     expect(screen.queryByRole('searchbox', { name: 'Craft query for bed' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'crafting sheet' }))

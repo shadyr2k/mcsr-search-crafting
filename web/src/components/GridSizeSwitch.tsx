@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 
 import type { CraftingRecipe } from '../domain/types'
+import { SegmentedControl } from './SegmentedControl'
 
 interface GridSizeSwitchProps {
   value: 2 | 3
@@ -8,6 +9,7 @@ interface GridSizeSwitchProps {
   recipes: readonly CraftingRecipe[]
   onChange: (gridSize: 2 | 3) => void
   compactLayout?: boolean
+  segmented?: boolean
 }
 
 function needs3x3(targetIds: readonly string[], recipes: readonly CraftingRecipe[]): boolean {
@@ -16,7 +18,7 @@ function needs3x3(targetIds: readonly string[], recipes: readonly CraftingRecipe
   )))
 }
 
-export function GridSizeSwitch({ value, targetIds, recipes, onChange, compactLayout = false }: GridSizeSwitchProps) {
+export function GridSizeSwitch({ value, targetIds, recipes, onChange, compactLayout = false, segmented = false }: GridSizeSwitchProps) {
   const requires3x3 = needs3x3(targetIds, recipes)
   const displayedValue = requires3x3 ? 3 : value
   const forcedKey = `${targetIds.join('\u0000')}\u0000${value}`
@@ -29,6 +31,16 @@ export function GridSizeSwitch({ value, targetIds, recipes, onChange, compactLay
     }
     if (!requires3x3 || value === 3) lastForcedKey.current = undefined
   }, [forcedKey, onChange, requires3x3, value])
+
+  if (segmented) return <div className="grid-size-switch grid-size-switch--segmented">
+    <span className="grid-size-switch__title">crafting grid</span>
+    <SegmentedControl
+      label="Crafting grid size"
+      value={String(displayedValue)}
+      options={[{ value: '2', label: '2×2', disabled: requires3x3 }, { value: '3', label: '3×3' }]}
+      onChange={(next) => onChange(next === '2' ? 2 : 3)}
+    />
+  </div>
 
   if (compactLayout) return <div className="grid-size-switch grid-size-switch--options">
     <span className="grid-size-switch__title">craft space</span>

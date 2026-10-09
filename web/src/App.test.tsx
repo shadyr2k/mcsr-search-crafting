@@ -94,9 +94,11 @@ describe('App workspace composition', () => {
     ])
     expect(within(screen.getByRole('region', { name: 'Language choices' })).getByRole('button', { name: 'english - english (united states)' }).getAttribute('aria-pressed')).toBe('true')
     expect(screen.getByAltText('Stick')).toBeTruthy()
-    expect(screen.getByRole('heading', { name: 'english (us) search crafts' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'english (us) — english (united states)' })).toBeTruthy()
+    expect(within(screen.getByRole('region', { name: 'Calculated searches' })).getByText('Results')).toBeTruthy()
+    expect(document.querySelector('.results-column > .crafting-sheet')).toBeNull()
     expect(screen.getByText('optimize recipe book results')).toBeTruthy()
-    expect(document.querySelector('.results-column .crafting-sheet__action .arrow-sprite')?.classList.contains('arrow-sprite--right')).toBe(true)
+    expect(document.querySelector('.results-header__action .arrow-sprite')?.classList.contains('arrow-sprite--right')).toBe(true)
   })
 
   test('animates the crafting sheet into view without blocking navigation', async () => {
@@ -167,7 +169,7 @@ describe('App workspace composition', () => {
     expect(screen.getAllByRole('region', { name: 'New item set' })).toHaveLength(1)
     expect(document.querySelector('.item-set-editor-overlay')).toBeTruthy()
     expect(JSON.parse(localStorage.getItem(workspaceKey) ?? '{"entries":[]}').entries).toEqual([])
-    fireEvent.click(screen.getByRole('searchbox', { name: 'Search Goals' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add target items' }))
     fireEvent.click(screen.getByRole('button', { name: 'Stick' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save item set' }))
     await waitFor(() => expect(JSON.parse(localStorage.getItem(workspaceKey)!).entries).toEqual([
@@ -208,15 +210,16 @@ describe('App workspace composition', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'craft lookup' }))
 
     expect(await screen.findByRole('region', { name: 'lookup setup' })).toBeTruthy()
-    expect(screen.getByRole('searchbox', { name: 'Search Goals' })).toBeTruthy()
+    expect(screen.queryByRole('searchbox', { name: 'Search Goals' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Add target items' })).toBeTruthy()
     expect((screen.getByRole('button', { name: 'Look up crafts' }) as HTMLButtonElement).disabled).toBe(true)
-    expect(document.querySelector('.craft-lookup__empty')?.textContent).toContain('Choose goals and an inventory')
+    expect(document.querySelector('.craft-lookup__empty')?.textContent).toContain('Choose target items and an inventory')
 
-    fireEvent.click(screen.getByRole('searchbox', { name: 'Search Goals' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add target items' }))
     fireEvent.click(screen.getByRole('button', { name: 'Stick' }))
     fireEvent.click(screen.getByRole('button', { name: 'Look up crafts' }))
     expect(await screen.findByRole('heading', { name: 'best languages' })).toBeTruthy()
-    expect(screen.getByRole('heading', { name: 'no viable craft' })).toBeTruthy()
+    expect(await screen.findByRole('region', { name: 'no viable craft' })).toBeTruthy()
   })
 
   test('keeps the Craft Lookup goals while navigating without persisting them after reload', async () => {
@@ -224,7 +227,7 @@ describe('App workspace composition', () => {
     render(<App />)
     fireEvent.click(await screen.findByRole('button', { name: 'craft lookup' }))
     await screen.findByRole('region', { name: 'lookup setup' })
-    fireEvent.click(screen.getByRole('searchbox', { name: 'Search Goals' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add target items' }))
     fireEvent.click(screen.getByRole('button', { name: 'Stick' }))
     expect(screen.getByRole('button', { name: 'Remove Stick' })).toBeTruthy()
 
@@ -253,7 +256,7 @@ describe('App workspace composition', () => {
     render(<App />)
     await screen.findByRole('button', { name: 'Edit item set 1' })
     fireEvent.click(screen.getByRole('button', { name: 'Edit item set 1' }))
-    fireEvent.click(screen.getByRole('searchbox', { name: 'Search Inventory' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add inventory items' }))
     fireEvent.click(screen.getByRole('button', { name: 'Bucket' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save item set' }))
 
@@ -274,10 +277,10 @@ describe('App workspace composition', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'german - deutsch (deutschland)' }))
 
     expect((await screen.findAllByAltText('Stock')).length).toBeGreaterThan(0)
-    expect(screen.getByRole('heading', { name: 'german search crafts' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'german — deutsch (deutschland)' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Edit item set 1' }))
     expect(screen.getByRole('button', { name: 'Remove Stick' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('searchbox', { name: 'Search Inventory' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add inventory items' }))
     expect(screen.getByRole('button', { name: 'Bucket' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Eimer' })).toBeNull()
   })
@@ -334,7 +337,7 @@ describe('App workspace composition', () => {
     stubData()
     render(<App />)
     fireEvent.click(await screen.findByRole('button', { name: 'german - deutsch (deutschland)' }))
-    await screen.findByRole('heading', { name: 'german search crafts' })
+    await screen.findByRole('heading', { name: 'german — deutsch (deutschland)' })
     const sharedLanguageSelector = document.querySelector('.language-selector')
     fireEvent.click(screen.getByRole('button', { name: 'language info' }))
 
@@ -355,7 +358,7 @@ describe('App workspace composition', () => {
     stubData()
     render(<App />)
     fireEvent.click(await screen.findByRole('button', { name: 'hebrew - עברית (ישראל)' }))
-    await screen.findByRole('heading', { name: 'hebrew search crafts' })
+    await screen.findByRole('heading', { name: 'hebrew — עברית (ישראל)' })
     fireEvent.click(screen.getByRole('button', { name: 'language info' }))
 
     expect((await screen.findByText('קל')).getAttribute('dir')).toBe('rtl')

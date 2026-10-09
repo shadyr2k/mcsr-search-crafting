@@ -50,6 +50,39 @@ function ready(outcome: EntryOptimizationOutcome): LanguageComparisonState {
 }
 
 describe('LanguageComparison', () => {
+  test('shows shared item-set names in comparison rows and compact navigation without a name editor', () => {
+    const namedEntry = { ...entry, name: 'Tools & arrows' }
+    render(<LanguageComparison baseData={data} entries={[namedEntry]} languages={languages} selectedLocale="en_us" icons={icons} dataBaseUrl="/" scoringSettings={DEFAULT_SCORING_SETTINGS} itemIdSearch={false} layout="page" compactLayout />)
+    fireEvent.click(screen.getByRole('button', { name: /^compare$/i }))
+    const row = screen.getByRole('region', { name: 'Item set 1 comparison' })
+    expect(within(row).getByText('Tools & arrows')).toBeTruthy()
+    expect(within(screen.getByRole('combobox', { name: 'Compared item set' })).getByRole('option', { name: 'Tools & arrows' })).toBeTruthy()
+    expect(within(row).queryByRole('textbox')).toBeNull()
+  })
+
+  test('places the calculated overview in setup below Compare and keeps item sets in results', () => {
+    comparisonStates.set('en_us', ready({ kind: 'ranked', entryId: entry.id, rankedSearches: [search('cat', 0, 3)], bestScore: 3, visibleItemIds: [] }))
+    comparisonStates.set('de_de', ready({ kind: 'ranked', entryId: entry.id, rankedSearches: [search('dog', 0, 3)], bestScore: 3, visibleItemIds: [] }))
+    render(<LanguageComparison baseData={data} entries={[entry]} languages={languages} selectedLocale="en_us" icons={icons} dataBaseUrl="/" scoringSettings={DEFAULT_SCORING_SETTINGS} itemIdSearch={false} layout="page" />)
+
+    const setup = screen.getByRole('region', { name: 'Comparison setup' })
+    const results = screen.getByRole('region', { name: 'Comparison results' })
+    const heading = within(setup).getByRole('heading', { name: 'compare languages' })
+    const back = within(setup).getByRole('button', { name: 'Back to crafts' })
+    expect(heading.parentElement).toBe(back.parentElement)
+    expect(back.contains(heading)).toBe(false)
+    expect(within(setup).getByRole('combobox', { name: 'Language 1' })).toBeTruthy()
+    expect(within(setup).getByRole('combobox', { name: 'Language 2' })).toBeTruthy()
+    expect(within(results).getByLabelText(/Language positions:/)).toBeTruthy()
+    expect(screen.queryByRole('complementary', { name: 'Overall language comparison' })).toBeNull()
+    fireEvent.click(within(setup).getByRole('button', { name: /^compare$/i }))
+    const overview = within(setup).getByRole('complementary', { name: 'Overall language comparison' })
+    const itemSets = within(results).getByRole('region', { name: 'Compared item sets' })
+    expect(overview.compareDocumentPosition(itemSets) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(setup).getByRole('button', { name: /^compare$/i }).compareDocumentPosition(overview) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(results).queryByRole('complementary', { name: 'Overall language comparison' })).toBeNull()
+  })
+
   test('uses the shared searchable language dropdown for comparison choices', () => {
     render(<LanguageComparison
       baseData={data}
@@ -63,9 +96,9 @@ describe('LanguageComparison', () => {
     />)
 
     fireEvent.click(screen.getByRole('button', { name: /compare languages/i }))
-    const leftLanguage = screen.getByRole('combobox', { name: 'Left comparison language' })
+    const leftLanguage = screen.getByRole('combobox', { name: 'Language 1' })
     fireEvent.focus(leftLanguage)
-    const choices = screen.getByRole('region', { name: 'Left comparison language choices' })
+    const choices = screen.getByRole('region', { name: 'Language 1 choices' })
     fireEvent.click(within(choices).getByRole('option', { name: 'german - deutsch (deutschland)' }))
 
     expect((leftLanguage as HTMLInputElement).value).toBe('german - deutsch (deutschland)')
@@ -93,7 +126,7 @@ describe('LanguageComparison', () => {
     />)
 
     fireEvent.click(screen.getByRole('button', { name: /compare languages/i }))
-    expect(screen.getByRole('combobox', { name: 'Left comparison language' })).toBeTruthy()
+    expect(screen.getByRole('combobox', { name: 'Language 1' })).toBeTruthy()
     expect(screen.getByText(/press compare to calculate/i)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /^compare$/i }))
     fireEvent.click(screen.getByRole('button', { name: 'Expand item set 1 comparison' }))
@@ -162,7 +195,7 @@ describe('LanguageComparison', () => {
     expect(screen.getAllByRole('region', { name: /item set \d comparison/i })).toHaveLength(1)
     expect(screen.getByRole('combobox', { name: 'Compared item set' })).toBeTruthy()
     expect(screen.getByText('item set scores')).toBeTruthy()
-    expect(screen.getByLabelText(/Language positions:/).textContent).toMatch(/left.*english.*right.*german/i)
+    expect(screen.getByLabelText(/Language positions:/).textContent).toMatch(/language 1.*english.*language 2.*german/i)
     fireEvent.click(screen.getByRole('button', { name: 'Back to crafts' }))
     expect(onBack).toHaveBeenCalledTimes(1)
   })

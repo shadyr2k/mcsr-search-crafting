@@ -10,9 +10,10 @@ import { ItemSetEditor, type ItemSetEditorCommit, type ItemSetEditorState } from
 import { ItemSetWorkspace } from './components/ItemSetWorkspace'
 import { LanguageInfoPanel } from './components/LanguageInfoPanel'
 import { RecipeBookSim } from './components/RecipeBookSim'
+import { ResultsHeader } from './components/ResultsHeader'
 import { SettingsPage } from './components/SettingsPage'
 import { PageTutorial, pageTutorials } from './components/PageTutorial'
-import { englishLocaleName, isBannedLocale, isRtlLocale, LanguageSelector } from './components/LanguageSelector'
+import { englishLocaleName, isBannedLocale, isRtlLocale, languageDisplayName, LanguageSelector } from './components/LanguageSelector'
 import { assertIconCoverage, loadIconManifest, loadIconOverrides, type IconManifest, withIconOverrides } from './data/iconManifest'
 import { gameVersionForId, supportedGameVersions } from './data/gameVersions'
 import { loadGeneratedData, loadLanguageMetadata, loadLocalizedGeneratedData } from './data/schema'
@@ -30,6 +31,8 @@ import { VersionPicker } from './components/VersionPicker'
 import { draftFromEntry, newItemSetDraft } from './workspace/entryDraft'
 import type { SharedItemSetDraft } from './workspace/itemSetShare'
 import { starterWorkspace } from './workspace/starterWorkspace'
+import { renameWorkspaceEntry } from './workspace/entryName'
+import './ButtonTypography.css'
 
 const catifySupportedLocally = import.meta.env.DEV
 
@@ -482,14 +485,14 @@ function App() {
           <h1>MCSR search crafting</h1>
           <p className="app-header__subtitle">optimize recipe book results</p>
         </div>
-        <nav className="app-header__nav" aria-label="Main navigation">
-          <button type="button" className="app-header__nav-search-crafting" aria-current={page === 'home' ? 'page' : undefined} onClick={() => selectPage('home')}>search crafting</button>
-          <button type="button" aria-current={page === 'language-info' ? 'page' : undefined} onClick={() => selectPage('language-info')}>language info</button>
-          <button type="button" aria-current={page === 'craft-lookup' ? 'page' : undefined} onClick={() => selectPage('craft-lookup')}>craft lookup</button>
-          <button type="button" aria-current={page === 'recipe-book-sim' ? 'page' : undefined} onClick={() => selectPage('recipe-book-sim')}>recipe book sim</button>
-          <button type="button" aria-current={page === 'settings' ? 'page' : undefined} onClick={() => selectPage('settings')}>settings</button>
-        </nav>
       </div>
+      <nav className="app-header__nav" aria-label="Main navigation">
+        <button type="button" className="app-header__nav-search-crafting" aria-current={page === 'home' ? 'page' : undefined} onClick={() => selectPage('home')}>search crafting</button>
+        <button type="button" aria-current={page === 'language-info' ? 'page' : undefined} onClick={() => selectPage('language-info')}>language info</button>
+        <button type="button" aria-current={page === 'craft-lookup' ? 'page' : undefined} onClick={() => selectPage('craft-lookup')}>craft lookup</button>
+        <button type="button" aria-current={page === 'recipe-book-sim' ? 'page' : undefined} onClick={() => selectPage('recipe-book-sim')}>recipe book sim</button>
+        <button type="button" aria-current={page === 'settings' ? 'page' : undefined} onClick={() => selectPage('settings')}>settings</button>
+      </nav>
       <div className="app-header__menu">
         {pageTutorials[page] && <button ref={helpRef} type="button" className="app-header__help" aria-label={`Help for ${page === 'home' ? 'search crafting' : page.replaceAll('-', ' ')}`} disabled={!data || !activeIcons} onClick={() => { tutorialPriorView.current = { editor }; setTutorialIndex(0) }}>?</button>}
         <VersionPicker versions={supportedGameVersions} selectedVersionId={gameVersion.id} onVersionChange={selectGameVersion} />
@@ -578,6 +581,7 @@ function App() {
       onSetItemQuery={craftingSheet.setItemQuery}
       onMoveItemCraft={craftingSheet.moveItemCraft}
       onSetEntryDisabled={craftingSheet.setEntryDisabled}
+      onRenameEntry={(entryId, name) => setWorkspace((current) => renameWorkspaceEntry(current, entryId, name))}
       onReset={craftingSheet.reset}
     />}
     {baseData && activeIcons && page === 'language-comparison' && <LanguageComparison
@@ -612,32 +616,14 @@ function App() {
       />
       <LanguageSelector containerRef={languageSelectorRef} languages={languages} selectedLocale={selectedLocale} enabledBannedLocales={enabledBannedLocales} scores={languageScores} loadingLocale={loadingLocale} compactLayout={appSettings.compactLayout} onSelect={selectLocale} onBannedLocaleEnabledChange={setBannedLocaleEnabled} />
       <section inert={!!editor} aria-hidden={!!editor} className={`results-column${editor ? ' results-column--editing' : ''}`} dir={isRtlLocale(selectedLocale) ? 'rtl' : 'ltr'} aria-label="Calculated searches">
-        <CraftingSheet
-          keyboardSettings={appSettings.keyboard}
-          removeAnimations={appSettings.removeAnimations}
-          open={false}
-          onOpenChange={(open) => { if (open) { setEditor(null); selectPage('crafting-sheet') } }}
+        <ResultsHeader
           languageName={selectedLanguageName}
-          entries={craftingSheet.entries}
-          disabledEntries={craftingSheet.disabledEntries}
-          characterSet={craftingSheet.characterSet}
-          characterUsages={craftingSheet.characterUsages}
-          optimalCharacterCount={craftingSheet.optimalCharacterCount}
-          totalTypedCharacters={craftingSheet.totalTypedCharacters}
-          totalScore={craftingSheet.totalScore}
-          scoreDelta={craftingSheet.scoreDelta}
-          items={data.items}
-          icons={activeIcons}
-          isCalculating={craftingSheet.isCalculating}
-          warning={craftingSheet.warning}
-          onPreviewItemQuery={craftingSheet.previewItemQuery}
-          onSetItemQuery={craftingSheet.setItemQuery}
-          onMoveItemCraft={craftingSheet.moveItemCraft}
-          onSetEntryDisabled={craftingSheet.setEntryDisabled}
-          onReset={craftingSheet.reset}
+          nativeLanguageName={selectedLanguage ? languageDisplayName(selectedLanguage) : undefined}
+          onOpenSheet={() => { setEditor(null); selectPage('crafting-sheet') }}
           onCompare={() => { setEditor(null); selectPage('language-comparison') }}
         />
         {entries.map((entry, index) => <CalculatedSearchRow
+          recipes={data.recipes} itemIdSearch={appSettings.itemIdSearch}
           key={entry.id} entry={entry} entryNumber={index + 1} state={states.get(entry.id)} items={data.items} icons={activeIcons} collections={data.collections} compactLayout={appSettings.compactLayout} hideNumberCraftsByDefault={appSettings.hideNumberCraftsByDefault} removeAnimations={appSettings.removeAnimations} onRetry={() => retry(entry.id)}
         />)}
       </section>

@@ -5,6 +5,7 @@ import { normalizeExactSearchText } from '../engine/search'
 import { ItemIcon } from './ItemIcon'
 import { isScrollbarPointer } from './outsidePointer'
 import { TapOrScrollButton } from './TapOrScrollButton'
+import './ItemPicker.css'
 
 interface PickerItem {
   id: string
@@ -14,6 +15,8 @@ interface PickerItem {
 interface ItemPickerProps {
   items: ReadonlyMap<string, PickerItem>
   label: string
+  displayLabel?: string
+  revealOnAdd?: boolean
   selectedIds: readonly string[]
   manifest?: IconManifest
   preserveSelectionOrder?: boolean
@@ -31,6 +34,8 @@ function sortItems(items: Iterable<PickerItem>): PickerItem[] {
 export function ItemPicker({
   items,
   label,
+  displayLabel,
+  revealOnAdd = false,
   selectedIds,
   manifest,
   preserveSelectionOrder = false,
@@ -44,10 +49,16 @@ export function ItemPicker({
   const [open, setOpen] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const addButtonRef = useRef<HTMLButtonElement>(null)
   const scrollbarPointerRef = useRef(false)
   const optionTouchActiveRef = useRef(false)
+  const pointerActiveRef = useRef(false)
+  const pointerStartedInsideRef = useRef(false)
+  const suppressTouchClickRef = useRef(false)
+  const pointerStartRef = useRef({ x: 0, y: 0 })
   const searchId = useId()
   const searchLabel = label.startsWith('Search ') ? label : `Search ${label}`
+  const itemLabel = (displayLabel ?? label).toLowerCase()
   const selected = useMemo(() => new Set(selectedIds), [selectedIds])
   const normalizedQuery = normalizeExactSearchText(query.trim())
   const selectedItems = useMemo(() => {
@@ -66,22 +77,84 @@ export function ItemPicker({
   ).slice(0, 40), [items, normalizedQuery, selected])
 
   useEffect(() => {
-    function closeWhenPointerLeavesPicker(event: PointerEvent) {
+    function recordPointerStart(event: PointerEvent) {
+      pointerActiveRef.current = true
+      suppressTouchClickRef.current = false
+      pointerStartRef.current = { x: event.clientX, y: event.clientY }
+      pointerStartedInsideRef.current = !!pickerRef.current && event.composedPath().includes(pickerRef.current)
       if (isScrollbarPointer(event)) {
         scrollbarPointerRef.current = true
         window.setTimeout(() => { scrollbarPointerRef.current = false })
         return
       }
-      if (pickerRef.current && event.target instanceof Node && !pickerRef.current.contains(event.target)) setOpen(false)
     }
 
-    window.addEventListener('pointerdown', closeWhenPointerLeavesPicker)
-    return () => window.removeEventListener('pointerdown', closeWhenPointerLeavesPicker)
+    function closeOutside() {
+      setOpen(false)
+      if (document.activeElement === searchInputRef.current) searchInputRef.current?.blur()
+    }
+
+    function finishPointer(event: PointerEvent) {
+      window.setTimeout(() => { pointerActiveRef.current = false }, 0)
+      // A tap that stops touch momentum may have no compatibility click.
+      // Defer collapse until after any normal click has activated its target.
+      if (event.type === 'pointerup' && event.pointerType === 'touch'
+        && !pointerStartedInsideRef.current && pickerRef.current
+        && !event.composedPath().includes(pickerRef.current)
+        && Math.hypot(event.clientX - pointerStartRef.current.x, event.clientY - pointerStartRef.current.y) < 8) {
+        window.requestAnimationFrame(() => {
+          if (!pointerStartedInsideRef.current) closeOutside()
+        })
+      }
+    }
+
+    function suppressCompatibilityClick(event: MouseEvent) {
+      if (event.detail !== 0 && suppressTouchClickRef.current) {
+        // The item was already selected on touch release. Its removed tile can
+        // retarget this click to another item or a control underneath the menu.
+        suppressTouchClickRef.current = false
+        pointerStartedInsideRef.current = false
+        event.preventDefault()
+        event.stopImmediatePropagation()
+      }
+    }
+
+    // Inline pickers change the document height when dismissed. Wait until the
+    // outside click completes so its target does not move between press/release.
+    function closeAfterOutsideClick(event: MouseEvent) {
+      const startedInside = event.detail !== 0 && pointerStartedInsideRef.current
+      pointerStartedInsideRef.current = false
+      if (pickerRef.current && !startedInside && !event.composedPath().includes(pickerRef.current)) {
+        closeOutside()
+      }
+    }
+
+    window.addEventListener('pointerdown', recordPointerStart, true)
+    window.addEventListener('pointerup', finishPointer)
+    window.addEventListener('pointercancel', finishPointer)
+    window.addEventListener('click', closeAfterOutsideClick)
+    window.addEventListener('click', suppressCompatibilityClick, true)
+    return () => {
+      window.removeEventListener('pointerdown', recordPointerStart, true)
+      window.removeEventListener('pointerup', finishPointer)
+      window.removeEventListener('pointercancel', finishPointer)
+      window.removeEventListener('click', closeAfterOutsideClick)
+      window.removeEventListener('click', suppressCompatibilityClick, true)
+    }
   }, [])
 
   useEffect(() => {
     onOpenChange?.(open)
   }, [onOpenChange, open])
+
+  useEffect(() => {
+    if (revealOnAdd && open) searchInputRef.current?.focus()
+  }, [revealOnAdd, open])
+
+  function dismissPicker() {
+    setOpen(false)
+    addButtonRef.current?.focus()
+  }
 
   function toggleItem(itemId: string) {
     if (preserveSelectionOrder) {
@@ -112,7 +185,10 @@ export function ItemPicker({
         aria-label={item.name}
         disabled={!selectable}
         onTap={() => selectItem(item.id)}
-        onTouchGestureChange={(active) => { optionTouchActiveRef.current = active }}
+        onTouchGestureChange={(active) => {
+          optionTouchActiveRef.current = active
+          if (active) suppressTouchClickRef.current = true
+        }}
       >
         {manifest && <ItemIcon itemId={item.id} name={item.name} manifest={manifest} size="compact" />}
         <span>{item.name}</span>
@@ -122,13 +198,23 @@ export function ItemPicker({
 
   return <div
     ref={pickerRef}
-    className={`item-picker${className ? ` ${className}` : ''}`}
+    className={`item-picker${revealOnAdd ? ' item-picker--add' : ''}${className ? ` ${className}` : ''}`}
+    onKeyDown={(event) => {
+      if (open && event.key === 'Escape') {
+        event.stopPropagation()
+        dismissPicker()
+      }
+    }}
     onBlurCapture={(event) => {
-      if (scrollbarPointerRef.current || optionTouchActiveRef.current) return
-      if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false)
+      if (scrollbarPointerRef.current || optionTouchActiveRef.current || pointerActiveRef.current) return
+      // Mobile keyboards and removed touch options can blur without a new
+      // focus target. Only a definite move outside (or an outside tap) dismisses.
+      if (event.relatedTarget instanceof Node && !event.currentTarget.contains(event.relatedTarget)) setOpen(false)
     }}
   >
-    <label htmlFor={searchId}>{searchLabel}</label>
+    {revealOnAdd
+      ? <span className="item-picker__title">{displayLabel ?? searchLabel}</span>
+      : <label htmlFor={searchId}>{displayLabel ?? searchLabel}</label>}
     <div className={`item-picker__selection-row${trailingAction ? ' item-picker__selection-row--has-action' : ''}`}>
       <div className="item-picker__selected" role="region" aria-label={`${label} selected items`}>
         {selectedItems.length === 0
@@ -145,20 +231,35 @@ export function ItemPicker({
                 ? <ItemIcon itemId={item.id} name={item.name} manifest={manifest} size="compact" />
                 : <span>{item.name}</span>}
             </button>)}
+        {revealOnAdd && <button
+          ref={addButtonRef}
+          type="button"
+          className="item-picker__add"
+          aria-label={`Add ${itemLabel}`}
+          aria-expanded={open}
+          aria-controls={open ? `${searchId}-picker` : undefined}
+          onClick={() => open ? searchInputRef.current?.focus() : setOpen(true)}
+        >+</button>}
       </div>
       {trailingAction}
     </div>
-    <input
-      id={searchId}
-      ref={searchInputRef}
-      type="search"
-      value={query}
-      onFocus={() => setOpen(true)}
-      onClick={() => setOpen(true)}
-      onChange={(event) => setQuery(event.target.value)}
-    />
-    {open && <ul className="item-picker__results" aria-label={`${label} results`}>
-      {matches.map(option)}
-    </ul>}
+    {(!revealOnAdd || open) && <div id={`${searchId}-picker`} className="item-picker__search-panel">
+      <div className="item-picker__search-controls">
+        <input
+          id={searchId}
+          ref={searchInputRef}
+          type="search"
+          aria-label={searchLabel}
+          placeholder={displayLabel ? `Search to add ${displayLabel.toLowerCase()}` : undefined}
+          value={query}
+          onFocus={() => setOpen(true)}
+          onClick={() => setOpen(true)}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      </div>
+      {open && <ul className="item-picker__results" aria-label={`${label} results`}>
+        {matches.map(option)}
+      </ul>}
+    </div>}
   </div>
 }

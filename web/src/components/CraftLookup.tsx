@@ -35,11 +35,11 @@ export function newCraftLookupSession(): CraftLookupSession {
   return { draft: newItemSetDraft() }
 }
 
-const CATEGORY_DETAILS: Array<{ category: CraftLookupLanguageCategory; title: string; description: string }> = [
-  { category: 'junkless-single', title: 'junkless, no overlap', description: 'a regular craft w/ no junk' },
-  { category: 'junkless-overlap', title: 'junkless overlap', description: 'only an overlap craft can avoid junk' },
-  { category: 'requires-junk', title: 'cannot be junkless', description: 'every viable craft includes junk' },
-  { category: 'no-viable', title: 'no viable craft', description: 'the selected inventory cannot craft the goal' },
+const CATEGORY_DETAILS: Array<{ category: CraftLookupLanguageCategory; title: string; label: string; description: string }> = [
+  { category: 'junkless-single', title: 'junkless, no overlap', label: 'Regular', description: 'a regular craft with no junk' },
+  { category: 'junkless-overlap', title: 'junkless overlap', label: 'Overlap', description: 'only an overlap craft can avoid junk' },
+  { category: 'requires-junk', title: 'cannot be junkless', label: 'With junk', description: 'every viable craft includes junk' },
+  { category: 'no-viable', title: 'no viable craft', label: 'No craft', description: 'the selected inventory cannot craft the target' },
 ]
 
 type ReadyLookupLanguage = {
@@ -147,12 +147,11 @@ export function CraftLookup({
           icons={icons}
           customSlots={customSlots}
           title="lookup setup"
-          saveLabel="🔍"
+          saveLabel="Look up crafts"
           saveAriaLabel="Look up crafts"
           cancelLabel="Clear"
           showDismiss={false}
           cancelOnOutsidePointer={false}
-          saveNextToGoals
           compactLayout={compactLayout}
           hidePresetIcons={compactLayout}
           onDraftChange={(nextDraft) => onSessionChange({ ...session, draft: nextDraft })}
@@ -167,64 +166,66 @@ export function CraftLookup({
         />
       </aside>
       <div className="craft-lookup__content">
-        {entry === undefined
-          ? <p className="craft-lookup__empty">Choose goals and an inventory, then select <strong>Look up crafts</strong>.</p>
-          : <>
-            <section className="craft-lookup__languages" aria-label="Best languages">
-              <header>
-                <h2>best languages</h2>
-                {pending && <span>calculating…</span>}
-              </header>
-              <div className="craft-lookup__language-search">
-                <label htmlFor="craft-lookup-language-search">find a language</label>
-                <input
-                  id="craft-lookup-language-search"
-                  type="search"
-                  placeholder="search language or locale"
-                  value={languageSearch}
-                  onChange={(event) => setLanguageSearch(event.target.value)}
-                />
-              </div>
-              <div className="craft-lookup__category-picker" role="group" aria-label="Craft categories">
-                {categories.map(({ category, title, matches }) => <button
-                  key={category}
-                  type="button"
-                  aria-pressed={visibleCategory?.category === category}
-                  disabled={matches.length === 0}
-                  onClick={() => setSelectedCategory(category)}
-                >{title}</button>)}
-              </div>
-              {visibleCategory && <div className="craft-lookup__language-groups">
-                <section className={`craft-lookup__language-group craft-lookup__language-group--${visibleCategory.category}`} aria-label={visibleCategory.title}>
-                  <h3>{visibleCategory.title}</h3>
-                  <p>{visibleCategory.description} - found {normalizedLanguageSearch === '' ? visibleCategory.allMatches.length : visibleCategory.matches.length} {normalizedLanguageSearch === '' ? 'language' : 'matching language'}{(normalizedLanguageSearch === '' ? visibleCategory.allMatches.length : visibleCategory.matches.length) === 1 ? '' : 's'}</p>
-                  <ol className="craft-lookup__language-list" aria-label={`${visibleCategory.title} languages`}>{visibleCategory.matches.map(({ locale, state }) => {
-                        const language = languagesByLocale.get(locale)!
-                        const languageName = `${englishLocaleName(language, languages)} - ${languageDisplayName(language)}`
-                        return <li key={locale}><CalculatedSearchRow
-                          entry={entry}
-                          entryNumber={1}
-                          state={{ status: 'ready', fingerprint: `craft-lookup:${locale}`, outcome: state.outcome }}
-                          items={state.data.items}
-                          icons={icons}
-                          collections={state.data.collections}
-                          summaryLabel={`${languageName} crafts`}
-                          summaryLead={<span className="craft-lookup__language-name" title={languageName}>{languageName}</span>}
-                          hidePreviewDecorations
-                          hideOutcomeScore
-                          hideOverflowingPreviews
-                          previewMode={previewMode(visibleCategory.category)}
-                          hideNumberCraftsByDefault={hideNumberCraftsByDefault}
-                          removeAnimations={removeAnimations}
-                          className="calculated-search-row--craft-lookup"
-                        /></li>
-                      })}</ol>
-                </section>
-              </div>}
-              {normalizedLanguageSearch !== '' && matchedLanguages.length === 0 && !pending && <p className="craft-lookup__no-language-match">No calculated language matches “{languageSearch.trim()}”.</p>}
-              {unavailableCount > 0 && <p className="craft-lookup__unavailable">{unavailableCount} language{unavailableCount === 1 ? '' : 's'} unavailable.</p>}
+        <section className="craft-lookup__languages" aria-label="Best languages">
+          <header>
+            <h2>best languages</h2>
+            {pending && <span>calculating…</span>}
+          </header>
+          <div className="craft-lookup__language-search">
+            <label htmlFor="craft-lookup-language-search">find a language</label>
+            <input
+              id="craft-lookup-language-search"
+              type="search"
+              placeholder="search language or locale"
+              value={languageSearch}
+              onChange={(event) => setLanguageSearch(event.target.value)}
+            />
+          </div>
+          <div className="craft-lookup__category-picker" role="group" aria-label="Craft categories">
+            {categories.map(({ category, title, label, description, matches }) => <button
+              key={category}
+              type="button"
+              aria-label={label}
+              aria-description={`${title}: ${matches.length} matching languages. ${description}.`}
+              title={description}
+              aria-pressed={visibleCategory?.category === category}
+              disabled={matches.length === 0}
+              onClick={() => setSelectedCategory(category)}
+            ><span>{label}</span><span className="craft-lookup__category-count" aria-hidden="true">{matches.length}</span></button>)}
+          </div>
+          {entry === undefined && <p className="craft-lookup__empty">Choose target items and an inventory, then select <strong>Look up crafts</strong>.</p>}
+          {entry && visibleCategory && <div className="craft-lookup__language-groups">
+            <section className={`craft-lookup__language-group craft-lookup__language-group--${visibleCategory.category}`} aria-label={visibleCategory.title}>
+              <p>{visibleCategory.description} - found {normalizedLanguageSearch === '' ? visibleCategory.allMatches.length : visibleCategory.matches.length} {normalizedLanguageSearch === '' ? 'language' : 'matching language'}{(normalizedLanguageSearch === '' ? visibleCategory.allMatches.length : visibleCategory.matches.length) === 1 ? '' : 's'}</p>
+              <ol className="craft-lookup__language-list" aria-label={`${visibleCategory.title} languages`}>{visibleCategory.matches.map(({ locale, state }) => {
+                    const language = languagesByLocale.get(locale)!
+                    const languageName = `${englishLocaleName(language, languages)} - ${languageDisplayName(language)}`
+                    return <li key={locale}><CalculatedSearchRow
+                      entry={entry}
+                      entryNumber={1}
+                      state={{ status: 'ready', fingerprint: `craft-lookup:${locale}`, outcome: state.outcome }}
+                      items={state.data.items}
+                      icons={icons}
+                      collections={state.data.collections}
+                      recipes={state.data.recipes}
+                      itemIdSearch={itemIdSearch}
+                      summaryLabel={`${languageName} crafts`}
+                      summaryLead={<span className="craft-lookup__language-name" title={languageName}><strong>{englishLocaleName(language, languages)}</strong><bdi>{languageDisplayName(language)}</bdi></span>}
+                      summaryMetric={<span className="craft-lookup__score" aria-label={state.outcome.kind === 'ranked' ? `Best score: ${state.outcome.bestScore}` : 'No score'}><strong>{state.outcome.kind === 'ranked' ? state.outcome.bestScore : '—'}</strong><span>score</span></span>}
+                      hidePreviewDecorations
+                      hideOutcomeScore
+                      hideOverflowingPreviews
+                      previewMode={previewMode(visibleCategory.category)}
+                      hideNumberCraftsByDefault={hideNumberCraftsByDefault}
+                      removeAnimations={removeAnimations}
+                      className="calculated-search-row--craft-lookup"
+                    /></li>
+                  })}</ol>
             </section>
-          </>}
+          </div>}
+          {normalizedLanguageSearch !== '' && matchedLanguages.length === 0 && !pending && <p className="craft-lookup__no-language-match">No calculated language matches “{languageSearch.trim()}”.</p>}
+          {unavailableCount > 0 && <p className="craft-lookup__unavailable">{unavailableCount} language{unavailableCount === 1 ? '' : 's'} unavailable.</p>}
+        </section>
       </div>
     </div>
   </section>

@@ -18,6 +18,16 @@ function codeForPayload(version: number, payload: unknown): string {
 }
 
 describe('item-set collection sharing', () => {
+  test('round-trips Unicode display names alongside unnamed sets', () => {
+    const entries = [
+      { name: '  Övdalska 工具  ', targetIds: ['minecraft:stick'], inventoryItemIds: [], enabled: true, gridSize: 3 as const, retainCraftOrder: false },
+      { targetIds: ['minecraft:bow'], inventoryItemIds: [], enabled: true, gridSize: 3 as const, retainCraftOrder: false },
+    ]
+    expect(parseItemSetWorkspaceShareCode(createItemSetWorkspaceShareCode(entries), available)).toEqual({
+      ok: true, drafts: [{ ...entries[0], name: 'Övdalska 工具' }, entries[1]],
+    })
+  })
+
   test('still imports the original full item ID format', () => {
     const code = codeForPayload(1, { v: 1, s: [{ v: 1, t: ['minecraft:stick'], i: ['minecraft:string'], g: 2, e: false, r: true }] })
 
@@ -49,6 +59,7 @@ describe('item-set collection sharing', () => {
     { v: 2, d: ['stick'], i: [[-1]], s: [[[0], 0, 2]] },
     { v: 2, d: ['stick'], i: [[]], s: [[[0], 0, 8]] },
     { v: 2, d: ['stick'], i: [[]], s: [[[0], 0, 1.5]] },
+    { v: 2, d: ['stick'], i: [[]], s: [[[0], 0, 2, 42]] },
     { v: 2, d: ['stick', 'stick'], i: [[]], s: [[[0], 0, 2]] },
     { v: 2, d: ['stick', 'minecraft:stick'], i: [[]], s: [[[0], 0, 2]] },
     { v: 2, d: ['stick'], i: [[]], s: [[[0, 0], 0, 2]] },

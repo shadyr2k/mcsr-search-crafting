@@ -143,6 +143,11 @@ h3 {
   min-width: 0;
 }
 
+.item-set-editor__preset-grid button > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .item-set-editor__preset-icon {
   flex: 0 0 1.5rem;
   width: 1.5rem;
@@ -830,14 +835,29 @@ h3 {
 
 /* The second page shares locale selection but keeps its reference content spacious. */
 .app-header__brand {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
+}
+
+.app-header__title {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: .1875rem;
+  min-width: 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.app-header h1 {
+  line-height: 1.05;
 }
 
 .app-header__nav {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: .4rem;
-  margin-left: .4rem;
+  margin-left: 0;
 }
 
 .app-header__nav button {
@@ -984,20 +1004,6 @@ h3 {
 }
 
 @media (max-width: 56rem) {
-  .app-header {
-    flex-wrap: wrap;
-  }
-
-  .app-header__brand {
-    flex-wrap: wrap;
-  }
-
-  .app-header__nav {
-    order: 3;
-    width: 100%;
-    margin-left: 0;
-  }
-
   .language-info-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1082,7 +1088,7 @@ h3 {
 /* On wider screens the crafting sheet uses the exact space left beneath the
    site header. Its columns can then distribute their content without adding a
    document-level scroll area. */
-@media (min-width: 72.01rem) and (min-height: 54.01rem) {
+@media (width > 72rem) and (height > 54rem) {
   .app-shell--crafting-sheet {
     display: flex;
     flex-direction: column;
@@ -1138,11 +1144,12 @@ h3 {
 
 /* One persistent language list moves between the two page layouts. */
 .workspace-transition {
-  grid-template-columns: minmax(20rem, 1fr) minmax(16rem, .75fr) minmax(28rem, 1.5fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, .75fr) minmax(0, 1.5fr);
   transition: grid-template-columns 900ms cubic-bezier(.4, 0, .2, 1), column-gap 900ms cubic-bezier(.4, 0, .2, 1);
 }
 
 .workspace-transition > .item-set-workspace {
+  min-width: 0;
   grid-column: 1;
   grid-row: 1;
 }
@@ -1251,6 +1258,25 @@ h3 {
   pointer-events: none;
 }
 
+.craft-results {
+  display: grid;
+  gap: .7rem;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.craft-results-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: .4rem .6rem;
+  font-family: 'Figtree', sans-serif;
+  font-size: .72rem;
+  font-weight: 850;
+  color: var(--accent-strong);
+}
+
 .craft-categories__content {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1261,65 +1287,20 @@ h3 {
 
 .craft-category__header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: .5rem;
 }
 
 .craft-category__header h3 {
+  flex: 1 0 auto;
   min-width: 0;
-  margin-left: .45rem;
+  max-width: 100%;
 }
 
-.overlap-category-toggle,
-.number-craft-filter {
-  display: inline-flex;
-  align-items: center;
-  gap: .18rem;
-  flex: 0 0 auto;
-  padding: .12rem;
-  border: 1px solid var(--border);
-  border-radius: .35rem;
-  background: var(--panel-selected);
-  color: var(--accent-strong);
-  font-family: 'Figtree', sans-serif;
-  font-size: .72rem;
-  font-weight: 850;
-}
-
-.number-craft-filter {
-  grid-column: 1 / -1;
-  justify-self: start;
-}
-
-.overlap-category-toggle button,
-.number-craft-filter button {
-  min-height: 1.5rem;
-  padding: .12rem .3rem;
-  border: 0;
-  border-radius: .24rem;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  opacity: .45;
-}
-
-.overlap-category-toggle button[aria-pressed='true'],
-.number-craft-filter button[aria-pressed='true'] {
-  background: var(--panel);
-  opacity: 1;
-}
-
-.overlap-category-toggle button:disabled,
-.number-craft-filter button:disabled {
-  cursor: default;
-  opacity: .28;
-}
-
-.number-craft-filter button {
-  min-width: 3.25rem;
-  padding-right: .58rem;
-  padding-left: .58rem;
+.craft-category__header .segmented-control {
+  margin-left: auto;
 }
 
 :root[data-theme] .craft-categories--open {
@@ -1430,10 +1411,6 @@ h3 {
 
   .workspace-transition--language-info > .language-info-panel {
     grid-row: 2;
-  }
-
-  .app-header__nav {
-    flex-wrap: wrap;
   }
 }
 
@@ -2135,32 +2112,36 @@ h3 {
   .recipe-book-sim__detail { width: min(100%, 30rem); }
 }
 
-@media (max-width: 56rem) {
+/* The uncompressed brand, navigation and controls need about 1510px including
+   shell padding. Move navigation before the copy can be squeezed into lines. */
+@media (max-width: 96rem) {
   .app-header {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'brand menu' 'nav nav';
     gap: .5rem;
   }
 
+  .app-header__brand { grid-area: brand; }
+  .app-header__nav { grid-area: nav; justify-content: center; }
+  .app-header__menu { grid-area: menu; }
+}
+
+@media (max-width: 56rem) {
+  .app-header {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'brand' 'nav' 'menu';
+  }
+
   .app-header__brand {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-areas:
-      'icon title'
-      'nav nav';
-    grid-column: 1 / -1;
-    gap: .45rem .55rem;
-    min-width: 0;
+    gap: .55rem;
     width: 100%;
   }
 
   .app-header .app-header__icon {
-    grid-area: icon;
     width: clamp(2.5rem, 12vw, 3.5rem);
     height: clamp(2.5rem, 12vw, 3.5rem);
   }
-
-  .app-header__title { grid-area: title; min-width: 0; }
 
   .app-header h1 {
     font-size: clamp(.95rem, 5vw, 1.75rem);
@@ -2189,12 +2170,6 @@ h3 {
     font-size: clamp(.58rem, 2.15vw, .87rem);
     letter-spacing: -.015em;
     line-height: 1;
-  }
-
-  .app-header__menu {
-    grid-column: 2;
-    justify-self: end;
-    margin-left: 0;
   }
 }
 
@@ -2504,8 +2479,8 @@ h3 {
 @media (max-width: 56rem) {
   .app-header__menu {
     position: relative;
-    grid-column: 1 / -1;
     justify-self: center;
+    margin-left: 0;
     gap: .35rem;
   }
 
@@ -2707,6 +2682,9 @@ h3 {
 /* Even in a narrow category, craft rows preserve the left-to-right sequence
    query, targets, junk, disclosure. The item strip reduces its junk preview
    before it ever needs a second row. */
+.craft-result__targets { max-width: 100%; }
+.craft-result__targets .item-icon { flex-shrink: 1; height: auto; aspect-ratio: 1; }
+
 @container (max-width: 25rem) {
   .craft-result__toggle,
   .craft-result__bar {
@@ -2779,7 +2757,6 @@ h3 {
 .craft-lookup__editor {
   position: sticky;
   top: 5.4rem;
-  background: var(--panel-selected);
 }
 
 .craft-lookup__editor .item-set-editor { padding-top: 0; }
@@ -2804,38 +2781,6 @@ h3 {
 
 .item-set-editor--save-next-to-goals .item-set-editor__actions { grid-template-columns: 1fr; }
 
-/* Goals are the primary choice on a lookup page. Give that picker a stronger
-   surface and keep its action attached to the selected-item row. */
-.craft-lookup__editor .item-picker--main-goals {
-  gap: .5rem;
-  padding: .7rem;
-  border: 2px solid var(--accent-strong);
-  border-radius: .7rem;
-  background: color-mix(in srgb, var(--panel-selected) 72%, var(--panel));
-}
-
-.craft-lookup__editor .item-picker--main-goals > label {
-  color: var(--accent-strong);
-  font-size: 1.04rem;
-  font-weight: 850;
-}
-
-.craft-lookup__editor .item-picker--main-goals .item-picker__selected {
-  min-height: 4.15rem;
-  padding: .45rem;
-}
-
-.craft-lookup__editor .item-picker--main-goals .item-picker__selected-item {
-  min-width: 3.15rem;
-  min-height: 3.15rem;
-}
-
-.craft-lookup__editor .item-picker--main-goals input {
-  min-height: 2.35rem;
-  padding: .35rem .5rem;
-  font-size: .98rem;
-}
-
 .craft-lookup__content {
   display: grid;
   gap: 1.15rem;
@@ -2845,7 +2790,7 @@ h3 {
 .craft-lookup__empty {
   align-self: center;
   max-width: 32rem;
-  margin: 0;
+  margin: 1.5rem 0;
   color: var(--muted);
   font-weight: 700;
 }
@@ -2873,7 +2818,7 @@ h3 {
 
 .craft-lookup__language-search {
   display: grid;
-  grid-template-columns: auto minmax(12rem, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: .5rem;
 }
@@ -2895,30 +2840,32 @@ h3 {
 }
 
 .craft-lookup__category-picker {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: .18rem;
-  padding: .18rem;
-  border: 1px solid var(--border);
-  border-radius: .6rem;
-  background: var(--panel-selected);
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
 }
 
 .craft-lookup__category-picker button {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
   min-width: 0;
-  min-height: 2.3rem;
-  padding: .3rem .45rem;
-  border: 0;
-  border-radius: .4rem;
+  min-height: 2rem;
+  padding: .3rem .65rem;
+  border: 1px solid var(--border);
+  border-radius: 99px;
   background: transparent;
   color: var(--accent-strong);
   font: 800 .76rem/1.1 'Figtree', sans-serif;
 }
 
 .craft-lookup__category-picker button[aria-pressed='true'] {
-  background: var(--panel);
-  box-shadow: 0 .08rem .22rem color-mix(in srgb, var(--text) 16%, transparent);
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: var(--panel);
 }
+
+.craft-lookup__category-count { font-variant-numeric: tabular-nums; opacity: .8; }
 
 .craft-lookup__category-picker button:disabled {
   cursor: default;
@@ -2931,14 +2878,11 @@ h3 {
   align-content: start;
   gap: .38rem;
   min-width: 0;
-  padding: .7rem;
-  border: 1px solid var(--border);
-  border-radius: .65rem;
-  background: var(--control);
+  padding-top: .65rem;
+  border-top: 1px solid var(--border);
 }
 
 .craft-lookup__language-group > p {
-  min-height: 2.4em;
   margin: 0;
   color: var(--muted);
   font-size: .74rem;
@@ -2947,7 +2891,7 @@ h3 {
 
 .craft-lookup__language-list {
   display: grid;
-  gap: .3rem;
+  gap: 0;
   max-height: clamp(16rem, 48vh, 34rem);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -2960,20 +2904,27 @@ h3 {
 .craft-lookup__language-group ol > li { min-width: 0; }
 
 .calculated-search-row--craft-lookup {
-  padding: .45rem;
-  border-width: 1px;
-  border-radius: .5rem;
-  background: var(--panel);
+  padding: .65rem .15rem;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
 }
 
+/* Lookup keeps explicit cells, independent of the home summary's
+   responsive two-row grid. Its disclosure must never share the preview cell. */
 .calculated-search-row--craft-lookup .calculated-search-row__summary {
-  grid-template-columns: minmax(8rem, .95fr) minmax(0, 1.5fr) auto;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.5fr) auto auto;
+  grid-template-rows: auto;
   min-height: 3.7rem;
   gap: .45rem;
 }
 
 .craft-lookup__language-name {
-  display: block;
+  grid-column: 1;
+  grid-row: 1;
+  display: grid;
+  gap: .15rem;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2982,7 +2933,15 @@ h3 {
   font-weight: 800;
 }
 
+.craft-lookup__language-name > * { overflow: hidden; text-overflow: ellipsis; }
+.craft-lookup__language-name bdi { font-size: .73rem; font-weight: 500; color: var(--muted); }
+.craft-lookup__score { grid-column: 3; grid-row: 1; display: grid; gap: .1rem; justify-items: end; color: var(--muted); font-size: .65rem; white-space: nowrap; }
+.craft-lookup__score strong { color: var(--accent-strong); font-size: .95rem; font-variant-numeric: tabular-nums; }
+.calculated-search-row--craft-lookup .calculated-search-row__status { grid-column: 2; grid-row: 1; min-width: 0; font-size: .75rem; color: var(--muted); }
+
 .calculated-search-row--craft-lookup .craft-previews {
+  grid-column: 2;
+  grid-row: 1;
   display: flex;
   flex: 1 1 auto;
   flex-wrap: nowrap;
@@ -3000,7 +2959,13 @@ h3 {
 }
 .calculated-search-row--craft-lookup .craft-query { padding: .28rem .4rem; font-size: .94rem; }
 .calculated-search-row--craft-lookup .craft-query__term { font-size: 1.06rem; }
-.calculated-search-row--craft-lookup .calculated-search-row__toggle { min-width: 2rem; min-height: 2rem; }
+.calculated-search-row--craft-lookup .calculated-search-row__toggle {
+  grid-column: 4;
+  grid-row: 1;
+  justify-self: end;
+  min-width: 2rem;
+  min-height: 2rem;
+}
 
 .craft-lookup__none {
   color: var(--muted);
@@ -3023,20 +2988,14 @@ h3 {
 
 @media (max-width: 42rem) {
   .craft-lookup__language-search { grid-template-columns: 1fr; gap: .25rem; }
-  .craft-lookup__category-picker {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .craft-lookup__editor,
   .craft-lookup__content { padding: .75rem; }
-
-  .calculated-search-row--craft-lookup .calculated-search-row__summary {
-    grid-template-columns: minmax(0, .95fr) minmax(0, 1.5fr) auto;
-  }
-
-  .calculated-search-row--craft-lookup .craft-previews {
-    grid-column: 2;
-    grid-row: 1;
-  }
+  .calculated-search-row--craft-lookup .calculated-search-row__summary { grid-template-columns: minmax(0, 1fr) auto auto; row-gap: .5rem; }
+  .calculated-search-row--craft-lookup .craft-lookup__language-name { grid-column: 1 / 3; grid-row: 1; }
+  .calculated-search-row--craft-lookup .craft-previews,
+  .calculated-search-row--craft-lookup .calculated-search-row__status { grid-column: 1; grid-row: 2; }
+  .craft-lookup__score { grid-column: 2; grid-row: 2; }
+  .calculated-search-row--craft-lookup .calculated-search-row__toggle { grid-column: 3; grid-row: 1 / 3; }
 }
 
 /* Lookup categories can deliberately contain only overlap previews. Unlike
@@ -3211,7 +3170,7 @@ h3 {
 
 .app-shell--compact-layout:not(.app-shell--crafting-sheet) .workspace-grid .item-set-editor__preset-grid button {
   justify-content: center;
-  font-size: .76rem;
+  font-size: .85rem;
 }
 
 .app-shell--compact-layout:not(.app-shell--crafting-sheet) .workspace-grid .item-set-editor__preset-icon {
@@ -3508,6 +3467,7 @@ h3 {
 /* Dropdown menus keep their own scroll area when a short viewport cannot show
    every option, while remaining anchored to their triggering control. */
 .item-picker__results {
+  max-width: 100%;
   max-height: min(19rem, calc(100dvh - 8rem));
   overscroll-behavior: contain;
   scrollbar-gutter: stable;

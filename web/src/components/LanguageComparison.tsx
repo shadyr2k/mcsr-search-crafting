@@ -10,6 +10,7 @@ import { ArrowSprite } from './ArrowSprite'
 import { CraftQueryInput, type CraftQueryResult, QuerySequence, SheetDisclosure } from './CraftingSheet'
 import { ItemIcon } from './ItemIcon'
 import { englishLocaleName, languageDisplayName, LanguageDropdown } from './LanguageSelector'
+import { itemSetLabel } from '../workspace/entryName'
 
 import './LanguageComparison.css'
 
@@ -56,10 +57,6 @@ function selectedLanguageLabel(locale: string, languages: readonly LanguageMetad
 
 function itemName(itemId: string, data: GeneratedData): string {
   return data.items.get(itemId)?.name ?? itemId.replace(/^minecraft:/, '').replaceAll('_', ' ')
-}
-
-function entryLabel(_entry: TargetWorkspaceEntry, index: number, _data: GeneratedData): string {
-  return `item set ${index + 1}`
 }
 
 function comparisonClass(left: number, right: number, side: 'left' | 'right'): string | undefined {
@@ -165,7 +162,7 @@ function ItemSetComparison({ entry, entryNumber, baseData, left, right, leftName
   const ready = left?.status === 'ready' && right?.status === 'ready'
   return <section className={`language-comparison__item-set${isOpen ? ' language-comparison__item-set--open' : ''}`} aria-label={`Item set ${entryNumber} comparison`}>
     <button type="button" className="language-comparison__item-set-toggle" aria-expanded={isOpen} aria-controls={detailsId} aria-label={`${isOpen ? 'Collapse' : 'Expand'} item set ${entryNumber} comparison`} onClick={() => setIsOpen((current) => !current)}>
-      <span className="language-comparison__item-set-heading"><strong>{entryLabel(entry, entryNumber - 1, baseData)}</strong><span className="language-comparison__items">{entry.targetIds.map((itemId) => <ItemIcon key={itemId} itemId={itemId} name={itemName(itemId, baseData)} manifest={icons} />)}</span></span>
+      <span className="language-comparison__item-set-heading"><strong>{itemSetLabel(entry, entryNumber)}</strong><span className="language-comparison__items">{entry.targetIds.map((itemId) => <ItemIcon key={itemId} itemId={itemId} name={itemName(itemId, baseData)} manifest={icons} />)}</span></span>
       <span className="language-comparison__craft-previews"><CraftPreview entry={left} language={leftName} /><CraftPreview entry={right} language={rightName} /></span>
       <span aria-hidden="true"><ArrowSprite direction={isOpen ? 'up' : 'down'} compact /></span>
     </button>
@@ -280,24 +277,30 @@ export function LanguageComparison({ baseData, entries, languages, selectedLocal
   const comparisonEntries = activeEntries.map((entry, index) => ({ entry, index, left: leftEntries.get(entry.id), right: rightEntries.get(entry.id) }))
   const selectedComparison = selectedEntry === undefined ? undefined : comparisonEntries.find((comparison) => comparison.entry.id === selectedEntry.id)
   const displayedComparisons = compactLayout && selectedComparison ? [selectedComparison] : comparisonEntries
-  const languagePositionReference = <span className="language-comparison__side-reference" aria-label={`Language positions: left ${leftName}, right ${rightName}`}><span><small>left</small><strong>{leftName}</strong></span><span className="language-comparison__side-reference-divider" aria-hidden="true">↔</span><span><small>right</small><strong>{rightName}</strong></span></span>
+  const languagePositionReference = <h2 className="language-comparison__side-reference" aria-label={`Language positions: language 1 ${leftName}, language 2 ${rightName}`}><span><small>language 1</small><strong>{leftName}</strong></span><span className="language-comparison__side-reference-divider" aria-hidden="true">↔</span><span><small>language 2</small><strong>{rightName}</strong></span></h2>
   const panel = <div className="language-comparison__panel">
-    <header className="language-comparison__selection-header">
+    <section className="language-comparison__selection-header" aria-label="Comparison setup">
+      {isPage ? <header className="language-comparison__setup-bar">
+        <h2>compare languages</h2>
+        <button type="button" className="language-comparison__back-button page-navigation" aria-label="Back to crafts" onClick={onBack}><span>back to crafts</span><ArrowSprite direction="left" compact /></button>
+      </header> : <h2>comparison setup</h2>}
       <p>Select two languages, then compare their calculated crafts. Changes to either craft are saved to that language’s crafting sheet.</p>
       <div className="language-comparison__language-selectors">
-        <label><span className="language-comparison__selected-language"><small>left language</small><strong>{leftSelectedLanguage}</strong></span><LanguageDropdown label="Left comparison language" languages={languages} selectedLocale={leftLocale} onSelect={chooseLeftLocale} /></label>
-        <label><span className="language-comparison__selected-language"><small>right language</small><strong>{rightSelectedLanguage}</strong></span><LanguageDropdown label="Right comparison language" languages={languages} selectedLocale={rightLocale} onSelect={chooseRightLocale} /></label>
+        <label><span className="language-comparison__selected-language"><small>language 1</small><strong>{leftSelectedLanguage}</strong></span><LanguageDropdown label="Language 1" languages={languages} selectedLocale={leftLocale} onSelect={chooseLeftLocale} /></label>
+        <label><span className="language-comparison__selected-language"><small>language 2</small><strong>{rightSelectedLanguage}</strong></span><LanguageDropdown label="Language 2" languages={languages} selectedLocale={rightLocale} onSelect={chooseRightLocale} /></label>
       </div>
-      <div className="language-comparison__selection-actions"><button type="button" className="language-comparison__start" disabled={activeEntries.length === 0} onClick={() => setComparisonRequest({ leftLocale, rightLocale })}>compare</button>{languagePositionReference}</div>
-    </header>
+      <div className="language-comparison__selection-actions"><button type="button" className="language-comparison__start" disabled={activeEntries.length === 0} onClick={() => setComparisonRequest({ leftLocale, rightLocale })}>compare</button></div>
+      {isComparisonRequested && selectedComparison && leftState?.status === 'ready' && rightState?.status === 'ready' && <OverallComparison leftScore={leftSheet.totalScore} rightScore={rightSheet.totalScore} leftCharacters={leftSheet.totalTypedCharacters} rightCharacters={rightSheet.totalTypedCharacters} leftJunk={leftSheet.entries.reduce((total, entry) => total + junkFor(entry), 0)} rightJunk={rightSheet.entries.reduce((total, entry) => total + junkFor(entry), 0)} leftName={leftName} rightName={rightName} range={range} languages={languages} />}
+    </section>
+    <section className="language-comparison__results" aria-label="Comparison results">
+    {languagePositionReference}
     {activeEntries.length === 0 && <p className="language-comparison__empty">Add an item set with a search goal to compare languages.</p>}
     {!isComparisonRequested && activeEntries.length > 0 && <p className="language-comparison__status">Choose two languages, then press compare to calculate and save their default crafts.</p>}
     {isComparisonRequested && (leftState?.status === 'pending' || rightState?.status === 'pending') && <p className="language-comparison__status">calculating comparison…</p>}
     {isComparisonRequested && (leftState?.status === 'unavailable' || rightState?.status === 'unavailable') && <p className="language-comparison__status">The comparison could not be calculated for one of these languages.</p>}
     {isComparisonRequested && selectedComparison && <>
-      {compactLayout && <nav className="language-comparison__navigator" aria-label="Item set navigation"><button type="button" aria-label="Previous item set" disabled={selectedEntryIndex === 0} onClick={() => setSelectedEntryId(activeEntries[selectedEntryIndex - 1]?.id)}><ArrowSprite direction="left" compact /></button><label>item set<select aria-label="Compared item set" value={selectedEntry.id} onChange={(event) => setSelectedEntryId(event.target.value)}>{activeEntries.map((entry, index) => <option key={entry.id} value={entry.id}>{entryLabel(entry, index, baseData)}</option>)}</select></label><button type="button" aria-label="Next item set" disabled={selectedEntryIndex === activeEntries.length - 1} onClick={() => setSelectedEntryId(activeEntries[selectedEntryIndex + 1]?.id)}><ArrowSprite direction="right" compact /></button></nav>}
+      {compactLayout && <nav className="language-comparison__navigator" aria-label="Item set navigation"><button type="button" aria-label="Previous item set" disabled={selectedEntryIndex === 0} onClick={() => setSelectedEntryId(activeEntries[selectedEntryIndex - 1]?.id)}><ArrowSprite direction="left" compact /></button><label>item set<select aria-label="Compared item set" value={selectedEntry.id} onChange={(event) => setSelectedEntryId(event.target.value)}>{activeEntries.map((entry, index) => <option key={entry.id} value={entry.id}>{itemSetLabel(entry, index + 1)}</option>)}</select></label><button type="button" aria-label="Next item set" disabled={selectedEntryIndex === activeEntries.length - 1} onClick={() => setSelectedEntryId(activeEntries[selectedEntryIndex + 1]?.id)}><ArrowSprite direction="right" compact /></button></nav>}
       <div className="language-comparison__comparison-grid">
-        <OverallComparison leftScore={leftSheet.totalScore} rightScore={rightSheet.totalScore} leftCharacters={leftSheet.totalTypedCharacters} rightCharacters={rightSheet.totalTypedCharacters} leftJunk={leftSheet.entries.reduce((total, entry) => total + junkFor(entry), 0)} rightJunk={rightSheet.entries.reduce((total, entry) => total + junkFor(entry), 0)} leftName={leftName} rightName={rightName} range={range} languages={languages} />
         <section className="language-comparison__comparison-rows" aria-label="Compared item sets">
           <header className="language-comparison__item-sets-heading"><strong>{compactLayout ? 'selected item set' : 'item sets'}</strong></header>
           <header className="language-comparison__item-scores-heading"><strong>item set scores</strong></header>
@@ -308,8 +311,9 @@ export function LanguageComparison({ baseData, entries, languages, selectedLocal
         </section>
       </div>
     </>}
+    </section>
   </div>
 
-  if (isPage) return <section className={`language-comparison language-comparison--page${compactLayout ? ' language-comparison--compact' : ''}`} aria-label="Language craft comparison"><header className="language-comparison__header language-comparison__header--page"><button type="button" className="language-comparison__back-button" aria-label="Back to crafts" onClick={onBack}><span className="language-comparison__back-title">compare languages</span><span className="language-comparison__back-label" aria-hidden="true">back to crafts</span><span className="language-comparison__back-arrow" aria-hidden="true"><ArrowSprite direction="left" compact /></span></button></header>{panel}</section>
+  if (isPage) return <section className={`language-comparison language-comparison--page${compactLayout ? ' language-comparison--compact' : ''}`} aria-label="Language craft comparison">{panel}</section>
   return <section className={`language-comparison${isOpen ? ' language-comparison--open' : ''}`} aria-label="Language craft comparison"><header className="language-comparison__header"><button type="button" aria-expanded={isOpen} onClick={() => setOpen((current) => !current)}><span>compare languages</span><span>{isOpen ? 'hide' : 'show'}</span></button></header>{isOpen && panel}</section>
 }

@@ -23,7 +23,7 @@ for (const width of [1440, 375]) {
       ['Custom inventories', '.item-set-editor .custom-slots'],
       ['Choose a language', width > 1152 ? '.language-selector__category .language-selector__language' : '.language-selector'],
       ['Your top crafts', '.results-column .calculated-search-row:has(.craft-preview--single):has(.craft-preview--overlap) .calculated-search-row__summary'],
-      ['Your crafting sheet', '.crafting-sheet__actions'],
+      ['Your crafting sheet', '.results-header__actions'],
     ]
     for (const [title, target] of targets) {
       await tutorial.getByRole('button', { name: 'next', exact: true }).click()

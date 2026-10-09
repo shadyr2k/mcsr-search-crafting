@@ -1,0 +1,58 @@
+import { expect, test } from '@playwright/test'
+
+test('sheet names persist across reloads and appear read-only in both comparison layouts', async ({ page }, testInfo) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).click()
+  await page.getByRole('button', { name: 'Expand item set 1', exact: true }).click()
+  const name = page.getByRole('textbox', { name: 'Item set name', exact: true })
+  await expect(name).toHaveValue('item set 1')
+  const position = await name.evaluate(input => {
+    const body = input.closest('.crafting-sheet__entry-body')!
+    const keyboard = body.querySelector('.keyboard-playback')!.getBoundingClientRect()
+    const search = body.querySelector('.crafting-sheet__individual')!.getBoundingClientRect()
+    const bounds = input.getBoundingClientRect()
+    return bounds.top >= keyboard.bottom && bounds.bottom <= search.top
+  })
+  expect(position).toBe(true)
+  await name.fill('  Nether tools — supplies  ')
+  await name.press('Enter')
+  await expect(name).toHaveValue('Nether tools — supplies')
+  await expect(page.locator('.crafting-sheet__entry-label').first()).toHaveText('Nether tools — supplies')
+  await name.fill('Discard this name')
+  await name.press('Escape')
+  await expect(name).toHaveValue('Nether tools — supplies')
+  for (const width of [320, 390, 768, 1151, 1152, 1153, 1920, 2560]) {
+    await page.setViewportSize({ width, height: 1000 })
+    expect(await name.evaluate(input => {
+      const bounds = input.getBoundingClientRect()
+      const card = input.closest('.crafting-sheet__entry')!.getBoundingClientRect()
+      return bounds.left >= card.left && bounds.right <= card.right && document.documentElement.scrollWidth <= innerWidth + 1
+    })).toBe(true)
+    if (width === 390) await page.locator('.crafting-sheet__entry').first().screenshot({ path: testInfo.outputPath('named-sheet-entry.png'), animations: 'disabled' })
+  }
+  await page.reload()
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).click()
+  await page.getByRole('button', { name: 'Expand Nether tools — supplies', exact: true }).click()
+  await expect(name).toHaveValue('Nether tools — supplies')
+  await page.getByRole('button', { name: /Back to .* crafts/ }).click()
+  await page.getByRole('button', { name: 'compare languages', exact: true }).click()
+  await page.getByRole('button', { name: 'compare', exact: true }).click()
+  await expect(page.locator('.language-comparison__item-set-heading').first()).toContainText('Nether tools — supplies')
+  await expect(name).toHaveCount(0)
+  await page.getByRole('button', { name: 'settings', exact: true }).click()
+  await page.getByRole('switch', { name: 'compact layout', exact: true }).click()
+  await page.getByRole('button', { name: 'save settings', exact: true }).click()
+  await page.getByRole('button', { name: 'search crafting', exact: true }).click()
+  await page.getByRole('button', { name: 'compare languages', exact: true }).click()
+  await page.getByRole('button', { name: 'compare', exact: true }).click()
+  await expect(page.getByRole('combobox', { name: 'Compared item set' }).locator('option:checked')).toHaveText('Nether tools — supplies')
+  await expect(name).toHaveCount(0)
+  await page.getByRole('button', { name: 'Back to crafts', exact: true }).click()
+  await page.getByRole('button', { name: 'crafting sheet', exact: true }).click()
+  await page.getByRole('button', { name: 'Expand Nether tools — supplies', exact: true }).click()
+  await name.fill('')
+  await name.press('Tab')
+  await expect(name).toHaveValue('item set 1')
+  await expect(page.getByRole('button', { name: 'Collapse item set 1', exact: true })).toBeVisible()
+})

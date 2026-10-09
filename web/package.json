@@ -13,6 +13,7 @@
     "build": "tsc -b && vite build",
     "render:cat-icons": "node scripts/render-cat-icons.mjs",
     "e2e": "playwright test",
+    "e2e:responsive": "playwright test responsive-",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest",
     "test:watch": "vitest --watch"

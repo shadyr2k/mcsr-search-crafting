@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { createContext, Fragment, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 import type { IconManifest } from '../data/iconManifest'
@@ -44,6 +44,7 @@ export interface CraftingSheetProps {
   onSetItemQuery: (entryId: string, itemId: string, query: string) => CraftQueryResult
   onMoveItemCraft: (entryId: string, itemId: string, direction: -1 | 1) => void
   onSetEntryDisabled: (entryId: string, disabled: boolean) => void
+  onRenameEntry?: (entryId: string, name: string) => void
   onReset: () => void
 }
 
@@ -66,7 +67,9 @@ function totalScoreHue(entries: readonly CraftingSheetEntry[], scoreDelta: numbe
   return Math.round(132 * (1 - severity))
 }
 
-export function SheetDisclosure({ id, open, children, sizeWhileCollapsed = false }: { id: string; open: boolean; children: ReactNode; sizeWhileCollapsed?: boolean }) {
+const SheetDisclosureOpen = createContext(true)
+
+export function SheetDisclosure({ id, open, children, sizeWhileCollapsed = false, removeAnimations = false }: { id: string; open: boolean; children: ReactNode; sizeWhileCollapsed?: boolean; removeAnimations?: boolean }) {
   const [hasOpened, setHasOpened] = useState(open)
   const [isClosing, setIsClosing] = useState(false)
   const detailsRef = useRef<HTMLDivElement>(null)
@@ -78,25 +81,31 @@ export function SheetDisclosure({ id, open, children, sizeWhileCollapsed = false
       return
     }
     if (!hasOpened) return
-    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
-      || detailsRef.current?.closest('.app-shell--remove-animations') !== null
+    const reducedMotion = removeAnimations || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+      || Boolean(detailsRef.current?.closest('.app-shell--remove-animations'))
     if (reducedMotion) {
       setIsClosing(false)
-      if (!sizeWhileCollapsed) setHasOpened(false)
+      setHasOpened(false)
       return
     }
     setIsClosing(true)
-  }, [hasOpened, open, sizeWhileCollapsed])
+    // Browsers may cancel an animation when its ancestor is hidden or replaced.
+    const timeout = window.setTimeout(() => {
+      setIsClosing(false)
+      setHasOpened(false)
+    }, 200)
+    return () => window.clearTimeout(timeout)
+  }, [hasOpened, open, removeAnimations])
 
   if (!open && !hasOpened && !sizeWhileCollapsed) return null
 
   return <div ref={detailsRef} id={id} className={`crafting-sheet__details${open ? ' crafting-sheet__details--open' : ''}${isClosing ? ' crafting-sheet__details--closing' : ''}`} aria-hidden={!open} inert={!open}
     onAnimationEnd={(event) => {
-      if (event.target !== event.currentTarget || event.animationName !== 'crafting-sheet-details-conceal') return
+      if (open || event.target !== event.currentTarget || event.animationName !== 'crafting-sheet-details-conceal') return
       setIsClosing(false)
-      if (!sizeWhileCollapsed) setHasOpened(false)
+      setHasOpened(false)
     }}>
-    <div className="crafting-sheet__details-clip">{children}</div>
+    <div className="crafting-sheet__details-clip"><SheetDisclosureOpen value={open}>{(open || hasOpened) && children}</SheetDisclosureOpen></div>
   </div>
 }
 
@@ -123,7 +132,30 @@ function ItemLabels({ itemIds, items, icons }: { itemIds: readonly string[]; ite
   </span>)}</span>
 }
 
-function ItemSetCard({ entry, items, icons, onPreviewItemQuery, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, compactLayout = false, keyboardSettings = DEFAULT_KEYBOARD_SETTINGS, removeAnimations = false, isOpen, onOpenChange }: Pick<CraftingSheetProps, 'items' | 'icons' | 'onPreviewItemQuery' | 'onSetItemQuery' | 'onMoveItemCraft' | 'onSetEntryDisabled' | 'compactLayout' | 'keyboardSettings' | 'removeAnimations'> & { entry: CraftingSheetEntry; isOpen: boolean; onOpenChange: (open: boolean) => void }) {
+function ItemSetName({ entry, onRename }: { entry: CraftingSheetEntry; onRename: NonNullable<CraftingSheetProps['onRenameEntry']> }) {
+  const [name, setName] = useState(entry.label)
+  const cancelBlur = useRef(false)
+  useEffect(() => setName(entry.label), [entry.label])
+  return <input className="crafting-sheet__entry-name" aria-label="Item set name" title="Rename item set" value={name}
+    onChange={(event) => setName(event.target.value)}
+    onBlur={(event) => {
+      if (cancelBlur.current) { cancelBlur.current = false; return }
+      const nextName = event.target.value.trim()
+      setName(nextName || entry.label)
+      if (nextName !== entry.label) onRename(entry.id, nextName)
+    }}
+    onKeyDown={(event) => {
+      if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur() }
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        cancelBlur.current = true
+        setName(entry.label)
+        event.currentTarget.blur()
+      }
+    }} />
+}
+
+function ItemSetCard({ entry, items, icons, onPreviewItemQuery, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, onRenameEntry, compactLayout = false, keyboardSettings = DEFAULT_KEYBOARD_SETTINGS, removeAnimations = false, isOpen, onOpenChange }: Pick<CraftingSheetProps, 'items' | 'icons' | 'onPreviewItemQuery' | 'onSetItemQuery' | 'onMoveItemCraft' | 'onSetEntryDisabled' | 'onRenameEntry' | 'compactLayout' | 'keyboardSettings' | 'removeAnimations'> & { entry: CraftingSheetEntry; isOpen: boolean; onOpenChange: (open: boolean) => void }) {
   const headingId = useId()
   const detailsId = useId()
   const summaryGroups = entry.itemIds.reduce<{ itemIds: string[]; step?: RankedSearch['steps'][number] }[]>((groups, itemId) => {
@@ -134,13 +166,13 @@ function ItemSetCard({ entry, items, icons, onPreviewItemQuery, onSetItemQuery, 
     else groups.push({ itemIds: [itemId], step })
     return groups
   }, [])
-  if (entry.disabled) return <section className="crafting-sheet__entry crafting-sheet__entry--disabled" aria-labelledby={headingId}>
+  if (entry.disabled) return <section className="crafting-sheet__entry crafting-sheet__entry--disabled" data-entry-id={entry.id} aria-labelledby={headingId}>
     <header className="crafting-sheet__entry-heading">
       <span id={headingId} className="crafting-sheet__entry-label">{entry.label}</span>
       <label className="crafting-sheet__include"><input type="checkbox" checked={false} aria-label={`Include ${entry.label}`} onChange={(event) => onSetEntryDisabled(entry.id, !event.target.checked)} />excluded</label>
     </header>
   </section>
-  return <section className={`crafting-sheet__entry${entry.disabled ? ' crafting-sheet__entry--disabled' : ''}`} aria-labelledby={headingId}>
+  return <section className={`crafting-sheet__entry${entry.disabled ? ' crafting-sheet__entry--disabled' : ''}`} data-entry-id={entry.id} aria-labelledby={headingId}>
     <header className="crafting-sheet__entry-heading">
       <button type="button" className="crafting-sheet__entry-toggle" aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${entry.label}`} aria-expanded={isOpen} aria-controls={detailsId} onClick={() => {
         onOpenChange(!isOpen)
@@ -160,8 +192,8 @@ function ItemSetCard({ entry, items, icons, onPreviewItemQuery, onSetItemQuery, 
       </button>
       <label className="crafting-sheet__include"><input type="checkbox" checked={!entry.disabled} aria-label={`Include ${entry.label}`} onChange={(event) => onSetEntryDisabled(entry.id, !event.target.checked)} />{entry.disabled ? 'excluded' : 'included'}</label>
     </header>
-    <SheetDisclosure id={detailsId} open={isOpen} sizeWhileCollapsed>
-    {isOpen && <div className="crafting-sheet__entry-body">
+    <SheetDisclosure id={detailsId} open={isOpen} sizeWhileCollapsed removeAnimations={removeAnimations}>
+    <div className="crafting-sheet__entry-body">
     {entry.status !== 'ready'
       ? <p className="crafting-sheet__empty">{entry.status === 'pending' ? 'Calculating crafts…' : 'No available craft for this item set. Check its inventory and targets.'}</p>
       : <>
@@ -174,7 +206,8 @@ function ItemSetCard({ entry, items, icons, onPreviewItemQuery, onSetItemQuery, 
           {entry.selectedSearch && <QuerySequence search={entry.selectedSearch} />}
 
         </div>
-        {isOpen && entry.selectedSearch && <KeyboardPlayback search={entry.selectedSearch} settings={keyboardSettings} removeAnimations={removeAnimations} />}
+        {entry.selectedSearch && <KeyboardPlayback search={entry.selectedSearch} settings={keyboardSettings} removeAnimations={removeAnimations} />}
+        {onRenameEntry && <ItemSetName entry={entry} onRename={onRenameEntry} />}
         <div className="crafting-sheet__individual">
             {entry.itemChoices.map((choice, index) => {
               const selected = choice.options.find((option) => option.id === choice.selectedOptionId)
@@ -193,7 +226,7 @@ function ItemSetCard({ entry, items, icons, onPreviewItemQuery, onSetItemQuery, 
             })}
           </div>
       </>}
-    </div>}
+    </div>
     </SheetDisclosure>
   </section>
 }
@@ -223,6 +256,10 @@ export function CraftQueryInput({ label, value, suggestions, calculatedSearches,
   const displayQuery = (query: string) => query.replaceAll(' ', '_')
   const [draft, setDraft] = useState(displayQuery(value))
   const [isOpen, setIsOpen] = useState(false)
+  const disclosureOpen = useContext(SheetDisclosureOpen)
+  useEffect(() => {
+    if (!disclosureOpen) setIsOpen(false)
+  }, [disclosureOpen])
   const [filterByDraft, setFilterByDraft] = useState(false)
   const candidates = useMemo(() => calculatedSearches ?? suggestions.map((option) => option.search), [calculatedSearches, suggestions])
   const [calculated, setCalculated] = useState<{ draft: string; source: readonly RankedSearch[]; options: CraftingSheetOption[] }>()
@@ -407,11 +444,12 @@ function SheetSummary({
   warning,
   readyCount,
   onReset,
-}: Pick<CraftingSheetProps, 'entries' | 'characterSet' | 'totalTypedCharacters' | 'totalScore' | 'scoreDelta' | 'optimalCharacterCount' | 'isCalculating' | 'warning' | 'onReset'> & { readyCount: number }) {
+  showReset = true,
+}: Pick<CraftingSheetProps, 'entries' | 'characterSet' | 'totalTypedCharacters' | 'totalScore' | 'scoreDelta' | 'optimalCharacterCount' | 'isCalculating' | 'warning' | 'onReset'> & { readyCount: number; showReset?: boolean }) {
   const scoreHue = totalScoreHue(entries, scoreDelta)
   const characterDelta = characterSet.length - optimalCharacterCount
   return <>
-    <div className="crafting-sheet__intro"><button type="button" className="crafting-sheet__reset" onClick={onReset}>reset sheet</button></div>
+    {showReset && <div className="crafting-sheet__intro"><button type="button" className="crafting-sheet__reset title-font-action" onClick={onReset}>reset sheet</button></div>}
     <div className="crafting-sheet__totals" aria-live="polite" aria-atomic="true">
       <div><strong aria-label="Total characters">{totalTypedCharacters}</strong><span>total characters</span></div>
       <div><strong aria-label="Distinct characters" title="Difference from the fewest characters possible among all score-optimal craft choices.">{characterSet.length}{characterDelta !== 0 && <small className={`crafting-sheet__character-delta${characterDelta < 0 ? ' crafting-sheet__character-delta--saved' : ''}`}>{characterDelta > 0 ? '+' : ''}{characterDelta}</small>}</strong><span>distinct characters</span></div>
@@ -424,26 +462,49 @@ function SheetSummary({
   </>
 }
 
-function ItemSetList({ entries, items, icons, onPreviewItemQuery, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, compactLayout = false, keyboardSettings, removeAnimations, columns = false }: Pick<CraftingSheetProps, 'entries' | 'items' | 'icons' | 'onPreviewItemQuery' | 'onSetItemQuery' | 'onMoveItemCraft' | 'onSetEntryDisabled' | 'compactLayout' | 'keyboardSettings' | 'removeAnimations'> & { columns?: boolean }) {
+function ItemSetList({ entries, items, icons, onPreviewItemQuery, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, onRenameEntry, compactLayout = false, keyboardSettings, removeAnimations, columns = false }: Pick<CraftingSheetProps, 'entries' | 'items' | 'icons' | 'onPreviewItemQuery' | 'onSetItemQuery' | 'onMoveItemCraft' | 'onSetEntryDisabled' | 'onRenameEntry' | 'compactLayout' | 'keyboardSettings' | 'removeAnimations'> & { columns?: boolean }) {
   const columnsRef = useRef<HTMLDivElement>(null)
+  const measuredRows = useRef({ width: 0, heights: new Map<string, number>() })
   const [openEntryId, setOpenEntryId] = useState<string>()
-  const [rowCount, setRowCount] = useState<number>()
-  const hasExcludedEntries = columns && entries.some((entry) => entry.disabled)
-  const hasExpandedEntries = columns && entries.some((entry) => entry.id === openEntryId && !entry.disabled)
-  const hasMeasuredRows = columns && rowCount !== undefined
-  const usesNaturalRows = (hasExcludedEntries || hasExpandedEntries) && hasMeasuredRows
-  const usesIndependentColumns = hasExcludedEntries && hasMeasuredRows
-  const compactColumns = usesIndependentColumns && rowCount
-    ? Array.from({ length: Math.ceil(entries.length / rowCount) }, (_, columnIndex) => entries.slice(columnIndex * rowCount, (columnIndex + 1) * rowCount))
-    : []
+  const [rowCount, setRowCount] = useState(10)
+  const [visibleColumnCount, setVisibleColumnCount] = useState(1)
+  const [firstEntryIndex, setFirstEntryIndex] = useState(0)
+  const columnsId = useId()
+  const pageSize = rowCount * visibleColumnCount
+  const pageCount = Math.max(1, Math.ceil(entries.length / pageSize))
+  const pageIndex = Math.min(Math.floor(firstEntryIndex / pageSize), pageCount - 1)
+  const pageStart = pageIndex * pageSize
+  const visibleEntries = entries.slice(pageStart, pageStart + pageSize)
+  const entryColumns = Array.from({ length: Math.ceil(visibleEntries.length / rowCount) }, (_, columnIndex) => visibleEntries.slice(columnIndex * rowCount, (columnIndex + 1) * rowCount))
 
   function measureRowCount() {
     if (!columnsRef.current) return
     const styles = getComputedStyle(columnsRef.current)
     const rowGap = Number.parseFloat(styles.rowGap) || 0
-    const minimumRowHeight = (Number.parseFloat(styles.fontSize) || 16) * 3.75
-    if (columnsRef.current.clientHeight > 0) {
-      const nextRowCount = Math.max(1, Math.floor((columnsRef.current.clientHeight + rowGap) / (minimumRowHeight + rowGap)))
+    const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
+    const width = columnsRef.current.clientWidth
+    if (measuredRows.current.width !== width) measuredRows.current = { width, heights: new Map() }
+    // Measure only the summary header and card edges, even while a detail body
+    // is opening or closing. Retained animation content must not become the
+    // cached height of every collapsed row. Remember each card independently
+    // so editing a long name/query can also reduce its previously measured height.
+    for (const card of columnsRef.current.querySelectorAll<HTMLElement>('.crafting-sheet__entry')) {
+      const heading = card.querySelector<HTMLElement>('.crafting-sheet__entry-heading')
+      if (!heading || !card.dataset.entryId) continue
+      const cardStyles = getComputedStyle(card)
+      const edges = ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth'] as const
+      const height = heading.getBoundingClientRect().height + edges.reduce((total, edge) => total + (Number.parseFloat(cardStyles[edge]) || 0), 0)
+      measuredRows.current.heights.set(card.dataset.entryId, Math.ceil(height))
+    }
+    const minimumRowHeight = Math.max(rem * 3.75, ...entries.map(entry => measuredRows.current.heights.get(entry.id) ?? 0))
+    const columnGap = Number.parseFloat(styles.columnGap) || 0
+    // Two 20rem cards must fit comfortably before exposing a second column.
+    setVisibleColumnCount(columnsRef.current.clientWidth >= rem * 40 + columnGap ? 2 : 1)
+    if (styles.getPropertyValue('--crafting-sheet-stacked').trim() === '1') {
+      setRowCount(10)
+    } else if (columnsRef.current.clientHeight > 0) {
+      const availableHeight = columnsRef.current.clientHeight - (Number.parseFloat(styles.paddingTop) || 0) - (Number.parseFloat(styles.paddingBottom) || 0)
+      const nextRowCount = Math.max(1, Math.floor((availableHeight + rowGap) / (minimumRowHeight + rowGap)))
       setRowCount((current) => current === nextRowCount ? current : nextRowCount)
     }
   }
@@ -463,34 +524,42 @@ function ItemSetList({ entries, items, icons, onPreviewItemQuery, onSetItemQuery
       })
     }
     scheduleMeasurement()
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(scheduleMeasurement)
+    if (columnsRef.current) observer?.observe(columnsRef.current)
+    for (const card of columnsRef.current?.querySelectorAll('.crafting-sheet__entry') ?? []) observer?.observe(card)
     window.addEventListener('resize', scheduleMeasurement)
     return () => {
       if (animationFrame !== undefined) cancelAnimationFrame(animationFrame)
+      observer?.disconnect()
       window.removeEventListener('resize', scheduleMeasurement)
     }
-  }, [columns])
+  }, [columns, entries, openEntryId, firstEntryIndex, rowCount, visibleColumnCount])
 
   function setEntryOpen(entryId: string, open: boolean) {
-    if (open && rowCount === undefined) measureRowCount()
     setOpenEntryId((current) => open ? entryId : current === entryId ? undefined : current)
   }
 
   function setEntryDisabled(entryId: string, disabled: boolean) {
-    if (disabled) measureRowCount()
     onSetEntryDisabled(entryId, disabled)
   }
 
   function renderEntry(entry: CraftingSheetEntry) {
-    return <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onPreviewItemQuery={onPreviewItemQuery} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={setEntryDisabled} compactLayout={compactLayout} keyboardSettings={keyboardSettings} removeAnimations={removeAnimations} isOpen={entry.id === openEntryId} onOpenChange={(open) => setEntryOpen(entry.id, open)} />
+    return <ItemSetCard key={entry.id} entry={entry} items={items} icons={icons} onPreviewItemQuery={onPreviewItemQuery} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={setEntryDisabled} onRenameEntry={onRenameEntry} compactLayout={compactLayout} keyboardSettings={keyboardSettings} removeAnimations={removeAnimations} isOpen={entry.id === openEntryId} onOpenChange={(open) => setEntryOpen(entry.id, open)} />
   }
 
-  return <section className={`crafting-sheet__sets${columns ? ' crafting-sheet__sets--columns' : ''}`} aria-label="Selected item sets"><h3>item sets</h3>
+  return <section className={`crafting-sheet__sets${columns ? ' crafting-sheet__sets--columns' : ''}`} aria-label="Selected item sets"><div className="crafting-sheet__sets-heading"><h3>item sets</h3>
+    {columns && pageCount > 1 && <nav className="crafting-sheet__pagination" aria-label="Item-set pages">
+      <button type="button" aria-label="Previous item-set columns" aria-controls={columnsId} disabled={pageIndex === 0} onClick={() => setFirstEntryIndex(pageStart - pageSize)}><ArrowSprite direction="left" compact /><span>previous</span></button>
+      <span role="status" aria-live="polite">{pageIndex + 1} / {pageCount}</span>
+      <button type="button" aria-label="Next item-set columns" aria-controls={columnsId} disabled={pageIndex === pageCount - 1} onClick={() => setFirstEntryIndex(pageStart + pageSize)}><span>next</span><ArrowSprite direction="right" compact /></button>
+    </nav>}
+    </div>
     {entries.length === 0 && <p className="crafting-sheet__empty">Add an item set with available crafts to build a crafting sheet.</p>}
-    {entries.length > 0 && <div ref={columnsRef} style={hasMeasuredRows ? { '--crafting-sheet-entry-row-count': String(rowCount) } as CSSProperties : undefined} className={`crafting-sheet__set-columns${usesIndependentColumns ? ' crafting-sheet__set-columns--compact-rows' : usesNaturalRows ? ' crafting-sheet__set-columns--expanded' : hasMeasuredRows ? ' crafting-sheet__set-columns--sized' : ''}`}>{usesIndependentColumns ? compactColumns.map((entryColumn, columnIndex) => <div className="crafting-sheet__set-column" key={columnIndex}>{entryColumn.map(renderEntry)}</div>) : entries.map(renderEntry)}</div>}
+    {entries.length > 0 && <div id={columnsId} ref={columnsRef} style={columns ? { '--crafting-sheet-visible-columns': String(visibleColumnCount) } as CSSProperties : undefined} className="crafting-sheet__set-columns">{columns ? entryColumns.map((entryColumn, columnIndex) => <div className="crafting-sheet__set-column" key={columnIndex}>{entryColumn.map(renderEntry)}</div>) : entries.map(renderEntry)}</div>}
   </section>
 }
 
-export function CraftingSheet({ languageName, entries, characterSet, characterUsages, optimalCharacterCount, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, defaultOpen = false, open, onOpenChange, layout = 'inline', compactLayout = false, keyboardSettings, removeAnimations, onBack, onCompare, onPreviewItemQuery, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, onReset }: CraftingSheetProps) {
+export function CraftingSheet({ languageName, entries, characterSet, characterUsages, optimalCharacterCount, totalTypedCharacters, totalScore, scoreDelta, items, icons, isCalculating = false, warning, defaultOpen = false, open, onOpenChange, layout = 'inline', compactLayout = false, keyboardSettings, removeAnimations, onBack, onCompare, onPreviewItemQuery, onSetItemQuery, onMoveItemCraft, onSetEntryDisabled, onRenameEntry, onReset }: CraftingSheetProps) {
   const [localOpen, setLocalOpen] = useState(defaultOpen)
   const [selectedCharacter, setSelectedCharacter] = useState<string>()
   const isOpen = open ?? localOpen
@@ -507,21 +576,24 @@ export function CraftingSheet({ languageName, entries, characterSet, characterUs
   if (layout === 'page') return <section className={`crafting-sheet crafting-sheet--page${compactLayout ? ' crafting-sheet--compact' : ''}`} aria-label={`${languageName} crafting sheet`}>
     <div className="crafting-sheet__panel crafting-sheet__panel--page">
       <aside className="crafting-sheet__page-info">
-        <header className="crafting-sheet__header"><h2 className="crafting-sheet__heading">
-          <button type="button" className="crafting-sheet__toggle" aria-label={`Back to ${languageName} crafts`} onClick={onBack}>
-            <span className="crafting-sheet__title">{languageName} search crafts</span>
-            <span className="crafting-sheet__toggle-label" aria-hidden="true">back to crafts</span>
-            <span className="crafting-sheet__disclosure" aria-hidden="true"><ArrowSprite direction="left" compact /></span>
-          </button>
-        </h2></header>
-        <SheetSummary entries={entries} characterSet={characterSet} totalTypedCharacters={totalTypedCharacters} totalScore={totalScore} scoreDelta={scoreDelta} optimalCharacterCount={optimalCharacterCount} isCalculating={isCalculating} warning={warning} readyCount={readyCount} onReset={onReset} />
+        <header className="crafting-sheet__header crafting-sheet__page-header">
+          <h2 className="crafting-sheet__heading crafting-sheet__title">{languageName} search crafts</h2>
+          <div className="crafting-sheet__page-actions">
+            <button type="button" className="crafting-sheet__back page-navigation" aria-label={`Back to ${languageName} crafts`} onClick={onBack}>
+              <span className="crafting-sheet__disclosure" aria-hidden="true"><ArrowSprite direction="left" compact /></span>
+              <span>back to crafts</span>
+            </button>
+            <button type="button" className="crafting-sheet__reset title-font-action" onClick={onReset}>reset sheet</button>
+          </div>
+        </header>
+        <SheetSummary entries={entries} characterSet={characterSet} totalTypedCharacters={totalTypedCharacters} totalScore={totalScore} scoreDelta={scoreDelta} optimalCharacterCount={optimalCharacterCount} isCalculating={isCalculating} warning={warning} readyCount={readyCount} onReset={onReset} showReset={false} />
       </aside>
       <aside className="crafting-sheet__page-characters">
         <CharacterSet characterSet={characterSet} selectedCharacter={selectedCharacter} onSelectCharacter={selectCharacter} />
         <CharacterDetails selectedCharacter={selectedCharacter} usages={usages} />
       </aside>
       <UsageChart usages={usages} className="crafting-sheet__chart--page" />
-      <ItemSetList columns keyboardSettings={keyboardSettings} removeAnimations={removeAnimations} compactLayout={compactLayout} entries={entries} items={items} icons={icons} onPreviewItemQuery={onPreviewItemQuery} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />
+      <ItemSetList columns keyboardSettings={keyboardSettings} removeAnimations={removeAnimations} compactLayout={compactLayout} entries={entries} items={items} icons={icons} onPreviewItemQuery={onPreviewItemQuery} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} onRenameEntry={onRenameEntry} />
     </div>
   </section>
 
@@ -532,13 +604,13 @@ export function CraftingSheet({ languageName, entries, characterSet, characterUs
         <button type="button" className="crafting-sheet__action" aria-controls={panelId} aria-expanded={isOpen} onClick={() => setIsOpen(!isOpen)}>
           <span>crafting sheet</span><span aria-hidden="true"><ArrowSprite direction="right" compact /></span>
         </button>
-        {onCompare && <button type="button" className="crafting-sheet__action" onClick={onCompare}><span>compare languages</span><span aria-hidden="true"><ArrowSprite direction="right" compact /></span></button>}
+        {onCompare && <button type="button" className="crafting-sheet__action page-navigation" onClick={onCompare}><span>compare languages</span><span aria-hidden="true"><ArrowSprite direction="right" compact /></span></button>}
       </div>
     </header>
-    <SheetDisclosure id={panelId} open={isOpen}>
+    <SheetDisclosure id={panelId} open={isOpen} removeAnimations={removeAnimations}>
     <div className="crafting-sheet__panel">
       <SheetSummary entries={entries} characterSet={characterSet} totalTypedCharacters={totalTypedCharacters} totalScore={totalScore} scoreDelta={scoreDelta} optimalCharacterCount={optimalCharacterCount} isCalculating={isCalculating} warning={warning} readyCount={readyCount} onReset={onReset} />
-      <ItemSetList keyboardSettings={keyboardSettings} removeAnimations={removeAnimations} compactLayout={compactLayout} entries={entries} items={items} icons={icons} onPreviewItemQuery={onPreviewItemQuery} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} />
+      <ItemSetList keyboardSettings={keyboardSettings} removeAnimations={removeAnimations} compactLayout={compactLayout} entries={entries} items={items} icons={icons} onPreviewItemQuery={onPreviewItemQuery} onSetItemQuery={onSetItemQuery} onMoveItemCraft={onMoveItemCraft} onSetEntryDisabled={onSetEntryDisabled} onRenameEntry={onRenameEntry} />
       <CharacterSet characterSet={characterSet} selectedCharacter={selectedCharacter} onSelectCharacter={selectCharacter} />
       <CharacterDetails selectedCharacter={selectedCharacter} usages={usages} />
     </div>

@@ -1,0 +1,16 @@
+:root {
+  --font-action: 'Figtree', sans-serif;
+  --font-title: 'Coiny', sans-serif;
+}
+
+/* Action typography is shared across panels; top-bar controls keep their
+   existing treatment. Content such as query glyphs keeps its own formatting. */
+:root .app-shell button:not(.page-navigation):not(.title-font-action):not(:where(.app-header *)) {
+  font-family: var(--font-action);
+  font-weight: 850;
+}
+
+:root .app-shell button:is(.page-navigation, .title-font-action) {
+  font-family: var(--font-title);
+  font-weight: 400;
+}

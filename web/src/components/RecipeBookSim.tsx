@@ -321,6 +321,8 @@ export function RecipeBookSim({
         <ItemPicker
           items={inventoryPickerItems}
           label="Simulator inventory"
+          displayLabel="Inventory items"
+          revealOnAdd
           className={compactLayout ? 'item-picker--compact' : undefined}
           selectedIds={inventoryItemIds}
           manifest={icons}

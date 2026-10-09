@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { parseIconManifest } from '../data/iconManifest'
-import type { RankedSearch, RecipeResultCollection, SearchItem, TargetWorkspaceEntry } from '../domain/types'
+import type { CraftingRecipe, RankedSearch, RecipeResultCollection, SearchItem, TargetWorkspaceEntry } from '../domain/types'
 import type { CollectionMatchExplanation } from '../engine/search'
 import { CalculatedSearchRow } from './CalculatedSearchRow'
 
@@ -38,6 +38,43 @@ function explanation(line: string, start: number): CollectionMatchExplanation {
 }
 
 describe('CalculatedSearchRow', () => {
+  test.each([
+    ['+2 Armor', false], ['+2 Rüstung', true], ['+2 Armatura', false],
+  ])('rebuilds cached number evidence from %s (compact: %s)', (line, compactLayout) => {
+    const localizedItems = new Map([...items].map(([id, item]) => [id, {
+      ...item, searchLines: [{ source: 'attribute', text: line }],
+    }]))
+    const recipes: CraftingRecipe[] = [{
+      id: 'bow', recipeGroup: null, recipeBookCategory: 'crafting_misc',
+      resultCollectionId: 'equipment', outputItemId: 'minecraft:bow', outputCount: 1,
+      ingredientSlots: [], fits2x2: true, fits3x3: true,
+    }]
+    const collections = new Map<string, RecipeResultCollection>([['equipment', {
+      id: 'equipment', recipeGroup: null, recipeBookCategory: 'crafting_misc',
+      recipeIds: ['bow'], outputItemIds: [...items.keys()],
+    }]])
+    const cachedSearch = search(['2'], 1)
+    render(<CalculatedSearchRow entry={entry} entryNumber={1}
+      state={{ status: 'ready', fingerprint: 'cached', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [cachedSearch], bestScore: 1, visibleItemIds: [] } }}
+      items={localizedItems} icons={icons} collections={collections} recipes={recipes} compactLayout={compactLayout} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
+    const toggle = screen.getByRole('button', { name: 'Show why Regular craft: 2' })
+    expect(toggle.querySelector('.craft-result__toggle-mark')).toBeTruthy()
+    expect(document.querySelector('.match-evidence')).toBeNull()
+    fireEvent.click(toggle)
+    const evidence = [...document.querySelectorAll('.match-evidence')]
+    expect(evidence).toHaveLength(2)
+    for (const match of evidence) {
+      expect(match.textContent).toContain(line)
+      expect(match.querySelector('mark')?.textContent).toBe('2')
+    }
+    expect(cachedSearch.steps[0].explanations).toEqual([])
+    fireEvent.click(toggle)
+    fireEvent.click(toggle)
+    expect(document.querySelectorAll('.match-evidence mark')).toHaveLength(2)
+  })
+
   test('does not render a search-crafts row for a disabled item set', () => {
     render(<CalculatedSearchRow entry={{ ...entry, enabled: false }} entryNumber={1} state={{ status: 'idle' }} items={items} icons={icons} />)
 
@@ -478,6 +515,27 @@ describe('CalculatedSearchRow', () => {
     expect(within(regularCategory).getAllByRole('listitem', { name: /Regular craft:/ })).toHaveLength(4)
   })
 
+  test('keeps the regular and overlap category controls independent', () => {
+    const dirtyRegular = search(['dirty'], 2)
+    dirtyRegular.steps[0].junkItemIds = ['minecraft:stick']
+    const cleanOverlap = search(['axe', 'bow'], 3, 'overlap')
+    cleanOverlap.steps[1].junkItemIds = []
+    cleanOverlap.totalJunkAppearances = 0
+    const dirtyOverlap = search(['tool', 'wood'], 4, 'overlap')
+    render(<CalculatedSearchRow entry={entry} entryNumber={1}
+      state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches: [search(['clean'], 1), dirtyRegular, cleanOverlap, dirtyOverlap], bestScore: 1, visibleItemIds: [] } }}
+      items={items} icons={icons} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
+    const regular = screen.getByRole('group', { name: 'Regular craft category' })
+    const overlap = screen.getByRole('group', { name: 'Overlap craft category' })
+    fireEvent.click(within(regular).getByRole('button', { name: 'other' }))
+    expect(within(regular).getByRole('button', { name: 'other' }).getAttribute('aria-pressed')).toBe('true')
+    expect(within(overlap).getByRole('button', { name: 'junkless' }).getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(within(overlap).getByRole('button', { name: 'other' }))
+    fireEvent.click(within(regular).getByRole('button', { name: 'junkless' }))
+    expect(within(overlap).getByRole('button', { name: 'other' }).getAttribute('aria-pressed')).toBe('true')
+  })
+
   test('can hide digit-containing regular and overlap crafts for one item set', () => {
     const numericOverlap = search(['+8', 'axe'], 3, 'overlap')
     numericOverlap.steps[1] = { ...numericOverlap.steps[1], freeBackspaceCount: 1 }
@@ -487,7 +545,10 @@ describe('CalculatedSearchRow', () => {
     render(<CalculatedSearchRow entry={entry} entryNumber={1} state={{ status: 'ready', fingerprint: 'x', outcome: { kind: 'ranked', entryId: 'a', rankedSearches, bestScore: 1, visibleItemIds: [] } }} items={items} icons={icons} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
-    const filter = screen.getByRole('group', { name: 'Number craft filter' })
+    const filter = screen.getByRole('group', { name: 'Number crafts' })
+    const toolbar = filter.closest('.craft-results-toolbar')!
+    expect(within(toolbar as HTMLElement).getByText('number crafts')).toBeTruthy()
+    expect(toolbar.closest('.craft-category')).toBeNull()
     const regularCategory = screen.getByRole('region', { name: 'Regular crafts' })
     const overlapCategory = screen.getByRole('region', { name: 'Overlap crafts' })
     expect(within(filter).getByRole('button', { name: 'show' }).getAttribute('aria-pressed')).toBe('true')
@@ -516,7 +577,7 @@ describe('CalculatedSearchRow', () => {
     />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Show all crafts for item set 1' }))
-    const filter = screen.getByRole('group', { name: 'Number craft filter' })
+    const filter = screen.getByRole('group', { name: 'Number crafts' })
     const regularCategory = screen.getByRole('region', { name: 'Regular crafts' })
     expect(within(filter).getByRole('button', { name: 'hide' }).getAttribute('aria-pressed')).toBe('true')
     expect(within(regularCategory).queryByRole('listitem', { name: 'Regular craft: 3' })).toBeNull()

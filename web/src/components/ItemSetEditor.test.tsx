@@ -1,9 +1,10 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { useState } from 'react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { parseIconManifest } from '../data/iconManifest'
-import type { GeneratedData, ItemSetDraft, SearchItem } from '../domain/types'
+import type { CustomInventoryPreset, GeneratedData, ItemSetDraft, SearchItem } from '../domain/types'
 import { newItemSetDraft } from '../workspace/entryDraft'
 import { ItemSetEditor } from './ItemSetEditor'
 
@@ -88,19 +89,22 @@ describe('ItemSetEditor', () => {
     const draft = { ...newItemSetDraft(), targetIds: ['minecraft:stick'], inventoryItemIds: ['minecraft:bucket'] }
     const { onSaveCustomSlot } = renderEditor(draft)
 
-    expect(screen.getByPlaceholderText('custom inventory 1')).toBeTruthy()
-    await user.type(screen.getByLabelText('Custom inventory 1'), 'Quick start')
-    await user.click(screen.getByRole('button', { name: 'Save custom inventory 1' }))
+    expect(screen.queryByRole('textbox', { name: 'New inventory name' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Manage saved inventories' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Save as new' }))
+    await user.type(screen.getByRole('textbox', { name: 'New inventory name' }), 'Quick start')
+    await user.click(screen.getByRole('button', { name: 'Create saved inventory' }))
     expect(onSaveCustomSlot).toHaveBeenCalledWith(0, { name: 'Quick start', itemIds: ['minecraft:bucket'] })
   })
 
-  test('shows a Minecraft icon beside every built-in and custom preset name', () => {
+  test('shows Minecraft preset icons and loads saved inventories from a compact selector', () => {
+    const onDraftChange = vi.fn()
     render(<ItemSetEditor
       state={{ kind: 'new', draft: newItemSetDraft() }}
       data={data}
       icons={icons}
       customSlots={[{ name: 'Fast route', itemIds: ['minecraft:bucket'] }, null, null]}
-      onDraftChange={vi.fn()}
+      onDraftChange={onDraftChange}
       onSave={vi.fn()}
       onCancel={vi.fn()}
       onSaveCustomSlot={vi.fn()}
@@ -110,14 +114,16 @@ describe('ItemSetEditor', () => {
     expect(screen.getByRole('img', { name: 'Overworld preset icon' })).toBeTruthy()
     expect(screen.getByRole('img', { name: 'Nether (Bastion) preset icon' })).toBeTruthy()
     expect(screen.getByRole('img', { name: 'Nether (Fortress) preset icon' })).toBeTruthy()
-    expect(screen.getByRole('img', { name: 'Command block' })).toBeTruthy()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Saved inventory' }), { target: { value: '0' } })
+    expect(onDraftChange).toHaveBeenCalledWith(expect.objectContaining({ inventoryItemIds: ['minecraft:bucket'] }))
+    expect(screen.queryByRole('button', { name: 'Use inventory preset Fast route' })).toBeNull()
   })
 
   test('toggles retained craft order without changing the selected target order', () => {
     const draft = { ...newItemSetDraft(), targetIds: ['minecraft:stick'] }
     const { onDraftChange } = renderEditor(draft)
 
-    fireEvent.click(screen.getByRole('switch', { name: 'Retain item order' }))
+    fireEvent.click(within(screen.getByRole('group', { name: 'Retain item order' })).getByRole('button', { name: 'enabled' }))
 
     expect(onDraftChange).toHaveBeenCalledWith(expect.objectContaining({
       targetIds: ['minecraft:stick'],
@@ -125,12 +131,59 @@ describe('ItemSetEditor', () => {
     }))
   })
 
-  test('labels the item-order switch and presents both states as chips', () => {
+  test('renames, updates and deletes every saved slot inline without changing its items during rename', async () => {
+    const user = userEvent.setup()
+    const onSaveCustomSlot = vi.fn()
+    const onClearCustomSlot = vi.fn()
+    function SavedEditor() {
+      const [slots, setSlots] = useState<Array<CustomInventoryPreset | null>>([
+        { name: 'First', itemIds: ['minecraft:bucket'] },
+        { name: 'Second', itemIds: ['minecraft:bucket'] },
+        { name: 'Third', itemIds: ['minecraft:bucket'] },
+      ])
+      return <ItemSetEditor
+        state={{ kind: 'new', draft: { ...newItemSetDraft(), inventoryItemIds: [] } }}
+        data={data}
+        icons={icons}
+        customSlots={slots}
+        onDraftChange={vi.fn()}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+        onSaveCustomSlot={(index, preset) => {
+          onSaveCustomSlot(index, preset)
+          setSlots((current) => current.map((slot, slotIndex) => slotIndex === index ? preset : slot))
+        }}
+        onClearCustomSlot={(index) => {
+          onClearCustomSlot(index)
+          setSlots((current) => current.map((slot, slotIndex) => slotIndex === index ? null : slot))
+        }}
+      />
+    }
+    render(<SavedEditor />)
+
+    expect((screen.getByRole('button', { name: 'Save as new' }) as HTMLButtonElement).disabled).toBe(true)
+    for (let index = 0; index < 3; index++) {
+      await user.selectOptions(screen.getByRole('combobox', { name: 'Saved inventory' }), String(index))
+      await user.click(screen.getByRole('button', { name: 'Rename saved inventory' }))
+      const input = screen.getByRole('textbox', { name: 'Saved inventory name' })
+      await user.clear(input)
+      await user.type(input, `Route ${index + 1}`)
+      await user.click(screen.getByRole('button', { name: 'Save inventory name' }))
+      expect(onSaveCustomSlot).toHaveBeenLastCalledWith(index, { name: `Route ${index + 1}`, itemIds: ['minecraft:bucket'] })
+      await user.click(screen.getByRole('button', { name: 'Update saved inventory items' }))
+      expect(onSaveCustomSlot).toHaveBeenLastCalledWith(index, { name: `Route ${index + 1}`, itemIds: [] })
+      await user.click(screen.getByRole('button', { name: 'Delete saved inventory' }))
+      expect(onClearCustomSlot).toHaveBeenLastCalledWith(index)
+    }
+  })
+
+  test('groups grid size and item order into Rules with reusable segmented controls', () => {
     renderEditor(newItemSetDraft())
 
     expect(screen.getByText('retain item order').className).toContain('craft-order-switch__title')
-    expect(screen.getByText('disabled').className).toContain('craft-order-switch__label')
-    expect(screen.getByText('enabled').className).toContain('craft-order-switch__label')
+    const rules = screen.getByRole('region', { name: 'Rules' })
+    expect(within(rules).getByRole('group', { name: 'Retain item order' }).className).toBe('segmented-control')
+    expect(within(rules).getByRole('group', { name: 'Crafting grid size' }).className).toBe('segmented-control')
   })
 
   test('uses selected options instead of sliders in compact layout', () => {
@@ -182,8 +235,9 @@ describe('ItemSetEditor', () => {
     const user = userEvent.setup()
     const { onCancel } = renderEditor(newItemSetDraft())
 
-    await user.click(screen.getByRole('searchbox', { name: 'Search Inventory' }))
+    await user.click(screen.getByRole('button', { name: 'Add inventory items' }))
     fireEvent.pointerDown(document.body)
+    fireEvent.click(document.body)
     expect(screen.queryByRole('list', { name: 'Inventory results' })).toBeNull()
     expect(onCancel).not.toHaveBeenCalled()
 

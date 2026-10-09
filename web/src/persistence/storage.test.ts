@@ -207,6 +207,17 @@ describe('recipe book inventory persistence', () => {
 })
 
 describe('target workspace persistence', () => {
+  test('round-trips trimmed item-set names and omits blank names', () => {
+    const storage = new MemoryStorage()
+    const saved = workspace()
+    const entries = saved.entries.map((entry, index) => ({ ...entry, name: index === 0 ? '  Nether tools  ' : '   ' }))
+    saveTargetWorkspace({ entries }, storage)
+    const loaded = loadTargetWorkspace(storage)
+    expect(loaded.warning).toBeUndefined()
+    expect(loaded.value.entries[0]).toEqual({ ...saved.entries[0], name: 'Nether tools' })
+    expect(loaded.value.entries[1]).toEqual(saved.entries[1])
+  })
+
   test('marks only a missing workspace record as a first visit', () => {
     const storage = new MemoryStorage()
 

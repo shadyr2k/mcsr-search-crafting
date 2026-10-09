@@ -1,0 +1,39 @@
+.segmented-control {
+  display: inline-flex;
+  flex: 0 0 auto;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: .4rem;
+  background: var(--panel);
+  font-family: 'Figtree', sans-serif;
+  font-size: .72rem;
+  font-weight: 850;
+}
+
+.segmented-control > button {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 1.75rem;
+  padding: .2rem .55rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.segmented-control > button + button { border-left: 1px solid var(--border); }
+.segmented-control > button:first-child { border-radius: .3rem 0 0 .3rem; }
+.segmented-control > button:last-child { border-radius: 0 .3rem .3rem 0; }
+.segmented-control > button:only-child { border-radius: .3rem; }
+.segmented-control > button:hover:not(:disabled) { background: var(--panel-selected); }
+.segmented-control > button[aria-pressed='true'],
+.segmented-control > button[aria-pressed='true']:hover:not(:disabled) {
+  background: var(--accent-strong);
+  color: var(--panel);
+}
+.segmented-control > button:disabled { cursor: default; }
+.segmented-control > button[aria-pressed='true']:disabled { opacity: 1; }
+.segmented-control > button:focus-visible { outline-offset: -3px; }

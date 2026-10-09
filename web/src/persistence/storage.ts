@@ -343,8 +343,10 @@ function isTargetWorkspaceEntry(value: unknown): value is TargetWorkspaceEntry {
     return false
   }
   if (value.retainCraftOrder !== undefined && typeof value.retainCraftOrder !== 'boolean') return false
+  if (value.name !== undefined && typeof value.name !== 'string') return false
   return Object.keys(value).every((key) => (
       key === 'id'
+      || key === 'name'
       || key === 'targetIds'
       || key === 'inventoryItemIds'
       || key === 'enabled'
@@ -479,9 +481,10 @@ export function clearCustomInventorySlot(
 }
 
 function normalizeWorkspaceEntry(entry: TargetWorkspaceEntry): TargetWorkspaceEntry {
-  const { retainCraftOrder: _retainCraftOrder, ...stableEntry } = entry
+  const { retainCraftOrder: _retainCraftOrder, name: _name, ...stableEntry } = entry
   return {
     ...stableEntry,
+    ...(entry.name?.trim() ? { name: entry.name.trim() } : {}),
     // The target strip is the user's input order. Keep it intact even when
     // calculations are allowed to reorder targets for a better craft path.
     targetIds: [...new Set(entry.targetIds)],

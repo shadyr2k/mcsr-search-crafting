@@ -64,6 +64,7 @@ test('stacks sheet item sets on short desktop displays', async ({ page }) => {
 })
 
 test('keeps all-enabled sheet rows stable after a resize', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.setViewportSize({ width: 1280, height: 900 })
   await page.goto('/')
   await page.getByRole('button', { name: 'crafting sheet', exact: true }).waitFor()
@@ -77,15 +78,14 @@ test('keeps all-enabled sheet rows stable after a resize', async ({ page }) => {
   await page.getByRole('button', { name: 'crafting sheet', exact: true }).click()
   await expect(page.getByRole('button', { name: /Back to .* crafts/ })).toBeVisible()
   const columns = page.locator('.crafting-sheet__set-columns')
-  await expect(columns).toHaveClass(/crafting-sheet__set-columns--sized/)
+  await expect(columns.locator('.crafting-sheet__set-column')).toHaveCount(1)
   await page.setViewportSize({ width: 1280, height: 760 })
-  await expect(columns).toHaveClass(/crafting-sheet__set-columns--sized/)
+  await expect(columns.locator('.crafting-sheet__set-column')).toHaveCount(2)
 
-  const first = page.getByRole('region', { name: 'item set 1', exact: true })
-  const second = page.getByRole('region', { name: 'item set 2', exact: true })
-  const positions = await Promise.all([first.boundingBox(), second.boundingBox()])
-  expect(positions[1]!.x).toBeCloseTo(positions[0]!.x, 0)
-  expect(positions[1]!.y).toBeGreaterThanOrEqual(positions[0]!.y + positions[0]!.height)
+  await expect.poll(() => columns.evaluate((element) => {
+    const [first, second] = [...element.querySelectorAll('.crafting-sheet__entry')].map((entry) => entry.getBoundingClientRect())
+    return Math.abs(first.left - second.left) < 1 && second.top >= first.bottom
+  })).toBe(true)
 })
 
 test('stacks compact sheet item sets in one full-width column', async ({ page }) => {
@@ -102,7 +102,7 @@ test('stacks compact sheet item sets in one full-width column', async ({ page })
   await page.getByRole('button', { name: 'crafting sheet', exact: true }).click()
   await expect(page.getByRole('button', { name: /Back to .* crafts/ })).toBeVisible()
   const columns = page.locator('.crafting-sheet__set-columns')
-  await expect(columns).toHaveCSS('display', 'flex')
+  await expect(columns.locator('.crafting-sheet__set-column')).toHaveCount(1)
   const first = page.getByRole('region', { name: 'item set 1', exact: true })
   const second = page.getByRole('region', { name: 'item set 2', exact: true })
   const positions = await Promise.all([columns.boundingBox(), first.boundingBox(), second.boundingBox()])
@@ -128,7 +128,7 @@ test('packs excluded sheet rows at their natural height', async ({ page }) => {
 
   await entry.getByRole('checkbox', { name: 'Include item set 4' }).uncheck()
   await expect(entry).toHaveClass(/crafting-sheet__entry--disabled/)
-  await expect(columns).toHaveClass(/crafting-sheet__set-columns--compact-rows/)
+  expect(await columns.locator('.crafting-sheet__set-column').count()).toBeLessThanOrEqual(2)
   await expect(columns).toHaveCSS('align-content', 'start')
   expect(await entry.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(await nextEntry.evaluate((element) => element.getBoundingClientRect().height))
   const verticalGap = await entry.evaluate((element) => {
@@ -243,10 +243,12 @@ test('keeps the full sheet and comparison pages fluid in normal and compact layo
     const comparisonGrid = comparison.locator('.language-comparison__comparison-grid')
     await expect(comparisonGrid).toBeVisible()
     await expect(comparison.locator('.language-comparison__navigator')).toHaveCount(compact ? 1 : 0)
-    for (const [width, normalColumns, compactColumns] of [[1280, 3, 2], [768, 1, 1], [375, 1, 1]] as const) {
+    for (const width of [1280, 1121, 1120, 1119, 768, 545, 544, 543, 375]) {
       await page.setViewportSize({ width, height: 900 })
       await expectPageFits('.language-comparison--page')
-      await expect.poll(() => comparisonGrid.evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).length)).toBe(compact ? compactColumns : normalColumns)
+      await expect.poll(() => comparisonGrid.evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).length)).toBe(1)
+      await expect.poll(() => comparison.locator('.language-comparison__panel').evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).length)).toBe(width <= 1120 ? 1 : 2)
+      await expect.poll(() => comparison.locator('.language-comparison__language-selectors').evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).length)).toBe(width <= 544 ? 1 : 2)
     }
     await page.getByRole('button', { name: 'Back to crafts' }).click()
     await expect(page.locator('.page-transition__content')).toHaveClass(/page-transition__content--entering/)
